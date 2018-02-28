@@ -9,7 +9,7 @@ using namespace std;
 //https://stackoverflow.com/a/7408245
 //https://stackoverflow.com/questions/236129/the-most-elegant-way-to-iterate-the-words-of-a-string
 vector<string>
-split(const string& text, const string& delims, uint64_t d) {
+split(const string &text, const string &delims, uint64_t d) {
     vector<string> tokens;
     size_t start = text.find_first_not_of(delims), end = 0;
 

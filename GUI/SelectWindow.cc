@@ -25,15 +25,15 @@ SelectWindow::SelectWindow(MainWindow *parent)
     tree_processes.set_model(ref_tree_processes);
     scroll_tree_processes.add(tree_processes);
     scroll_tree_processes.set_policy(Gtk::PolicyType::POLICY_ALWAYS, Gtk::PolicyType::POLICY_ALWAYS);
-    scroll_tree_processes.set_resize_mode(Gtk::ResizeMode::RESIZE_IMMEDIATE); // PREVENT Gtk-WARNING **: Allocating size to gtkmm__GtkWindow 0x55ad53e44500 without calling gtk_widget_get_preferred_width/height(). How does the code know the size to allocate?
-
+    scroll_tree_processes.set_resize_mode(Gtk::ResizeMode::RESIZE_IMMEDIATE);
+    
     tree_processes.append_column("ID", m_Columns.m_col_pid);
     tree_processes.append_column("Name", m_Columns.m_col_name);
     tree_processes.append_column("Command", m_Columns.m_col_command);
-    for(guint i = 0; i < 2; i++) {
-        auto column = tree_processes.get_column(i);
-        column->set_reorderable(true);
-    }
+//    for(guint i = 0; i < 2; i++) {
+//        auto column = tree_processes.get_column(i);
+//        column->set_reorderable(true);
+//    }
 
     tree_processes.columns_autosize();
     tree_processes.set_hscroll_policy(Gtk::ScrollablePolicy::SCROLL_MINIMUM);
@@ -97,11 +97,10 @@ SelectWindow::tree_refresh()
 {
     ref_tree_processes->clear();
 
-    //new regex
     regex r;
-    string s = entry_pattern.get_text().raw();
+    string pattern = entry_pattern.get_text().raw();
     try {
-        r = regex(".*"+s+".*", regex_constants::icase);
+        r = regex(".*"+pattern+".*", regex_constants::icase);
         entry_pattern.unset_color(Gtk::STATE_FLAG_NORMAL);
     } catch (regex_error &e) {
         entry_pattern.override_color(Gdk::RGBA("red"), Gtk::STATE_FLAG_NORMAL);
@@ -111,7 +110,7 @@ SelectWindow::tree_refresh()
     vector<vector<string>> processes = getProcesses();
     int r_counted=0;
     for(int i=0; i<processes.size(); i++) {
-        if (regex_match(processes[i][2], r) || regex_match(processes[i][0], r)) {
+        if (regex_match(processes[i][2], r) || regex_match(processes[i][0], r)) { //match by name or pid
             Gtk::TreeModel::Row row = *(ref_tree_processes->append());
             row[m_Columns.m_col_pid] = stoi(processes[i][0]);
             row[m_Columns.m_col_name] = processes[i][1];

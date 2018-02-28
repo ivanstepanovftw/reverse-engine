@@ -6,14 +6,11 @@
 
 using namespace std;
 
-
-
 MainWindow::MainWindow()
         : vbox_1(Gtk::ORIENTATION_HORIZONTAL),
           m_button_sel("Select process"),
           m_button_scan("Find value")
 {
-//    this->set_default_size(100, 100);
     this->add(vbox_1);
 
     vbox_1.pack_start(m_button_sel,         Gtk::PACK_SHRINK);

@@ -37,8 +37,6 @@ enum ErrorCode { //todo #54 error codes and fn like dlError();
 
 using namespace std;
 
-//https://stackoverflow.com/a/7408245
-//https://stackoverflow.com/questions/236129/the-most-elegant-way-to-iterate-the-words-of-a-string
 std::vector<std::string> split(const std::string &text, const std::string &delims, uint64_t d = UINT64_MAX);
 
 std::string execute(std::string cmd);
