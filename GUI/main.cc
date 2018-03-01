@@ -6,7 +6,7 @@ main(int argc, char *argv[])
 {
 
     Gtk::Main kit(argc, argv);
-    Gdl::init();
+//    Gdl::init();
 
     MainWindow window;
     Gtk::Main::run(window);

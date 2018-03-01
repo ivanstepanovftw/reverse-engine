@@ -5,81 +5,32 @@
 #include "ScanWindow.hh"
 
 ScanWindow::ScanWindow(MainWindow *parent)
-        : parent(parent),
-          m_layout_manager(Gdl::DockLayout::create(m_dock)),
-          m_ph1("ph1", m_dock, Gdl::DOCK_TOP, false),
-          m_ph2("ph2", m_dock, Gdl::DOCK_BOTTOM, false),
-          m_ph3("ph3", m_dock, Gdl::DOCK_LEFT, false),
-          m_ph4("ph4", m_dock, Gdl::DOCK_RIGHT, false)
+        : parent(parent)
+        , paned_1(Gtk::ORIENTATION_HORIZONTAL)
+        , paned_2(Gtk::ORIENTATION_VERTICAL)
 {
-    Gtk::Button *save_button = new Gtk::Button("Save");
-    Gtk::Button *dump_button = new Gtk::Button("Dump");
+    Gtk::Widget *scanner_output = create_scanner_output();
+    Gtk::Widget *scanner = create_scanner();
+    Gtk::Widget *saved_list = create_saved_list();
     
-    Gdl::DockBar *dockbar = new Gdl::DockBar(m_dock);
-    dockbar->set_style(Gdl::DOCK_BAR_TEXT);
+    paned_1.add(*Gtk::manage(scanner_output));
+    paned_1.add(*Gtk::manage(scanner));
+    paned_2.add(paned_1);
+    paned_2.add(*Gtk::manage(saved_list));
     
-    Gtk::Box *box = new Gtk::HBox(false, 5);
-    Gtk::Box *button_box = new Gtk::HBox(true, 5);
+    scanner_output->set_size_request(200,-1);
+    paned_1.set_size_request(-1, 350);
     
-    Gtk::Box *table = new Gtk::VBox(false, 5);
-    table->set_border_width(10);
-    table->pack_start(*Gtk::manage(box));
-    table->pack_end(*Gtk::manage(button_box), false, false);
-    
-    box->pack_start(*Gtk::manage(dockbar), false, false);
-    box->pack_end(m_dock);
-    
-    button_box->pack_end(*Gtk::manage(save_button), false, true);
-    button_box->pack_end(*Gtk::manage(dump_button), false, true);
-    
-    create_items();
-    
-    
+    add(paned_2);
     this->set_title("Scan window");
-    this->set_default_size(500, 500);
-    add(*Gtk::manage(table));
+    this->set_default_size(700, 500);
+    this->set_border_width(10);
     this->show_all_children();
 }
 
 ScanWindow::~ScanWindow()
 {
     
-}
-
-
-void
-ScanWindow::create_items()
-{
-    Gdl::DockItem *item1 = new Gdl::DockItem(
-            "item1", "Item #1",
-            Gtk::Stock::EXECUTE,
-            Gdl::DOCK_ITEM_BEH_LOCKED
-            | Gdl::DOCK_ITEM_BEH_CANT_CLOSE);
-    
-    Gdl::DockItem *item2 = new Gdl::DockItem(
-            "item2", "Item #2",
-            Gtk::Stock::EXECUTE,
-            Gdl::DOCK_ITEM_BEH_LOCKED
-            | Gdl::DOCK_ITEM_BEH_CANT_CLOSE);
-    
-    Gdl::DockItem *item3 = new Gdl::DockItem(
-            "item3", "Item #3",
-            Gtk::Stock::CONVERT,
-            Gdl::DOCK_ITEM_BEH_LOCKED
-            | Gdl::DOCK_ITEM_BEH_CANT_CLOSE);
-    
-    m_dock.add_item(*Gtk::manage(item1), Gdl::DOCK_LEFT);
-    m_dock.add_item(*Gtk::manage(item2), Gdl::DOCK_RIGHT);
-    m_dock.add_item(*Gtk::manage(item3), Gdl::DOCK_BOTTOM);
-    
-//    item2->property_resize() = false;
-//    item3->property_resize() = false;
-    
-    item1->add(*create_scanner_output());
-    item2->add(*create_scanner());
-    item3->add(*create_saved_list());
-    
-    item2->dock_to(*item1, Gdl::DOCK_RIGHT);
 }
 
 
@@ -110,26 +61,81 @@ ScanWindow::create_scanner_output()
 Gtk::Widget *
 ScanWindow::create_scanner()
 {
-    Gtk::Box *box = new Gtk::VBox(false);
-    auto *button_first = new Gtk::Button("New scan");
-    auto *button_next = new Gtk::Button("Next");
-    auto *button_undo = new Gtk::Button("Undo");
-    auto *entry_value = new Gtk::Entry();
-//    auto *type = new Gtk::Drop();
+    auto *grid = new Gtk::Box(Gtk::ORIENTATION_VERTICAL);
+    auto *grid_1 = new Gtk::ButtonBox(Gtk::ORIENTATION_HORIZONTAL);
+        auto *grid_1_1 = new Gtk::ButtonBox(Gtk::ORIENTATION_HORIZONTAL);
+            auto *button_first = new Gtk::Button("First Scan");
+            auto *button_next = new Gtk::Button("Next Scan");
+        auto *grid_1_2 = new Gtk::ButtonBox(Gtk::ORIENTATION_HORIZONTAL);
+            auto *button_undo = new Gtk::Button("Undo Scan");
+    auto *grid_2 = new Gtk::Box(Gtk::ORIENTATION_HORIZONTAL);
+        auto *grid_2_1 = new Gtk::Box(Gtk::ORIENTATION_VERTICAL);
+            auto *radio_bits = new Gtk::RadioButton("Bits");
+            auto *radio_decimal = new Gtk::RadioButton("Decimal");
+            auto *check_hex = new Gtk::CheckButton("Hex");
+        auto *entry_value = new Gtk::Entry();
+    auto *grid_3 = new Gtk::Box(Gtk::ORIENTATION_HORIZONTAL);
+        auto *grid_3_1 = new Gtk::ButtonBox(Gtk::ORIENTATION_VERTICAL);
+            auto *grid_3_1_1 = new Gtk::ButtonBox(Gtk::ORIENTATION_HORIZONTAL);
+                auto *label_stype = new Gtk::Label("Scan Type:");
+                auto *sel_stype = new Gtk::ComboBox(" ");
+            auto *grid_3_1_2 = new Gtk::ButtonBox(Gtk::ORIENTATION_HORIZONTAL);
+                auto *label_vtype = new Gtk::Label("Value Type:");
+                auto *sel_vtype = new Gtk::ComboBox("4 Bytes");
+            auto *grid_3_1_3 = new Gtk::ButtonBox(Gtk::ORIENTATION_HORIZONTAL);
+                auto *button_regions = new Gtk::Button("Show Memory Regions");
+        auto *grid_3_2 = new Gtk::Box(Gtk::ORIENTATION_VERTICAL);
+            auto *radio_round_1 = new Gtk::RadioButton("Rounded (Default)");
+            auto *radio_round_2 = new Gtk::RadioButton("Rounded (Extreme)");
+            auto *radio_round_3 = new Gtk::RadioButton("Truncated");
+            auto *check_unicode = new Gtk::CheckButton("Unicode");
+            auto *check_case = new Gtk::CheckButton("Case Sensitive");
+    //
+    grid_1_2->set_halign(Gtk::Align::ALIGN_END);
+    entry_value->set_valign(Gtk::Align::ALIGN_CENTER);
+    entry_value->set_hexpand(true);
+    grid_3->set_homogeneous(false);
+    grid_3->set_hexpand(false);
+    grid_3_1->set_homogeneous(false);
+    grid_3_1->set_hexpand(false);
     
-//    Gtk::ScrolledWindow *scrolledwindow = new Gtk::ScrolledWindow();
-//    scrolledwindow->set_policy(Gtk::POLICY_ALWAYS, Gtk::POLICY_ALWAYS);
-//    scrolledwindow->set_resize_mode(Gtk::ResizeMode::RESIZE_IMMEDIATE);
-//    scrolledwindow->set_shadow_type(Gtk::SHADOW_ETCHED_IN);
+    //
+    grid_1_1->add(*Gtk::manage(button_first));
+    grid_1_1->add(*Gtk::manage(button_next));
+    grid_1_2->add(*Gtk::manage(button_undo));
+    grid_1->add(*Gtk::manage(grid_1_1));
+    grid_1->add(*Gtk::manage(grid_1_2));
     
-    box->pack_start(*Gtk::manage(button_first));
-    box->pack_start(*Gtk::manage(button_next));
-    box->pack_start(*Gtk::manage(button_undo));
-    box->pack_start(*Gtk::manage(entry_value));
+    //
+    grid_2_1->add(*Gtk::manage(radio_bits));
+    grid_2_1->add(*Gtk::manage(radio_decimal));
+    grid_2_1->add(*Gtk::manage(check_hex));
+    grid_2->add(*Gtk::manage(grid_2_1));
+    grid_2->add(*Gtk::manage(entry_value));
     
-    box->show_all();
+    //
+    grid_3_1_1->add(*Gtk::manage(label_stype));
+    grid_3_1_1->add(*Gtk::manage(sel_stype));
+    grid_3_1_2->add(*Gtk::manage(label_vtype));
+    grid_3_1_2->add(*Gtk::manage(sel_vtype));
+    grid_3_1_3->add(*Gtk::manage(button_regions));
+    grid_3_1->add(*Gtk::manage(grid_3_1_1));
+    grid_3_1->add(*Gtk::manage(grid_3_1_2));
+    grid_3_1->add(*Gtk::manage(grid_3_1_3));
+    grid_3_2->add(*Gtk::manage(radio_round_1));
+    grid_3_2->add(*Gtk::manage(radio_round_2));
+    grid_3_2->add(*Gtk::manage(radio_round_3));
+    grid_3_2->add(*Gtk::manage(check_unicode));
+    grid_3_2->add(*Gtk::manage(check_case));
+    grid_3->add(*Gtk::manage(grid_3_1));
+    grid_3->add(*Gtk::manage(grid_3_2));
     
-    return Gtk::manage(box);
+    //
+    grid->add(*Gtk::manage(grid_1));
+    grid->add(*Gtk::manage(grid_2));
+    grid->add(*Gtk::manage(grid_3));
+    grid->show_all();
+    return Gtk::manage(grid);
 }
 
 Gtk::Widget *
@@ -152,8 +158,8 @@ ScanWindow::create_saved_list()
     scrolledwindow->set_shadow_type(Gtk::SHADOW_ETCHED_IN);
     
     scrolledwindow->add(*Gtk::manage(tree));
-    
     box->pack_start(*Gtk::manage(scrolledwindow));
+    
     box->show_all();
     return Gtk::manage(box);
 }
