@@ -5,6 +5,7 @@
 #ifndef HACKME_SDK_HH
 #define HACKME_SDK_HH
 
+typedef unsigned char byte;
 #define HEX(a) ("0x")<<hex<<(a)<<dec
 
 #include <sys/uio.h>
@@ -14,18 +15,8 @@
 #include <fstream>
 #include <dirent.h>
 #include <unistd.h>
-//#include <string>
 #include <cstring>
-//#include <sys/types.h>
 #include <sys/stat.h>
-//#include <sys/wait.h>
-//#include <climits>
-//#include <cstdlib>
-//#include <unordered_map>
-//#include <fstream>
-//#include <set>
-//#include <link.h>
-//#include <cxxabi.h>
 
 
 enum ErrorCode { //todo #54 error codes and fn like dlError();
@@ -42,8 +33,6 @@ std::vector<std::string> split(const std::string &text, const std::string &delim
 std::string execute(std::string cmd);
 
 std::vector<std::vector<std::string>> getProcesses();
-
-
 
 
 typedef struct {
@@ -171,7 +160,7 @@ public:
     }
 
     // Read_from/write_to this handle
-    bool read(void *out, void *address, size_t size) {
+    bool inline read(void *out, void *address, size_t size) {
         struct iovec local[1];
         struct iovec remote[1];
 
@@ -183,7 +172,7 @@ public:
         return (process_vm_readv(pid, local, 1, remote, 1, 0) == size);
     }
 
-    bool write(void *address, void *buffer, size_t size) {
+    bool inline write(void *address, void *buffer, size_t size) {
         struct iovec local[1];
         struct iovec remote[1];
 
@@ -368,7 +357,7 @@ public:
     
     size_t findPattern(vector<uintptr_t> *out, region_t *region, const char *pattern, const char *mask) {
         char buffer[0x1000];
-
+        
         size_t len = strlen(mask);
         size_t chunksize = sizeof(buffer);
         size_t totalsize = region->end - region->start;
@@ -379,15 +368,15 @@ public:
             size_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
             size_t readaddr = region->start + (chunksize * chunknum);
             bzero(buffer, chunksize);
-
+            
             if (this->read(buffer, (void *) readaddr, readsize)) {
                 for(size_t b = 0; b < readsize; b++) {
                     size_t matches = 0;
-
+                    
                     // если данные совпадают или пропустить
                     while (buffer[b + matches] == pattern[matches] || mask[matches] != 'x') {
                         matches++;
-
+                        
                         if (matches == len) {
                             found++;
                             out->push_back((uintptr_t) (readaddr + b));
@@ -395,7 +384,42 @@ public:
                     }
                 }
             }
-
+            
+            totalsize -= readsize;
+            chunknum++;
+        }
+        return found;
+    }
+    
+    //fixme speedup it https://stackoverflow.com/questions/3664272/is-stdvector-so-much-slower-than-plain-arrays
+    size_t scan(vector<uintptr_t> *out, region_t *region, const byte *pattern, size_t pattern_len) {
+        char buffer[0x1000];
+        
+        size_t chunksize = sizeof(buffer);
+        size_t totalsize = region->end - region->start;
+        size_t chunknum = 0;
+        size_t found = 0;
+        
+        while (totalsize) {
+            size_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
+            size_t readaddr = region->start + (chunksize * chunknum);
+            bzero(buffer, chunksize);
+            
+            if (this->read(buffer, (void *) readaddr, readsize)) {
+                for(size_t b = 0; b < readsize; b++) {
+                    size_t matches = 0;
+                    
+                    while (buffer[b + matches] == pattern[matches]) {
+                        matches++;
+                        
+                        if (matches == pattern_len) {
+                            found++;
+                            out->push_back((uintptr_t) (readaddr + b));
+                        }
+                    }
+                }
+            }
+            
             totalsize -= readsize;
             chunknum++;
         }
@@ -454,11 +478,123 @@ public:
         return false;
     }
 
+    
+};
 
 
 
-    /** Cheat Engine implementation */
+union byteint
+{
+    byte b[sizeof(int)];
+    int i;
+};
 
+/** Scanner implementation */
+enum ScanType {
+    NUMBER,
+    AOB,
+    STRING,
+    GROUPED,
+};
+
+enum ValueType {
+    ALL,
+    CHAR,
+    SHORT,
+    INT,
+    LONG,
+    FLOAT,
+    DOUBLE,
+};
+
+class HandleScanner {
+public:
+    Handle *handle;
+    ScanType scan_type;
+    
+    ValueType value_type;
+    size_t increment;
+    
+    vector<uintptr_t> output;
+    
+    explicit HandleScanner(Handle *handle,
+                           ScanType scan) 
+            : handle(handle)
+            , scan_type(scan)
+    { }
+    
+    
+    void setup_number_scan(ValueType valueType,
+                           size_t increment,
+                           int round)
+    {
+        this->value_type = valueType;
+        this->increment = increment;
+    }
+    
+    
+    void first_scan(string pattern)
+    {
+        if (scan_type == ScanType::NUMBER) {
+            clog<<"scan_type: NUMBER, value_type: ";
+            switch (value_type) {
+                case CHAR:
+                    clog<<"char"<<endl;
+                    break;
+                case SHORT:
+                    clog<<"short"<<endl;
+                    break;
+                case INT:
+                    clog<<"int"<<endl;
+                    break;
+                case LONG:
+                    clog<<"long"<<endl;
+                    break;
+                case FLOAT:
+                    clog<<"float"<<endl;
+                    break;
+                case DOUBLE:
+                    clog<<"double"<<endl;
+                    break;
+                case ALL:
+                default: //ALL
+                    clog<<"all"<<endl;
+            }
+    
+            // 1. resolve (string)pattern to (int)number todo #1249292
+            // 2. then cast int to byte array (see results inside main.cc at 2nd march of 20!8)
+            
+            byteint bi;
+            bi.i = stoi(pattern);
+            
+            vector<uintptr_t> output;
+            vector<uintptr_t> o;
+            for(region_t region : handle->regions) {
+                handle->scan(&o, &region, bi.b, sizeof(int));
+                output.insert(output.end(), o.begin(), o.end());
+            }
+        }
+        else if (scan_type == ScanType::AOB) {
+            
+        }
+        else if (scan_type == ScanType::STRING) {
+            
+        }
+        else if (scan_type == ScanType::GROUPED) {
+            
+        }
+    }
+    
+    void next_scan(string pattern)
+    {
+        
+    }
+    
+    void reset()
+    {
+        output.clear();
+    }
+    
 };
 
 
@@ -469,3 +605,38 @@ void *GetModuleHandleSafe(const char *);
 void *GetProcAddress(void *, const char*);
 
 #endif //HACKME_SDK_HH
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

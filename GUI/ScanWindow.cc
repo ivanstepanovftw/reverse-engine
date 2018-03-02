@@ -4,6 +4,8 @@
 
 #include "ScanWindow.hh"
 
+using namespace std;
+
 ScanWindow::ScanWindow(MainWindow *parent)
         : parent(parent)
         , paned_1(Gtk::ORIENTATION_HORIZONTAL)
@@ -45,6 +47,7 @@ ScanWindow::create_scanner_output()
     tree->set_model(ref_tree_output);
     tree->append_column("Address",     columns_output.m_col_address);
     tree->append_column("Value",       columns_output.m_col_value);
+    tree->append_column("Previous",    columns_output.m_col_value_prev);
     
     Gtk::ScrolledWindow *scrolledwindow = new Gtk::ScrolledWindow();
     scrolledwindow->set_policy(Gtk::POLICY_ALWAYS, Gtk::POLICY_ALWAYS);
@@ -75,14 +78,11 @@ ScanWindow::create_scanner()
             auto *check_hex = new Gtk::CheckButton("Hex");
         auto *entry_value = new Gtk::Entry();
     auto *grid_3 = new Gtk::Box(Gtk::ORIENTATION_HORIZONTAL);
-        auto *grid_3_1 = new Gtk::ButtonBox(Gtk::ORIENTATION_VERTICAL);
-            auto *grid_3_1_1 = new Gtk::ButtonBox(Gtk::ORIENTATION_HORIZONTAL);
+        auto *grid_3_1 = new Gtk::Grid();
                 auto *label_stype = new Gtk::Label("Scan Type:");
-                auto *sel_stype = new Gtk::ComboBox(" ");
-            auto *grid_3_1_2 = new Gtk::ButtonBox(Gtk::ORIENTATION_HORIZONTAL);
+                auto *combo_stype = new Gtk::ComboBox();
                 auto *label_vtype = new Gtk::Label("Value Type:");
-                auto *sel_vtype = new Gtk::ComboBox("4 Bytes");
-            auto *grid_3_1_3 = new Gtk::ButtonBox(Gtk::ORIENTATION_HORIZONTAL);
+                auto *combo_vtype = new Gtk::ComboBox();
                 auto *button_regions = new Gtk::Button("Show Memory Regions");
         auto *grid_3_2 = new Gtk::Box(Gtk::ORIENTATION_VERTICAL);
             auto *radio_round_1 = new Gtk::RadioButton("Rounded (Default)");
@@ -90,38 +90,72 @@ ScanWindow::create_scanner()
             auto *radio_round_3 = new Gtk::RadioButton("Truncated");
             auto *check_unicode = new Gtk::CheckButton("Unicode");
             auto *check_case = new Gtk::CheckButton("Case Sensitive");
-    //
+    
+    // ComboBox "Scan Type"
+    ref_stype = Gtk::ListStore::create(columns_just_string);
+    combo_stype->set_model(ref_stype);
+    
+    Gtk::TreeModel::Row row;
+    row = *(ref_stype->append()); row[columns_just_string.m_col_name] = "Number";
+    combo_stype->set_active(row);
+    row = *(ref_stype->append()); row[columns_just_string.m_col_name] = "Array of bytes";
+    row = *(ref_stype->append()); row[columns_just_string.m_col_name] = "String";
+    row = *(ref_stype->append()); row[columns_just_string.m_col_name] = "Grouped";
+    
+    combo_stype->pack_start(columns_just_string.m_col_name);
+
+    //Connect signal handler:
+//    combo_stype->signal_changed().connect
+//            (sigc::mem_fun(*this, &ScanWindow::on_combo_stype_changed));
+    combo_stype->signal_changed().connect
+            (sigc::bind<Gtk::ComboBox *>(sigc::mem_fun(*this, &ScanWindow::on_combo_stype_changed), combo_stype));
+    
+    
+    // ComboBox "Value Type"
+    ref_vtype = Gtk::ListStore::create(columns_just_string);
+    combo_vtype->set_model(ref_vtype);
+    
+    // Inactive rows (NOT combo box) if Scan Type is not (Number) or not (Array)
+    row = *(ref_vtype->append()); row[columns_just_string.m_col_name] = "c: Byte";
+    row = *(ref_vtype->append()); row[columns_just_string.m_col_name] = "s: 2 Bytes";
+    row = *(ref_vtype->append()); row[columns_just_string.m_col_name] = "i: 4 Bytes";
+    combo_vtype->set_active(row);
+    row = *(ref_vtype->append()); row[columns_just_string.m_col_name] = "l: 8 Bytes";
+    row = *(ref_vtype->append()); row[columns_just_string.m_col_name] = "f: Float";
+    row = *(ref_vtype->append()); row[columns_just_string.m_col_name] = "d: Double";
+    row = *(ref_vtype->append()); row[columns_just_string.m_col_name] = "All";
+    
+    combo_vtype->pack_start(columns_just_string.m_col_name);
+
+    combo_stype->signal_changed().connect
+            (sigc::bind<Gtk::ComboBox *>(sigc::mem_fun(*this, &ScanWindow::on_combo_stype_changed), combo_stype));
+    
+    
+    // Markdown
     grid_1_2->set_halign(Gtk::Align::ALIGN_END);
     entry_value->set_valign(Gtk::Align::ALIGN_CENTER);
     entry_value->set_hexpand(true);
+    
     grid_3->set_homogeneous(false);
     grid_3->set_hexpand(false);
-    grid_3_1->set_homogeneous(false);
-    grid_3_1->set_hexpand(false);
     
-    //
     grid_1_1->add(*Gtk::manage(button_first));
     grid_1_1->add(*Gtk::manage(button_next));
     grid_1_2->add(*Gtk::manage(button_undo));
     grid_1->add(*Gtk::manage(grid_1_1));
     grid_1->add(*Gtk::manage(grid_1_2));
     
-    //
     grid_2_1->add(*Gtk::manage(radio_bits));
     grid_2_1->add(*Gtk::manage(radio_decimal));
     grid_2_1->add(*Gtk::manage(check_hex));
     grid_2->add(*Gtk::manage(grid_2_1));
     grid_2->add(*Gtk::manage(entry_value));
     
-    //
-    grid_3_1_1->add(*Gtk::manage(label_stype));
-    grid_3_1_1->add(*Gtk::manage(sel_stype));
-    grid_3_1_2->add(*Gtk::manage(label_vtype));
-    grid_3_1_2->add(*Gtk::manage(sel_vtype));
-    grid_3_1_3->add(*Gtk::manage(button_regions));
-    grid_3_1->add(*Gtk::manage(grid_3_1_1));
-    grid_3_1->add(*Gtk::manage(grid_3_1_2));
-    grid_3_1->add(*Gtk::manage(grid_3_1_3));
+    grid_3_1->attach_next_to(*Gtk::manage(label_stype),                  Gtk::PositionType::POS_BOTTOM, 1, 1);
+    grid_3_1->attach_next_to(*Gtk::manage(combo_stype),    *label_stype, Gtk::PositionType::POS_RIGHT,  1, 1);
+    grid_3_1->attach_next_to(*Gtk::manage(label_vtype),    *label_stype, Gtk::PositionType::POS_BOTTOM, 1, 1);
+    grid_3_1->attach_next_to(*Gtk::manage(combo_vtype),    *label_vtype, Gtk::PositionType::POS_RIGHT,  1, 1);
+    grid_3_1->attach_next_to(*Gtk::manage(button_regions), *label_vtype, Gtk::PositionType::POS_BOTTOM, 2, 1);
     grid_3_2->add(*Gtk::manage(radio_round_1));
     grid_3_2->add(*Gtk::manage(radio_round_2));
     grid_3_2->add(*Gtk::manage(radio_round_3));
@@ -130,7 +164,6 @@ ScanWindow::create_scanner()
     grid_3->add(*Gtk::manage(grid_3_1));
     grid_3->add(*Gtk::manage(grid_3_2));
     
-    //
     grid->add(*Gtk::manage(grid_1));
     grid->add(*Gtk::manage(grid_2));
     grid->add(*Gtk::manage(grid_3));
@@ -163,4 +196,45 @@ ScanWindow::create_saved_list()
     box->show_all();
     return Gtk::manage(box);
 }
+
+void ScanWindow::on_combo_stype_changed(Gtk::ComboBox *comboBox)
+{
+    Gtk::TreeModel::iterator iter = comboBox->get_active();
+    if(iter) {
+        Gtk::TreeModel::Row row = *iter;
+        if(row) {
+            Glib::ustring name = row[columns_just_string.m_col_name];
+            cout<<"name="<<name<<endl;
+            switch(name[0]) {
+                case 'N': //number
+                    break;
+                case 'A': //array of bytes
+                    break;
+                case 'S': //string
+                    break;
+                case 'G': //group
+                    break;
+            }
+        }
+    }
+    else
+        cout<<"invalid iter"<<endl;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

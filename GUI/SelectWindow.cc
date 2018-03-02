@@ -31,8 +31,8 @@ SelectWindow::SelectWindow(MainWindow *parent)
     tree_processes.append_column("Name", m_Columns.m_col_name);
     tree_processes.append_column("Command", m_Columns.m_col_command);
 //    for(guint i = 0; i < 2; i++) {
-//        auto column = tree_processes.get_column(i);
-//        column->set_reorderable(true);
+//        auto columns_just_string = tree_processes.get_column(i);
+//        columns_just_string->set_reorderable(true);
 //    }
 
     tree_processes.columns_autosize();

@@ -94,6 +94,7 @@ public:
 
 protected:
     //Handlers
+    void on_combo_stype_changed(Gtk::ComboBox *comboBox);
     
     //Tree model columns:
     class ColumnsSaved : public Gtk::TreeModel::ColumnRecord
@@ -122,17 +123,32 @@ protected:
         {
             add(m_col_address);
             add(m_col_value);
+            add(m_col_value_prev);
         }
         
         Gtk::TreeModelColumn<Glib::ustring> m_col_address;
         Gtk::TreeModelColumn<Glib::ustring> m_col_value;
+        Gtk::TreeModelColumn<Glib::ustring> m_col_value_prev;
     };
     
     ColumnsSaved columns_saved;
     ColumnsOutput columns_output;
-    
     Glib::RefPtr<Gtk::ListStore> ref_tree_saved;
     Glib::RefPtr<Gtk::ListStore> ref_tree_output;
+    
+    //ComboBox
+    class ColumnsJustString : public Gtk::TreeModel::ColumnRecord
+    {
+    public:
+        ColumnsJustString()
+        { add(m_col_name);}
+        
+        Gtk::TreeModelColumn<Glib::ustring> m_col_name;
+    };
+    
+    ColumnsJustString columns_just_string;
+    Glib::RefPtr<Gtk::ListStore> ref_stype;
+    Glib::RefPtr<Gtk::ListStore> ref_vtype;
     
     //Childs
     Gtk::Widget *create_scanner_output();
@@ -143,6 +159,8 @@ private:
      Gtk::Paned paned_1;
      Gtk::Paned paned_2;
 };
+
+//class 
 
 
 #endif //H4X0R_SCANWINDOW_HH
