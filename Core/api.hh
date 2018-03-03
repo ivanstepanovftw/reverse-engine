@@ -17,6 +17,7 @@ typedef unsigned char byte;
 #include <unistd.h>
 #include <cstring>
 #include <sys/stat.h>
+#include <boost/lexical_cast.hpp>
 
 
 enum ErrorCode { //todo #54 error codes and fn like dlError();
@@ -33,6 +34,7 @@ std::vector<std::string> split(const std::string &text, const std::string &delim
 std::string execute(std::string cmd);
 
 std::vector<std::vector<std::string>> getProcesses();
+
 
 
 typedef struct {
@@ -54,6 +56,69 @@ typedef struct {
     std::string pathname;
     std::string filename;
 } region_t;
+
+
+
+union bytechar
+{
+    byte b[sizeof(int8_t)];
+    int8_t i;
+};
+union byteshort
+{
+    byte b[sizeof(int16_t)];
+    int16_t i;
+};
+union byteint
+{
+    byte b[sizeof(int32_t)];
+    int32_t i;
+};
+union bytelong
+{
+    byte b[sizeof(int64_t)];
+    int64_t i;
+};
+union bytefloat
+{
+    byte b[sizeof(float)];
+    float i;
+};
+union bytedouble
+{
+    byte b[sizeof(double)];
+    double i;
+};
+
+/** Scanner implementation */
+enum ScanType {
+    NUMBER,
+    AOB,
+    STRING,
+    GROUPED,
+};
+
+enum ValueType {
+    ALL, // fixme ValueType::ALL is deprecated
+    CHAR,
+    SHORT,
+    INT,
+    LONG,
+    FLOAT,
+    DOUBLE,
+};
+
+class ScanEntry {
+public:
+    ValueType type;
+    bytelong address;
+    const region_t *region;
+    
+    ScanEntry(uintptr_t a, const region_t *r) {
+        address.i = a;
+        region = r;
+    }
+};
 
 
 class Handle {
@@ -392,7 +457,12 @@ public:
     }
     
     //fixme speedup it https://stackoverflow.com/questions/3664272/is-stdvector-so-much-slower-than-plain-arrays
-    size_t scan(vector<uintptr_t> *out, region_t *region, const byte *pattern, size_t pattern_len) {
+    size_t scan(vector<ScanEntry> *out,
+                const region_t *region,
+                const byte *pattern, 
+                const size_t pattern_len, 
+                const size_t increment = 1)
+    {
         char buffer[0x1000];
         
         size_t chunksize = sizeof(buffer);
@@ -406,7 +476,7 @@ public:
             bzero(buffer, chunksize);
             
             if (this->read(buffer, (void *) readaddr, readsize)) {
-                for(size_t b = 0; b < readsize; b++) {
+                for(size_t b = 0; b < readsize; b += increment) {
                     size_t matches = 0;
                     
                     while (buffer[b + matches] == pattern[matches]) {
@@ -414,7 +484,7 @@ public:
                         
                         if (matches == pattern_len) {
                             found++;
-                            out->push_back((uintptr_t) (readaddr + b));
+                            out->push_back(ScanEntry((uintptr_t)(readaddr + b), region));
                         }
                     }
                 }
@@ -482,31 +552,6 @@ public:
 };
 
 
-
-union byteint
-{
-    byte b[sizeof(int)];
-    int i;
-};
-
-/** Scanner implementation */
-enum ScanType {
-    NUMBER,
-    AOB,
-    STRING,
-    GROUPED,
-};
-
-enum ValueType {
-    ALL,
-    CHAR,
-    SHORT,
-    INT,
-    LONG,
-    FLOAT,
-    DOUBLE,
-};
-
 class HandleScanner {
 public:
     Handle *handle;
@@ -515,7 +560,8 @@ public:
     ValueType value_type;
     size_t increment;
     
-    vector<uintptr_t> output;
+    double progress = 0;
+    vector<ScanEntry> output;
     
     explicit HandleScanner(Handle *handle,
                            ScanType scan) 
@@ -526,7 +572,7 @@ public:
     
     void setup_number_scan(ValueType valueType,
                            size_t increment,
-                           int round)
+                           int round = 0)
     {
         this->value_type = valueType;
         this->increment = increment;
@@ -535,43 +581,110 @@ public:
     
     void first_scan(string pattern)
     {
+        output.clear();
+        // using boost because http://www.boost.org/doc/libs/1_57_0/doc/html/boost_lexical_cast/performance.html
         if (scan_type == ScanType::NUMBER) {
-            clog<<"scan_type: NUMBER, value_type: ";
-            switch (value_type) {
-                case CHAR:
-                    clog<<"char"<<endl;
-                    break;
-                case SHORT:
-                    clog<<"short"<<endl;
-                    break;
-                case INT:
-                    clog<<"int"<<endl;
-                    break;
-                case LONG:
-                    clog<<"long"<<endl;
-                    break;
-                case FLOAT:
-                    clog<<"float"<<endl;
-                    break;
-                case DOUBLE:
-                    clog<<"double"<<endl;
-                    break;
-                case ALL:
-                default: //ALL
-                    clog<<"all"<<endl;
-            }
+            if (value_type == ValueType::CHAR || value_type == ValueType::ALL) {
+                bytechar val;
+                try {
+                    val.i = boost::lexical_cast<char>(pattern);
+                }
+                catch(boost::bad_lexical_cast &)
+                {
+                }
     
-            // 1. resolve (string)pattern to (int)number todo #1249292
-            // 2. then cast int to byte array (see results inside main.cc at 2nd march of 20!8)
-            
-            byteint bi;
-            bi.i = stoi(pattern);
-            
-            vector<uintptr_t> output;
-            vector<uintptr_t> o;
-            for(region_t region : handle->regions) {
-                handle->scan(&o, &region, bi.b, sizeof(int));
-                output.insert(output.end(), o.begin(), o.end());
+                for(int i = 0; i < handle->regions.size(); i++) {
+                    region_t region = handle->regions[i];
+                    if (region.writable) {
+                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
+                    }
+                    progress = (i+1)/handle->regions.size();
+                }
+            }
+            if (value_type == ValueType::SHORT || value_type == ValueType::ALL) {
+                byteshort val;
+                try {
+                    val.i = boost::lexical_cast<short>(pattern);
+                }
+                catch(boost::bad_lexical_cast &)
+                {
+                }
+    
+                for(int i = 0; i < handle->regions.size(); i++) {
+                    region_t region = handle->regions[i];
+                    if (region.writable) {
+                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
+                    }
+                    progress = (i+1)/handle->regions.size();
+                }
+            }
+            if (value_type == ValueType::INT || value_type == ValueType::ALL) {
+                byteint val;
+                try {
+                    val.i = boost::lexical_cast<int>(pattern);
+                }
+                catch(boost::bad_lexical_cast &)
+                {
+                }
+    
+                for(int i = 0; i < handle->regions.size(); i++) {
+                    region_t region = handle->regions[i];
+                    if (region.writable) {
+                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
+                    }
+                    progress = (i+1)/handle->regions.size();
+                }
+            }
+            if (value_type == ValueType::LONG || value_type == ValueType::ALL) {
+                bytelong val;
+                try {
+                    val.i = boost::lexical_cast<long>(pattern);
+                }
+                catch(boost::bad_lexical_cast &)
+                {
+                }
+    
+                for(int i = 0; i < handle->regions.size(); i++) {
+                    region_t region = handle->regions[i];
+                    if (region.writable) {
+                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
+                    }
+                    progress = (i+1)/handle->regions.size();
+                }
+            }
+            if (value_type == ValueType::FLOAT || value_type == ValueType::ALL) {
+                bytefloat val;
+                try {
+                    val.i = boost::lexical_cast<float>(pattern);
+                }
+                catch(boost::bad_lexical_cast &)
+                {
+                }
+    
+                for(int i = 0; i < handle->regions.size(); i++) {
+                    region_t region = handle->regions[i];
+                    if (region.writable) {
+                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
+                    }
+                    progress = (i+1)/handle->regions.size();
+                }
+            }
+            if (value_type == ValueType::DOUBLE || value_type == ValueType::ALL) {
+                bytedouble val;
+                try {
+                    val.i = boost::lexical_cast<double>(pattern);
+                }
+                catch(boost::bad_lexical_cast &)
+                {
+                }
+    
+                for(int i = 0; i < handle->regions.size(); i++) {
+                    region_t region = handle->regions[i];
+                    if (region.writable) {
+                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
+                    }
+                    progress = (i+1)/handle->regions.size();
+                }
             }
         }
         else if (scan_type == ScanType::AOB) {

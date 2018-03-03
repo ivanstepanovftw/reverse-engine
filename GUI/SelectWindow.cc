@@ -2,6 +2,7 @@
 // Created by root on 25.02.18.
 //
 
+#include <Core/api.hh>
 #include "SelectWindow.hh"
 
 using namespace std;
@@ -66,13 +67,22 @@ SelectWindow::on_button_attach()
         Gtk::TreeModel::iterator iter = refSelection->get_selected();
         if(iter) {
             int pid = (*iter)[m_Columns.m_col_pid];
-            cout << "Selected PID:" << pid << endl;
+            printf("Selected PID: %i\n", pid);
             delete parent->handle;
             parent->handle = new Handle(pid);
+//            printf("Title: %s\n", parent->handle->title.c_str()); todo print title of pid
             parent->handle->updateRegions();
+            printf("%-32s%-18s %-18s %s%s%s%s\n",
+                   "Region name",
+                   "Start",
+                   "End",
+                   "r","w","x","-");
             for(auto &region : parent->handle->regions) {
-                cout<<"Region: "<<(region.filename.empty()?"DYNAMICALLY ALLOCATED":region.filename)<<", \tstart: "<<HEX(region.start)<<", \tend: "<<HEX(region.end)
-                    <<", \trwes: "<<setfill('0')<<setw(4)<<(region.readable<<3|region.writable<<2|region.executable<<1|region.shared)<<endl;
+                printf("%-32s0x%016lx 0x%016lx %i%i%i%i\n",
+                       region.filename.empty()?"misc":region.filename.c_str(),
+                       region.start,
+                       region.end,
+                       region.readable,region.writable,region.executable,region.shared);
             }
             cout<<"Regions enumeration is done!"<<endl;
             hide();

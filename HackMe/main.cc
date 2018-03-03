@@ -18,7 +18,7 @@ uint64_t r() {
 
 struct Entry {
     long id;
-    float health;
+    int32_t health;
     double x;
     double y;
     double z;
@@ -93,7 +93,7 @@ public:
         return nullptr;
     }
 
-    float *GetHealth() {
+    int32_t *GetHealth() {
         return &GetLocalPlayer()->health;
     }
 

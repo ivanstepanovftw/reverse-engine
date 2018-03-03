@@ -5,9 +5,11 @@ project(GUI)
 
 #################################################
 
+find_package(Boost)
+
 find_package(PkgConfig)
 pkg_check_modules(GTKMM gtkmm-3.0)
-pkg_check_modules(GDLMM gdlmm-3.0)
+#pkg_check_modules(GDLMM gdlmm-3.0)
 
 #################################################
 

@@ -34,6 +34,7 @@ public:
     
     // Global
     Handle *handle = nullptr;
+    HandleScanner *hs = nullptr;
     
 protected:
     // Signals
