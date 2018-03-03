@@ -3,6 +3,8 @@
 //
 
 
+//#include <variant> //не работает нихуя...
+
 #include <iostream>
 #include <Core/api.hh>
 #include <iomanip>
@@ -10,98 +12,57 @@
 
 using namespace std;
 using namespace std::chrono;
+using namespace std::literals;
 
 const char *target = "HackMe";
 
 int
 main() {
-    int N = 8;
-    long SAMPLES = 100'000'000;
-    high_resolution_clock::time_point t1, t2;
-    duration<double> time_span;
-    
-    printf("N: %d\n", N);
-    
-    
-    /// Method 6 done 10000000000 samples in 25.245812 seconds
-    union byteint
-    {
-        byte b[sizeof(int)];
-        int i;
-    };
-    
-    t1 = high_resolution_clock::now();
-    for(long ii=0; ii<SAMPLES; ii++) {
-        byteint bi;
-        bi.i = N;
-    }
-    t2 = high_resolution_clock::now();
-    time_span = duration_cast<duration<double>>(t2 - t1);
-    
-    byteint bi;
-    bi.i = N;
-    
-    printf("byte6: %x %x %x %x, done %ld samples in %f seconds\n", bi.b[0], bi.b[1], bi.b[2], bi.b[3], SAMPLES, time_span.count());
+//    float N = 8;
+//    long SAMPLES = 100'000'000;
+//    high_resolution_clock::time_point t1, t2;
+//    duration<double> time_span;
+//
+//    printf("N: %f\n", N);
+//
+//    /// reinterpret_cast vs. union holywar:
+//    // Method "byte *ARRAY = reinterpret_cast<byte *>(&NUMBER);" done 10000000000 samples in 24.689415 seconds
+//    // Method "union u {byte b[sizeof(T)], T a};" done 10000000000 samples in 25.245812 seconds
+//    
+//    t1 = high_resolution_clock::now();
+//    for(long ii=0; ii<SAMPLES; ii++) {
+//        boost::variant<byte *, float> u = N;
+//    }
+//    t2 = high_resolution_clock::now();
+//    time_span = duration_cast<duration<double>>(t2 - t1);
+    float n = 8;
+    byte *a = reinterpret_cast<byte *>(&n);
+    printf("a: %x %x %x %x\n",
+           a[3], 
+           a[2], 
+           a[1], 
+           a[0]);
     
     
+//    boost::variant<float, byte *> u; boost::variant std::variant хуйня ебаная, union лучше
+//    u = n;
+//    cout<<"float: "<<u<<endl;
+//    byte *b = boost::get<byte *>(u);
+//    printf("b: %x %x %x %x\n",
+//           b[3], 
+//           b[2], 
+//           b[1], 
+//           b[0]);
     
-    /// Method 2 done 10000000000 samples in 26.711245 seconds
-    t1 = high_resolution_clock::now();
-    for(long i=0; i<SAMPLES; i++) {
-        unsigned char byte2[4];
-        byte2[0] = (N & 0x000000ff);
-        byte2[1] = (N & 0x0000ff00)>>8;
-        byte2[2] = (N & 0x00ff0000)>>16;
-        byte2[3] = (N & 0xff000000)>>24;
-    }
-    t2 = high_resolution_clock::now();
-    time_span = duration_cast<duration<double>>(t2 - t1);
-    
-    unsigned char byte2[4];
-    byte2[0] = (N & 0x000000ff);
-    byte2[1] = (N & 0x0000ff00)>>8;
-    byte2[2] = (N & 0x00ff0000)>>16;
-    byte2[3] = (N & 0xff000000)>>24;
-    
-    printf("byte2: %x %x %x %x, done %ld samples in %f seconds\n", byte2[0], byte2[1], byte2[2], byte2[3], SAMPLES, time_span.count());
-    
-    
-    
-    /// Method 1 done 10000000000 samples in 25.514802 seconds
-    t1 = high_resolution_clock::now();
-    for(long i=0; i<SAMPLES; i++) {
-        unsigned char byte1[4];
-        byte1[3] = (N>>24) & 0xFF;
-        byte1[2] = (N>>16) & 0xFF;
-        byte1[1] = (N>>8) & 0xFF;
-        byte1[0] = N & 0xFF;
-    }
-    t2 = high_resolution_clock::now();
-    time_span = duration_cast<duration<double>>(t2 - t1);
-    
-    unsigned char byte1[4];
-    byte1[3] = (N>>24) & 0xFF;
-    byte1[2] = (N>>16) & 0xFF;
-    byte1[1] = (N>>8) & 0xFF;
-    byte1[0] = N & 0xFF;
-    
-    printf("byte1: %x %x %x %x, done %ld samples in %f seconds\n", byte1[0], byte1[1], byte1[2], byte1[3], SAMPLES, time_span.count());
-    
-    
-    
-    /// Method 4 done 10000000000 samples in 24.689415 seconds
-    t1 = high_resolution_clock::now();
-    for(long i=0; i<SAMPLES; i++) {
-        unsigned char *byte4 = reinterpret_cast<unsigned char *>(&N);
-    }
-    t2 = high_resolution_clock::now();
-    time_span = duration_cast<duration<double>>(t2 - t1);
-    
-    unsigned char *byte4 = reinterpret_cast<unsigned char *>(&N);
-    
-    printf("byte4: %x %x %x %x, done %ld samples in %f seconds\n", byte4[0], byte4[1], byte4[2], byte4[3], SAMPLES, time_span.count());
-    
-    
+//    variant<byte *, float> u = N;
+//    
+//    
+//    printf("byte6: %x %x %x %x, done %ld samples in %f seconds\n",
+//           get<byte *>(u)[3], 
+//           get<byte *>(u)[2], 
+//           get<byte *>(u)[1], 
+//           get<byte *>(u)[0], 
+//           SAMPLES, time_span.count());
     
     
     

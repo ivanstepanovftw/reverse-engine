@@ -1,8 +1,10 @@
-
+#┌──────┐
+#│ todo │ instead ###############################
+#└──────┘
 #################################################
-cmake_minimum_required(VERSION 3.5.1)
+cmake_minimum_required(VERSION 3.9)
 project(RE)
-
+set(CMAKE_CXX_STANDARD 17)
 #################################################
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})

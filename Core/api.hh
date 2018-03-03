@@ -5,7 +5,6 @@
 #ifndef HACKME_SDK_HH
 #define HACKME_SDK_HH
 
-typedef unsigned char byte;
 #define HEX(a) ("0x")<<hex<<(a)<<dec
 
 #include <sys/uio.h>
@@ -18,6 +17,7 @@ typedef unsigned char byte;
 #include <cstring>
 #include <sys/stat.h>
 #include <boost/lexical_cast.hpp>
+#include <boost/variant.hpp>
 
 
 enum ErrorCode { //todo #54 error codes and fn like dlError();
@@ -35,7 +35,7 @@ std::string execute(std::string cmd);
 
 std::vector<std::vector<std::string>> getProcesses();
 
-
+//typedef uint8_t byte;
 
 typedef struct {
     // Memory
@@ -59,37 +59,6 @@ typedef struct {
 
 
 
-union bytechar
-{
-    byte b[sizeof(int8_t)];
-    int8_t i;
-};
-union byteshort
-{
-    byte b[sizeof(int16_t)];
-    int16_t i;
-};
-union byteint
-{
-    byte b[sizeof(int32_t)];
-    int32_t i;
-};
-union bytelong
-{
-    byte b[sizeof(int64_t)];
-    int64_t i;
-};
-union bytefloat
-{
-    byte b[sizeof(float)];
-    float i;
-};
-union bytedouble
-{
-    byte b[sizeof(double)];
-    double i;
-};
-
 /** Scanner implementation */
 enum ScanType {
     NUMBER,
@@ -99,7 +68,7 @@ enum ScanType {
 };
 
 enum ValueType {
-    ALL, // fixme ValueType::ALL is deprecated
+    ALL,
     CHAR,
     SHORT,
     INT,
@@ -108,15 +77,32 @@ enum ValueType {
     DOUBLE,
 };
 
-class ScanEntry {
+class AddressEntry {
 public:
     ValueType type;
-    bytelong address;
+    union {
+        byte a[sizeof(uintptr_t)];
+        uintptr_t n;
+    } address;
     const region_t *region;
     
-    ScanEntry(uintptr_t a, const region_t *r) {
-        address.i = a;
-        region = r;
+    AddressEntry(ValueType type, uintptr_t address, const region_t *region) // NOLINT
+    {
+        this->type = type;
+        this->address.n = address;
+        this->region = region;
+    }
+};
+
+class PatternEntry {
+public:
+    ValueType type;
+    vector<byte> bytes;
+    
+    PatternEntry(ValueType type, const vector<byte> &bytes)
+    {
+        this->type = type;
+        this->bytes = bytes;
     }
 };
 
@@ -456,14 +442,14 @@ public:
         return found;
     }
     
+    //fixme 12345 implement "Value between", "Other than value" and "Unknown initial value"
     //fixme speedup it https://stackoverflow.com/questions/3664272/is-stdvector-so-much-slower-than-plain-arrays
-    size_t scan(vector<ScanEntry> *out,
-                const region_t *region,
-                const byte *pattern, 
-                const size_t pattern_len, 
-                const size_t increment = 1)
+    size_t scan_exact(vector<AddressEntry> *out,
+                      const region_t *region,
+                      vector<PatternEntry> patterns,  //attempt to implement Number scanner
+                      const size_t increment = 1)     //attempt to implement "Fast scan" (он же так работает?)
     {
-        char buffer[0x1000];
+        byte buffer[0x1000];
         
         size_t chunksize = sizeof(buffer);
         size_t totalsize = region->end - region->start;
@@ -475,16 +461,17 @@ public:
             size_t readaddr = region->start + (chunksize * chunknum);
             bzero(buffer, chunksize);
             
-            if (this->read(buffer, (void *) readaddr, readsize)) {
-                for(size_t b = 0; b < readsize; b += increment) {
-                    size_t matches = 0;
-                    
-                    while (buffer[b + matches] == pattern[matches]) {
-                        matches++;
-                        
-                        if (matches == pattern_len) {
-                            found++;
-                            out->push_back(ScanEntry((uintptr_t)(readaddr + b), region));
+            if (this->read(buffer, (void *) readaddr, readsize)) {              //читаем в буфер
+                for(size_t b = 0; b < readsize; b += increment) {               //обрабатываем буфер
+                    for(const auto &pattern : patterns) {                       //для каждого шаблона
+                        size_t matches = 0;
+                        while (buffer[b + matches] == pattern.bytes[matches]) { //находим адрес
+                            matches++;
+                            
+                            if (matches == pattern.bytes.size()) {
+                                found++;
+                                out->emplace_back(pattern.type, (uintptr_t)(readaddr + b), region);
+                            }
                         }
                     }
                 }
@@ -495,60 +482,6 @@ public:
         }
         return found;
     }
-    
-    
-    
-
-    //do not use
-    bool getSignatureUNSAFE(uintptr_t *out, region_t *module, const char *data) { //example: class<char *>"48 89 C3 E8 ?? ?? ?? ??"
-        char buffer[0x1000];
-
-        size_t len = strlen(data);
-        size_t chunksize = sizeof(buffer);
-        size_t totalsize = module->end - module->start;
-
-        size_t chunknum = 0;
-
-        while (totalsize) {
-            size_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
-            size_t readaddr = module->start + (chunksize * chunknum);
-            bzero(buffer, chunksize);
-
-            if (this->read(buffer, (void *)readaddr, readsize)) {
-                for(size_t b = 0; b < readsize; b++) {
-                    size_t matches = 0;
-
-                    // если данные совпадают или пропустить
-                    while (buffer[b + matches] == data[matches] || data[matches] != 'x') {
-                        matches++;
-
-                        if (matches == len) {
-                            /*
-                            printf("Debug Output:\n");
-                            for (int i = 0; i < readsize-b; i++)
-                            {
-                                if (i != 0 && i % 8 == 0) {
-                                    printf("\n");
-                                }
-                                printf("%02x ",(unsigned char)buffer[b+i]);
-                            }
-                            printf("\n");
-                            */
-                            *out = (uintptr_t) (readaddr + b);
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            totalsize -= readsize;
-            chunknum++;
-        }
-
-        return false;
-    }
-
-    
 };
 
 
@@ -561,7 +494,7 @@ public:
     size_t increment;
     
     double progress = 0;
-    vector<ScanEntry> output;
+    vector<AddressEntry> output;
     
     explicit HandleScanner(Handle *handle,
                            ScanType scan) 
@@ -579,109 +512,73 @@ public:
     }
     
     
-    void first_scan(string pattern)
+    void first_scan(const string &pattern)
     {
         output.clear();
         // using boost because http://www.boost.org/doc/libs/1_57_0/doc/html/boost_lexical_cast/performance.html
-        if (scan_type == ScanType::NUMBER) {
-            if (value_type == ValueType::CHAR || value_type == ValueType::ALL) {
-                bytechar val;
+        if (scan_type == ScanType::NUMBER) { //fixme 12345
+            vector<PatternEntry> patterns;
+            //fixme find a way to simplify this code
+            if (value_type == ValueType::ALL || value_type == ValueType::CHAR) {
                 try {
-                    val.i = boost::lexical_cast<char>(pattern);
-                }
-                catch(boost::bad_lexical_cast &)
-                {
-                }
-    
-                for(int i = 0; i < handle->regions.size(); i++) {
-                    region_t region = handle->regions[i];
-                    if (region.writable) {
-                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
-                    }
-                    progress = (i+1)/handle->regions.size();
-                }
+                    auto b = boost::lexical_cast<int8_t>(pattern);
+                    auto a = reinterpret_cast<byte *>(&b);
+                    patterns.emplace_back(ValueType::CHAR, vector<byte>(a, a+sizeof(b)));
+                } 
+                catch(boost::bad_lexical_cast &) { }
             }
-            if (value_type == ValueType::SHORT || value_type == ValueType::ALL) {
-                byteshort val;
+            if (value_type == ValueType::ALL || value_type == ValueType::SHORT) {
                 try {
-                    val.i = boost::lexical_cast<short>(pattern);
-                }
-                catch(boost::bad_lexical_cast &)
-                {
-                }
-    
-                for(int i = 0; i < handle->regions.size(); i++) {
-                    region_t region = handle->regions[i];
-                    if (region.writable) {
-                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
-                    }
-                    progress = (i+1)/handle->regions.size();
-                }
+                    auto b = boost::lexical_cast<int16_t>(pattern);
+                    auto a = reinterpret_cast<byte *>(&b);
+                    patterns.emplace_back(ValueType::SHORT, vector<byte>(a, a+sizeof(b)));
+                } 
+                catch(boost::bad_lexical_cast &) { }
             }
-            if (value_type == ValueType::INT || value_type == ValueType::ALL) {
-                byteint val;
+            if (value_type == ValueType::ALL || value_type == ValueType::INT) {
                 try {
-                    val.i = boost::lexical_cast<int>(pattern);
-                }
-                catch(boost::bad_lexical_cast &)
-                {
-                }
-    
-                for(int i = 0; i < handle->regions.size(); i++) {
-                    region_t region = handle->regions[i];
-                    if (region.writable) {
-                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
-                    }
-                    progress = (i+1)/handle->regions.size();
-                }
+                    auto b = boost::lexical_cast<int32_t>(pattern);
+                    auto a = reinterpret_cast<byte *>(&b);
+                    patterns.emplace_back(ValueType::INT, vector<byte>(a, a+sizeof(b)));
+                } 
+                catch(boost::bad_lexical_cast &) { }
             }
-            if (value_type == ValueType::LONG || value_type == ValueType::ALL) {
-                bytelong val;
+            if (value_type == ValueType::ALL || value_type == ValueType::LONG) {
                 try {
-                    val.i = boost::lexical_cast<long>(pattern);
-                }
-                catch(boost::bad_lexical_cast &)
-                {
-                }
-    
-                for(int i = 0; i < handle->regions.size(); i++) {
-                    region_t region = handle->regions[i];
-                    if (region.writable) {
-                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
-                    }
-                    progress = (i+1)/handle->regions.size();
-                }
+                    auto b = boost::lexical_cast<int64_t>(pattern);
+                    auto a = reinterpret_cast<byte *>(&b);
+                    patterns.emplace_back(ValueType::LONG, vector<byte>(a, a+sizeof(b)));
+                } 
+                catch(boost::bad_lexical_cast &) { }
             }
-            if (value_type == ValueType::FLOAT || value_type == ValueType::ALL) {
-                bytefloat val;
+            if (value_type == ValueType::ALL || value_type == ValueType::FLOAT) {
                 try {
-                    val.i = boost::lexical_cast<float>(pattern);
-                }
-                catch(boost::bad_lexical_cast &)
-                {
-                }
-    
-                for(int i = 0; i < handle->regions.size(); i++) {
-                    region_t region = handle->regions[i];
-                    if (region.writable) {
-                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
-                    }
-                    progress = (i+1)/handle->regions.size();
-                }
+                    auto b = boost::lexical_cast<float>(pattern);
+                    auto a = reinterpret_cast<byte *>(&b);
+                    patterns.emplace_back(ValueType::FLOAT, vector<byte>(a, a+sizeof(b)));
+                } 
+                catch(boost::bad_lexical_cast &) { }
             }
-            if (value_type == ValueType::DOUBLE || value_type == ValueType::ALL) {
-                bytedouble val;
+            if (value_type == ValueType::ALL || value_type == ValueType::DOUBLE) {
                 try {
-                    val.i = boost::lexical_cast<double>(pattern);
-                }
-                catch(boost::bad_lexical_cast &)
-                {
-                }
-    
+                    auto b = boost::lexical_cast<double>(pattern);
+                    auto a = reinterpret_cast<byte *>(&b);
+                    patterns.emplace_back(ValueType::DOUBLE, vector<byte>(a, a+sizeof(b)));
+                } 
+                catch(boost::bad_lexical_cast &) { }
+            }
+            
+            /// Scanning
+            if (!patterns.empty()) {
+                for(size_t i = 0; i < patterns.size(); i++)
+                    printf("patterns[%li]: %x %x %x %x\n", i, 
+                           patterns[i].bytes[0], patterns[i].bytes[1],
+                           patterns[i].bytes[2], patterns[i].bytes[3]);
+                
                 for(int i = 0; i < handle->regions.size(); i++) {
                     region_t region = handle->regions[i];
                     if (region.writable) {
-                        handle->scan(&output, &region, val.b, sizeof(val.b), increment);
+                        handle->scan_exact(&output, &region, patterns, increment);
                     }
                     progress = (i+1)/handle->regions.size();
                 }

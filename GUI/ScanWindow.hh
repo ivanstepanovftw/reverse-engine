@@ -99,6 +99,7 @@ protected:
     void on_combo_vtype_changed();
     void on_button_first_scan();
     
+    sigc::connection conn;
     bool on_timer_refresh();
     
     //Tree model columns:

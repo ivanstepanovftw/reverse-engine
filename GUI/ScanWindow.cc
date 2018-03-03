@@ -2,6 +2,7 @@
 // Created by root on 22.02.18.
 //
 
+#include <Core/api.hh>
 #include "ScanWindow.hh"
 #include "MainWindow.hh"
 
@@ -28,14 +29,9 @@ ScanWindow::ScanWindow(MainWindow *parent)
     scanner_output->set_size_request(200,-1);
     paned_1.set_size_request(-1, 350);
     
-    // Creation of a new object prevents long lines and shows us a little
-    // how slots work.  We have 0 parameters and bool as a return value
-    // after calling sigc::bind.
-    sigc::slot<bool> my_slot = sigc::mem_fun(*this, &ScanWindow::on_timer_refresh);
-    
-    // This is where we connect the slot to the Glib::signal_timeout()
-    sigc::connection conn = Glib::signal_timeout().connect(my_slot,
-                                                           1000); //every 1000 ms
+    /// Timers
+    conn = Glib::signal_timeout().connect
+            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), 1000);
     
     add(paned_2);
     this->set_title("Scan window");
@@ -230,6 +226,8 @@ void ScanWindow::on_combo_vtype_changed()
 
 void ScanWindow::on_button_first_scan()
 {
+    conn.disconnect();
+    
     if (entry_value->get_text().empty()) {
         clog<<"Enter value first!"<<endl;
         return;
@@ -250,30 +248,78 @@ void ScanWindow::on_button_first_scan()
     
     for(int i=0; i<output_count; i++) {
         char *output_bytestring;
-        asprintf(&output_bytestring, /*0x*/"%02x%02x%02x%02x%02x%02x", 
-                 parent->hs->output[i].address.b[5],
-                 parent->hs->output[i].address.b[4],
-                 parent->hs->output[i].address.b[3],
-                 parent->hs->output[i].address.b[2],
-                 parent->hs->output[i].address.b[1],
-                 parent->hs->output[i].address.b[0]);
-//        if (parent->hs->output[i].type == ValueType::INT) {
-            int32_t value;
+        byte *h = parent->hs->output[i].address.a;
+        asprintf(&output_bytestring, /*0x*/"%02x%02x%02x%02x%02x%02x", h[5], h[4], h[3], h[2], h[1], h[0]);
+        //todo я не понял как scanmem работает, но скорее всего добавляет наибольший тип, те вместо {int, long} добавит только {long}
+        if (parent->hs->output[i].type == ValueType::CHAR) {
+            char value;
             parent->handle->read
-                    (&value, (void *) parent->hs->output[i].address.i, sizeof(int32_t));
-    
+                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
+        
             Gtk::TreeModel::Row row = *(ref_tree_output->append());
             row[columns_output.m_col_address] = output_bytestring;
             row[columns_output.m_col_value] = to_string(value);
-            row[columns_output.m_col_value_type] = "int32";
-//        }
+            row[columns_output.m_col_value_type] = "char";
+        }
+        if (parent->hs->output[i].type == ValueType::SHORT) {
+            short value;
+            parent->handle->read
+                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
+        
+            Gtk::TreeModel::Row row = *(ref_tree_output->append());
+            row[columns_output.m_col_address] = output_bytestring;
+            row[columns_output.m_col_value] = to_string(value);
+            row[columns_output.m_col_value_type] = "short";
+        }
+        if (parent->hs->output[i].type == ValueType::INT) {
+            int32_t value;
+            parent->handle->read
+                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
+        
+            Gtk::TreeModel::Row row = *(ref_tree_output->append());
+            row[columns_output.m_col_address] = output_bytestring;
+            row[columns_output.m_col_value] = to_string(value);
+            row[columns_output.m_col_value_type] = "int";
+        }
+        if (parent->hs->output[i].type == ValueType::LONG) {
+            int64_t value;
+            parent->handle->read
+                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
+        
+            Gtk::TreeModel::Row row = *(ref_tree_output->append());
+            row[columns_output.m_col_address] = output_bytestring;
+            row[columns_output.m_col_value] = to_string(value);
+            row[columns_output.m_col_value_type] = "long";
+        }
+        if (parent->hs->output[i].type == ValueType::FLOAT) {
+            float value;
+            parent->handle->read
+                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
+        
+            Gtk::TreeModel::Row row = *(ref_tree_output->append());
+            row[columns_output.m_col_address] = output_bytestring;
+            row[columns_output.m_col_value] = to_string(value);
+            row[columns_output.m_col_value_type] = "float";
+        }
+        if (parent->hs->output[i].type == ValueType::DOUBLE) {
+            double value;
+            parent->handle->read
+                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
+        
+            Gtk::TreeModel::Row row = *(ref_tree_output->append());
+            row[columns_output.m_col_address] = output_bytestring;
+            row[columns_output.m_col_value] = to_string(value);
+            row[columns_output.m_col_value_type] = "double";
+        }
     }
+    
+    conn = Glib::signal_timeout().connect
+            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), 1000);
 }
 
 bool
 ScanWindow::on_timer_refresh()
 {
-    //fixme delete timer at on_reset, add timer at on_new_scan, pause while on_next_scan not ready
     auto ref_child = ref_tree_output->children();
     for(auto iter = ref_child.begin(); iter != ref_child.end(); ++iter) {
         Gtk::TreeModel::Row row = *iter;
@@ -286,7 +332,6 @@ ScanWindow::on_timer_refresh()
         else
             row[columns_output.m_col_value] = to_string(value);
     }
-    clog<<endl;
     return true;
 }
 
