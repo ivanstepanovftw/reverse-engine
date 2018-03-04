@@ -96,8 +96,8 @@ public:
 protected:
     //Handlers
     void on_combo_stype_changed();
-    void on_combo_vtype_changed();
     void on_button_first_scan();
+    void on_button_next_scan();
     
     sigc::connection conn;
     bool on_timer_refresh();
@@ -164,7 +164,7 @@ protected:
         { add(m_col_name); add(m_col_value_type); }
         
         Gtk::TreeModelColumn<Glib::ustring> m_col_name;
-        Gtk::TreeModelColumn<ValueType> m_col_value_type;
+        Gtk::TreeModelColumn<Flags> m_col_value_type;
     };
     
     ColumnsScanType columns_scan_type;
@@ -203,6 +203,10 @@ protected:
 private:
      Gtk::Paned paned_1;
      Gtk::Paned paned_2;
+    
+    // Routine (fixme их ведь так называют?)
+    template<typename T>
+    void inline add_row(const AddressEntry *address_string, const char *type_string);
 };
 
 //class 

@@ -67,44 +67,109 @@ enum ScanType {
     GROUPED,
 };
 
-enum ValueType {
-    ALL,
-    CHAR,
-    SHORT,
-    INT,
-    LONG,
-    FLOAT,
-    DOUBLE,
-};
+/// @ref Andrea Stacchiotti      <andreastacchiotti(a)gmail.com>
+/// https://github.com/scanmem/scanmem/commit/9e647cd9384f2e5dc0f14c299ddbd0f89a375721#diff-6b95d7308eeff0c8778ace3e805c8b92
+typedef enum __attribute__((__packed__)) {
+    flags_empty = 0,
+    
+    /// Type may be defined
+    flag_ui8  = 1 << 0,
+    flag_si8  = 1 << 1,
+    flag_ui16 = 1 << 2,
+    flag_si16 = 1 << 3,
+    flag_ui32 = 1 << 4,
+    flag_si32 = 1 << 5,
+    flag_ui64 = 1 << 6,
+    flag_si64 = 1 << 7,
+    flag_f32  = 1 << 8,
+    flag_f64  = 1 << 9,
+    
+    /// Or be one of this
+    flags_i8  = flag_ui8  | flag_si8,
+    flags_i16 = flag_ui16 | flag_si16,
+    flags_i32 = flag_ui32 | flag_si32,
+    flags_i64 = flag_ui64 | flag_si64,
+    
+    /// If unknown initial
+    flags_full = flags_i8 | flags_i16 | flags_i32 | flags_i64 | flag_f32 | flag_f64,
+    
+    /// Size
+    flags_8   = flags_i8,
+    flags_16  = flags_i16,
+    flags_32  = flags_i32 | flag_f32,
+    flags_64  = flags_i64 | flag_f64,
+} Flags;
 
+#define SIZEOF_FLAG(flags) ( \
+    (flags) & flags_64?8:    \
+    (flags) & flags_32?4:    \
+    (flags) & flags_16?2:    \
+    (flags) & flags_8 ?1:0)
+
+#define PRINT_VALUE_AS_BYTES(e) {\
+    size_t size = SIZEOF_FLAG((e).flags);\
+    if      (size == 1) printf("%02x", (e).value.bytes[0]);\
+    else if (size == 2) printf("%02x %02x", (e).value.bytes[0], (e).value.bytes[1]);\
+    else if (size == 4) printf("%02x %02x %02x %02x", (e).value.bytes[0], (e).value.bytes[1],\
+                                                      (e).value.bytes[2], (e).value.bytes[3]);\
+    else if (size == 8) printf("%02x %02x %02x %02x %02x %02x %02x %02x", (e).value.bytes[0], (e).value.bytes[1],\
+                                                                          (e).value.bytes[2], (e).value.bytes[3],\
+                                                                          (e).value.bytes[4], (e).value.bytes[5],\
+                                                                          (e).value.bytes[6], (e).value.bytes[7]);\
+    else printf("NaN");}
+
+
+/// Это то, что сканер возвращает
 class AddressEntry {
 public:
-    ValueType type;
+    Flags flags = Flags::flags_empty;
     union {
-        byte a[sizeof(uintptr_t)];
-        uintptr_t n;
+        uintptr_t data;
+        byte bytes[sizeof(uintptr_t)];
     } address;
     const region_t *region;
     
-    AddressEntry(ValueType type, uintptr_t address, const region_t *region) // NOLINT
+    
+    AddressEntry(Flags flags, uintptr_t address, const region_t *region)
     {
-        this->type = type;
-        this->address.n = address;
+        this->flags = flags;
+        this->address.data = address;
         this->region = region;
     }
 };
 
-class PatternEntry {
+/// Это то, что мы отдаём сканеру
+class ValueEntry {
 public:
-    ValueType type;
-    vector<byte> bytes;
+    Flags flags = Flags::flags_empty;
     
-    PatternEntry(ValueType type, const vector<byte> &bytes)
+    union {
+        int8_t   si8;
+        uint8_t  ui8;
+        int16_t  si16;
+        uint16_t ui16;
+        int32_t  si32;
+        uint32_t ui32;
+        int64_t  si64;
+        uint64_t ui64;
+        float    f32;
+        double   f64;
+        byte     bytes[sizeof(uint64_t)];
+    } value { ui64:0 };
+    
+    ValueEntry() = default;
+    
+    ValueEntry(Flags flags, byte *bytes)
     {
-        this->type = type;
-        this->bytes = bytes;
+        this->flags = flags;
+        size_t size = SIZEOF_FLAG(flags);
+        clog<<"size of Value is: "<<size<<endl;
+        for(size_t i = 0; i < size; i++)
+            this->value.bytes[i] = bytes[i];
     }
 };
+
+
 
 
 class Handle {
@@ -159,8 +224,8 @@ public:
     //fixme speedup it https://stackoverflow.com/questions/3664272/is-stdvector-so-much-slower-than-plain-arrays
     size_t scan_exact(vector<AddressEntry> *out,
                       const region_t *region,
-                      vector<PatternEntry> patterns,  //attempt to implement Number scanner
-                      size_t increment = 1);          //attempt to implement "Fast scan" (он же так работает?)
+                      vector<ValueEntry> entries,  //attempt to implement Number scanner
+                      size_t increment = 1);        //attempt to implement "Fast scan" (он же так работает?)
 };
 
 
@@ -168,98 +233,127 @@ class HandleScanner {
 public:
     Handle *handle;
     ScanType scan_type;
-    
-    ValueType value_type;
     size_t increment;
-    
-    double progress = 0;
-    vector<AddressEntry> output;
+    vector<AddressEntry> matches;
     
     explicit HandleScanner(Handle *handle,
-                           ScanType scan) 
-            : handle(handle)
-            , scan_type(scan)
-    { }
-    
-    
-    void setup_number_scan(ValueType valueType,
-                           size_t increment,
-                           int round = 0)
+                           ScanType scan,
+                           size_t increment) 
     {
-        this->value_type = valueType;
+        this->handle = handle;
+        this->scan_type = scan;
         this->increment = increment;
     }
     
     
-    void first_scan(const string &pattern)
+    void first_scan(const string &string_value, Flags flags)
     {
-        output.clear();
-        // using boost because http://www.boost.org/doc/libs/1_57_0/doc/html/boost_lexical_cast/performance.html
-        if (scan_type == ScanType::NUMBER) { //fixme 12345
-            vector<PatternEntry> patterns;
-            //fixme find a way to simplify this code
-            if (value_type == ValueType::ALL || value_type == ValueType::CHAR) {
+        matches.clear();
+        
+        if (scan_type == ScanType::NUMBER) {
+            vector<ValueEntry> values;
+            
+            ValueEntry entry;
+            
+            /// сначала пытаемся определить, чё хотят от нас
+            int err = 0;
+            uint64_t uval = 0;
+            int64_t sval = 0;
+            try {
+                uval = boost::lexical_cast<uint64_t>(string_value);
+            } catch (boost::bad_lexical_cast &) {
+                err++;
                 try {
-                    auto b = boost::lexical_cast<int8_t>(pattern);
-                    auto a = reinterpret_cast<byte *>(&b);
-                    patterns.emplace_back(ValueType::CHAR, vector<byte>(a, a+sizeof(b)));
-                } 
-                catch(boost::bad_lexical_cast &) { }
+                    sval = boost::lexical_cast<int64_t>(string_value);
+                } catch (boost::bad_lexical_cast &) {
+                    err++;
+                    printf("Error: value \"%s\" isn't signed or unsigned integer\n", string_value.c_str());
+                }
             }
-            if (value_type == ValueType::ALL || value_type == ValueType::SHORT) {
-                try {
-                    auto b = boost::lexical_cast<int16_t>(pattern);
-                    auto a = reinterpret_cast<byte *>(&b);
-                    patterns.emplace_back(ValueType::SHORT, vector<byte>(a, a+sizeof(b)));
-                } 
-                catch(boost::bad_lexical_cast &) { }
+            if (err <= 1) {
+                if (flags == flags_i64 || flags == flags_full) {
+                    if (err == 0) {
+                        entry.value.ui64 = (uval);
+                        entry.flags = Flags::flags_i64;
+                    } else {
+                        entry.value.si64 = (sval);
+                        entry.flags = Flags::flag_si64;
+                    }
+                    values.push_back(entry);
+                }
+                if (flags == flags_i32 || flags == flags_full) {
+                    if (err == 0) {
+                        entry.value.ui32 = static_cast<uint32_t>(uval);
+                        entry.flags = Flags::flags_i32;
+                    } else {
+                        entry.value.si32 = static_cast<int32_t>(sval);
+                        entry.flags = Flags::flag_si32;
+                    }
+                    values.push_back(entry);
+                }
+                if (flags == flags_i16 || flags == flags_full) {
+                    if (err == 0) {
+                        entry.value.ui16 = static_cast<uint16_t>(uval);
+                        entry.flags = Flags::flags_i16;
+                    } else {
+                        entry.value.si16 = static_cast<int16_t>(sval);
+                        entry.flags = Flags::flag_si16;
+                    }
+                    values.push_back(entry);
+                }
+                if (flags == flags_i8 || flags == flags_full) {
+                    if (err == 0) {
+                        entry.value.ui8 = static_cast<uint8_t>(uval);
+                        entry.flags = Flags::flags_i8;
+                    } else {
+                        entry.value.si8 = static_cast<int8_t>(sval);
+                        entry.flags = Flags::flag_si8;
+                    }
+                    values.push_back(entry);
+                }
             }
-            if (value_type == ValueType::ALL || value_type == ValueType::INT) {
+            if (flags == flag_f64 || flags == flags_full) {
                 try {
-                    auto b = boost::lexical_cast<int32_t>(pattern);
-                    auto a = reinterpret_cast<byte *>(&b);
-                    patterns.emplace_back(ValueType::INT, vector<byte>(a, a+sizeof(b)));
-                } 
-                catch(boost::bad_lexical_cast &) { }
+                    entry.value.f64 = boost::lexical_cast<double>(string_value);
+                    entry.flags = Flags::flag_f64;
+                    values.push_back(entry);
+                } catch (boost::bad_lexical_cast &) {
+                    err++;
+                    printf("Error: value \"%s\" isn't double\n", string_value.c_str());
+                }
             }
-            if (value_type == ValueType::ALL || value_type == ValueType::LONG) {
+            if (flags == flag_f32 || flags == flags_full) {
                 try {
-                    auto b = boost::lexical_cast<int64_t>(pattern);
-                    auto a = reinterpret_cast<byte *>(&b);
-                    patterns.emplace_back(ValueType::LONG, vector<byte>(a, a+sizeof(b)));
-                } 
-                catch(boost::bad_lexical_cast &) { }
-            }
-            if (value_type == ValueType::ALL || value_type == ValueType::FLOAT) {
-                try {
-                    auto b = boost::lexical_cast<float>(pattern);
-                    auto a = reinterpret_cast<byte *>(&b);
-                    patterns.emplace_back(ValueType::FLOAT, vector<byte>(a, a+sizeof(b)));
-                } 
-                catch(boost::bad_lexical_cast &) { }
-            }
-            if (value_type == ValueType::ALL || value_type == ValueType::DOUBLE) {
-                try {
-                    auto b = boost::lexical_cast<double>(pattern);
-                    auto a = reinterpret_cast<byte *>(&b);
-                    patterns.emplace_back(ValueType::DOUBLE, vector<byte>(a, a+sizeof(b)));
-                } 
-                catch(boost::bad_lexical_cast &) { }
+                    entry.value.f32 = boost::lexical_cast<float>(string_value);
+                    entry.flags = Flags::flag_f32;
+                    values.push_back(entry);
+                } catch (boost::bad_lexical_cast &) {
+                    err++;
+                    printf("Error: value \"%s\" isn't float\n", string_value.c_str());
+                }
             }
             
             /// Scanning
-            if (!patterns.empty()) {
-                for(size_t i = 0; i < patterns.size(); i++)
-                    printf("patterns[%li]: %x %x %x %x\n", i, 
-                           patterns[i].bytes[0], patterns[i].bytes[1],
-                           patterns[i].bytes[2], patterns[i].bytes[3]);
-                
-                for(int i = 0; i < handle->regions.size(); i++) {
-                    region_t region = handle->regions[i];
-                    if (region.writable) {
-                        handle->scan_exact(&output, &region, patterns, increment);
-                    }
-                    progress = (i+1)/handle->regions.size();
+            if (values.empty()) {
+                printf("There is no any value\n");
+                return;
+            }
+            if (err == 4) {
+                printf("4 errors estimated (you shouldn't see this)\n");
+                return;
+            }
+            
+            printf("Trying to scan\n");
+            for(size_t i = 0; i < values.size(); i++) {
+                printf("patterns[%li]: ", i);
+                PRINT_VALUE_AS_BYTES(values[i])
+                printf("\n");
+            }
+            
+            for(size_t i = 0; i < handle->regions.size(); i++) {
+                region_t region = handle->regions[i];
+                if (region.writable && region.readable) {
+                    handle->scan_exact(&matches, &region, values, increment);
                 }
             }
         }
@@ -281,7 +375,7 @@ public:
     
     void reset()
     {
-        output.clear();
+        matches.clear();
     }
     
 };

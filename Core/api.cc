@@ -3,7 +3,6 @@
 //
 
 #include "api.hh"
-//todo  перенеси пожалуйста всё из api.hh сюда, спасибо большое, дай тебе бог здоровье
 using namespace std;
 
 //https://stackoverflow.com/a/7408245
@@ -44,7 +43,8 @@ execute(string cmd)
     return result;
 }
 
-vector<vector<string>> getProcesses() 
+vector<vector<string>> 
+getProcesses() 
 {
     string executed = execute("ps -wweo pid=,user=,command=-sort=-pid");
     int lines_to_skip = 1;
@@ -358,14 +358,14 @@ Handle::findPattern(uintptr_t *out, region_t *region, const char *pattern, const
                     matches++;
                     
                     if (matches == len) {
-//                            printf("Debug Output:\n");
+//                            printf("Debug Output:\data");
 //                            for (int i = 0; i < readsize-b; i++) {
 //                                if (i != 0 && i % 8 == 0) {
-//                                    printf("\n");
+//                                    printf("\data");
 //                                }
 //                                printf("%02x ",(unsigned char)buffer[b+i]);
 //                            }
-//                            printf("\n");
+//                            printf("\data");
                         *out = (uintptr_t) (readaddr + b);
                         return true;
                     }
@@ -420,7 +420,7 @@ Handle::findPattern(vector<uintptr_t> *out, region_t *region, const char *patter
 size_t
 Handle::scan_exact(vector<AddressEntry> *out, 
                    const region_t *region, 
-                   vector<PatternEntry> patterns, 
+                   vector<ValueEntry> entries, 
                    size_t increment)
 {
     byte buffer[0x1000];
@@ -429,25 +429,27 @@ Handle::scan_exact(vector<AddressEntry> *out,
     size_t totalsize = region->end - region->start;
     size_t chunknum = 0;
     size_t found = 0;
-    
+    // TODO[HIGH] научить не добавлять, если предыдущий (собсна, наибольший) уже есть 
     while (totalsize) {
         size_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
         size_t readaddr = region->start + (chunksize * chunknum);
         bzero(buffer, chunksize);
         
-        if (this->read(buffer, (void *) readaddr, readsize)) {              //читаем в буфер
-            for(size_t b = 0; b < readsize; b += increment) {               //обрабатываем буфер
-                for(const auto &pattern : patterns) {                       //для каждого шаблона
+        if (this->read(buffer, (void *) readaddr, readsize)) { // читаем в буфер
+            for(size_t b = 0; b < readsize; b += increment) {  // обрабатываем буфер
+                for(int k = 0; k < entries.size(); k++) {                             // для каждого шаблона
                     size_t matches = 0;
-                    while (buffer[b + matches] == pattern.bytes[matches]) { //находим адрес
+                    while (buffer[b + matches] == entries[k].value.bytes[matches]) {  // находим адрес
                         matches++;
                         
-                        if (matches == pattern.bytes.size()) {
+                        if (matches == SIZEOF_FLAG(entries[k].flags)) {
                             found++;
-                            out->emplace_back(pattern.type, (uintptr_t)(readaddr + b), region);
+                            out->emplace_back(entries[k].flags, (uintptr_t)(readaddr + b), region);
+                            goto sorry_for_goto; //todo мне кажется, что нужно всё-таки добавить плавующую точку, посмотрим, как сделаю next_scan
                         }
                     }
                 }
+                sorry_for_goto: ;
             }
         }
         

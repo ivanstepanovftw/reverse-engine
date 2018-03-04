@@ -70,7 +70,7 @@ SelectWindow::on_button_attach()
             printf("Selected PID: %i\n", pid);
             delete parent->handle;
             parent->handle = new Handle(pid);
-//            printf("Title: %s\n", parent->handle->title.c_str()); todo print title of pid
+//            printf("Title: %s\data", parent->handle->title.c_str()); todo print title of pid
             parent->handle->updateRegions();
             printf("%-32s%-18s %-18s %s%s%s%s\n",
                    "Region name",

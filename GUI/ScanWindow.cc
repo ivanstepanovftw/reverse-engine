@@ -8,6 +8,8 @@
 
 using namespace std;
 
+#define REFRESH_RATE 2000
+
 ScanWindow::ScanWindow(MainWindow *parent)
         : parent(parent)
         , paned_1(Gtk::ORIENTATION_HORIZONTAL)
@@ -31,7 +33,7 @@ ScanWindow::ScanWindow(MainWindow *parent)
     
     /// Timers
     conn = Glib::signal_timeout().connect
-            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), 1000);
+            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
     
     add(paned_2);
     this->set_title("Scan window");
@@ -106,16 +108,15 @@ ScanWindow::create_scanner()
     combo_vtype->set_model(ref_vtype);
     
     // Inactive rows (NOT combo box) if Scan Type is not (Number) or not (Array)
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "c: Byte";       row[columns_value_type.m_col_value_type] = ValueType::CHAR;
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "s: 2 Bytes";    row[columns_value_type.m_col_value_type] = ValueType::SHORT;
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "i: 4 Bytes";    row[columns_value_type.m_col_value_type] = ValueType::INT;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "c: Byte";   row[columns_value_type.m_col_value_type] = Flags::flags_i8;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "s: 2 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i16;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "i: 4 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i32;
     combo_vtype->set_active(row);
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "l: 8 Bytes";    row[columns_value_type.m_col_value_type] = ValueType::LONG;
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "f: Float";      row[columns_value_type.m_col_value_type] = ValueType::FLOAT;
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "d: Double";     row[columns_value_type.m_col_value_type] = ValueType::DOUBLE;
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "All";           row[columns_value_type.m_col_value_type] = ValueType::ALL;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "l: 8 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i64;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "f: Float";  row[columns_value_type.m_col_value_type] = Flags::flag_f32;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "d: Double"; row[columns_value_type.m_col_value_type] = Flags::flag_f64;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "All";       row[columns_value_type.m_col_value_type] = Flags::flags_full;
     combo_vtype->pack_start(columns_value_type.m_col_name);
-    on_combo_vtype_changed();
     
     
     /// Signals
@@ -123,11 +124,11 @@ ScanWindow::create_scanner()
 //            (sigc::bind<Gtk::ComboBox *>(sigc::mem_fun(*this, &ScanWindow::on_combo_stype_changed), combo_stype));
     combo_stype->signal_changed().connect
             (sigc::mem_fun(*this, &ScanWindow::on_combo_stype_changed));
-    combo_vtype->signal_changed().connect
-            (sigc::mem_fun(*this, &ScanWindow::on_combo_vtype_changed));
     
     button_first->signal_clicked().connect
             (sigc::mem_fun(*this, &ScanWindow::on_button_first_scan));
+    button_next->signal_clicked().connect
+            (sigc::mem_fun(*this, &ScanWindow::on_button_next_scan));
     
     
     /// Markdown
@@ -203,28 +204,34 @@ void ScanWindow::on_combo_stype_changed()
         Gtk::TreeModel::Row row = *iter;
         if(row) {
             delete parent->hs;
-            parent->hs = new HandleScanner(parent->handle, row[columns_scan_type.m_col_scan_type]);
+            parent->hs = new HandleScanner(parent->handle, row[columns_scan_type.m_col_scan_type], 1);
         }
     }
     else
         cout<<"invalid iter"<<endl;
 }
 
-void ScanWindow::on_combo_vtype_changed()
+
+
+
+template<typename T>
+void inline ScanWindow::add_row(const AddressEntry *address_entry, const char *type_string)
 {
-    Gtk::TreeModel::iterator iter = combo_vtype->get_active();
-    if(iter) {
-        Gtk::TreeModel::Row row = *iter;
-        if(row) {
-            parent->hs->setup_number_scan(row[columns_value_type.m_col_value_type], 4);
-        }
-    }
-    else
-        cout<<"invalid iter"<<endl;
+    char *address_string;
+    const byte *b = address_entry->address.bytes;
+    asprintf(&address_string, /*0x*/"%02x%02x%02x%02x%02x%02x", b[5], b[4], b[3], b[2], b[1], b[0]);
+    T value;
+    parent->handle->read
+            (&value, (void *) address_entry->address.data, sizeof(T));
+
+    Gtk::TreeModel::Row row = *(ref_tree_output->append());
+    row[columns_output.m_col_address] = address_string;
+    row[columns_output.m_col_value] = to_string(value);
+    row[columns_output.m_col_value_type] = type_string;
 }
 
-
-void ScanWindow::on_button_first_scan()
+void 
+ScanWindow::on_button_first_scan()
 {
     conn.disconnect();
     
@@ -233,107 +240,80 @@ void ScanWindow::on_button_first_scan()
         return;
     }
     
-    // TODO THREADS
-    parent->hs->first_scan(entry_value->get_text());
+    Gtk::TreeModel::iterator iter = combo_vtype->get_active();
+    if(!iter) return;
+    Gtk::TreeModel::Row row = *iter;
+    if(!row) return;
+    
+    // todo[low] THREADS
+    parent->hs->first_scan(entry_value->get_text(), row[columns_value_type.m_col_value_type]);
     
     ref_tree_output->clear();
-    size_t output_count = parent->hs->output.size();
+    size_t output_count = parent->hs->matches.size();
     char *label_count_text;
     asprintf(&label_count_text, "Found: %li", output_count);
     label_found->set_text(label_count_text);
     if (output_count > 1'000) {
-        //FIXME FIRST OF ALL - CALCULATE AND ALLOCATE, THEN - ADD TO TABLE!
-        clog<<"Too much outputs... Trying to show only static... Too much of them..."<<endl;
+        // todo[low] FIRST OF ALL - CALCULATE AND ALLOCATE, THEN - ADD TO TABLE!
+        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
     }
     
-    for(int i=0; i<output_count; i++) {
-        char *output_bytestring;
-        byte *h = parent->hs->output[i].address.a;
-        asprintf(&output_bytestring, /*0x*/"%02x%02x%02x%02x%02x%02x", h[5], h[4], h[3], h[2], h[1], h[0]);
-        //todo я не понял как scanmem работает, но скорее всего добавляет наибольший тип, те вместо {int, long} добавит только {long}
-        if (parent->hs->output[i].type == ValueType::CHAR) {
-            char value;
-            parent->handle->read
-                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
-        
-            Gtk::TreeModel::Row row = *(ref_tree_output->append());
-            row[columns_output.m_col_address] = output_bytestring;
-            row[columns_output.m_col_value] = to_string(value);
-            row[columns_output.m_col_value_type] = "char";
-        }
-        if (parent->hs->output[i].type == ValueType::SHORT) {
-            short value;
-            parent->handle->read
-                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
-        
-            Gtk::TreeModel::Row row = *(ref_tree_output->append());
-            row[columns_output.m_col_address] = output_bytestring;
-            row[columns_output.m_col_value] = to_string(value);
-            row[columns_output.m_col_value_type] = "short";
-        }
-        if (parent->hs->output[i].type == ValueType::INT) {
-            int32_t value;
-            parent->handle->read
-                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
-        
-            Gtk::TreeModel::Row row = *(ref_tree_output->append());
-            row[columns_output.m_col_address] = output_bytestring;
-            row[columns_output.m_col_value] = to_string(value);
-            row[columns_output.m_col_value_type] = "int";
-        }
-        if (parent->hs->output[i].type == ValueType::LONG) {
-            int64_t value;
-            parent->handle->read
-                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
-        
-            Gtk::TreeModel::Row row = *(ref_tree_output->append());
-            row[columns_output.m_col_address] = output_bytestring;
-            row[columns_output.m_col_value] = to_string(value);
-            row[columns_output.m_col_value_type] = "long";
-        }
-        if (parent->hs->output[i].type == ValueType::FLOAT) {
-            float value;
-            parent->handle->read
-                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
-        
-            Gtk::TreeModel::Row row = *(ref_tree_output->append());
-            row[columns_output.m_col_address] = output_bytestring;
-            row[columns_output.m_col_value] = to_string(value);
-            row[columns_output.m_col_value_type] = "float";
-        }
-        if (parent->hs->output[i].type == ValueType::DOUBLE) {
-            double value;
-            parent->handle->read
-                    (&value, (void *) parent->hs->output[i].address.n, sizeof(value));
-        
-            Gtk::TreeModel::Row row = *(ref_tree_output->append());
-            row[columns_output.m_col_address] = output_bytestring;
-            row[columns_output.m_col_value] = to_string(value);
-            row[columns_output.m_col_value_type] = "double";
-        }
+    // For each address, that scanner found, add row to tree_output
+    for(const AddressEntry &address_entry : parent->hs->matches) {
+        if      (address_entry.flags == flags_i64) add_row<uint64_t>(&address_entry, "! uint64_t !");   // because we
+        else if (address_entry.flags == flags_i32) add_row<uint32_t>(&address_entry, "! uint32_t !");   // aren't know
+        else if (address_entry.flags == flags_i16) add_row<uint16_t>(&address_entry, "! uint16_t !");   // type of this
+        else if (address_entry.flags == flags_i8)  add_row<uint8_t>(&address_entry,  "! uint8_t !");    // value
+        else if (address_entry.flags == flag_ui64) add_row<uint64_t>(&address_entry, "uint64_t");
+        else if (address_entry.flags == flag_si64) add_row<int64_t> (&address_entry, "int64_t");
+        else if (address_entry.flags == flag_ui32) add_row<uint32_t>(&address_entry, "uint32_t");
+        else if (address_entry.flags == flag_si32) add_row<int32_t> (&address_entry, "int32_t");
+        else if (address_entry.flags == flag_ui16) add_row<uint16_t>(&address_entry, "uint16_t");
+        else if (address_entry.flags == flag_si16) add_row<int16_t> (&address_entry, "int16_t");
+        else if (address_entry.flags == flag_ui8)  add_row<uint8_t> (&address_entry, "uint8_t");
+        else if (address_entry.flags == flag_si8)  add_row<int8_t>  (&address_entry, "int8_t");
+        else if (address_entry.flags == flag_f64)  add_row<double>  (&address_entry, "double");
+        else if (address_entry.flags == flag_f32)  add_row<float>   (&address_entry, "float");
     }
     
+    // Continue refresh values inside Scanner output
     conn = Glib::signal_timeout().connect
-            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), 1000);
+            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
+}
+
+//todo next scan impl
+void
+ScanWindow::on_button_next_scan() 
+{
+    conn.disconnect();
+    
+    // ........
+    
+    // Continue refresh values inside Scanner output
+    conn = Glib::signal_timeout().connect
+            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
 }
 
 bool
 ScanWindow::on_timer_refresh()
 {
+    printf("refresing");
     auto ref_child = ref_tree_output->children();
     for(auto iter = ref_child.begin(); iter != ref_child.end(); ++iter) {
         Gtk::TreeModel::Row row = *iter;
-        int32_t value;
+        uintptr_t value;
         if (!parent->handle->read
                 (&value, 
                  (void *) strtol(((Glib::ustring)row[columns_output.m_col_address]).c_str(), nullptr, 16/*0*/), 
-                 sizeof(int32_t)))
+                 sizeof(value)))
             row[columns_output.m_col_value] = "NaN";
         else
             row[columns_output.m_col_value] = to_string(value);
     }
+    printf("......done\n");
     return true;
 }
+
 
 
 
