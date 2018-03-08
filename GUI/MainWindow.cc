@@ -23,6 +23,11 @@ MainWindow::MainWindow()
     // Windows
     m_window_select = nullptr;
     m_window_scan = nullptr;
+    
+    ///DEBUG
+    m_window_scan = new ScanWindow(this);
+    m_window_scan->show();
+    ///
 
     this->show_all_children();
 }

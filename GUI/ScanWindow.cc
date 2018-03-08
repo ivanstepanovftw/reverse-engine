@@ -3,6 +3,7 @@
 //
 
 #include <Core/api.hh>
+#include <Core/value.hh>
 #include "ScanWindow.hh"
 #include "MainWindow.hh"
 
@@ -215,7 +216,7 @@ void ScanWindow::on_combo_stype_changed()
 
 
 template<typename T>
-void inline ScanWindow::add_row(const AddressEntry *address_entry, const char *type_string)
+void inline ScanWindow::add_row(AddressEntry *address_entry, const char *type_string)
 {
     char *address_string;
     const byte *b = address_entry->address.bytes;
@@ -226,6 +227,20 @@ void inline ScanWindow::add_row(const AddressEntry *address_entry, const char *t
 
     Gtk::TreeModel::Row row = *(ref_tree_output->append());
     row[columns_output.m_col_address] = address_string;
+    row[columns_output.m_col_value] = to_string(value);
+    row[columns_output.m_col_value_type] = type_string;
+}
+
+template<typename T>
+void inline ScanWindow::refresh_row(AddressEntry *address_entry, const char *type_string, Gtk::TreeModel::Row &row)
+{
+    char *address_string;
+    const byte *b = address_entry->address.bytes;
+    asprintf(&address_string, /*0x*/"%02x%02x%02x%02x%02x%02x", b[5], b[4], b[3], b[2], b[1], b[0]);
+    T value;
+    parent->handle->read
+            (&value, (void *) address_entry->address.data, sizeof(T));
+
     row[columns_output.m_col_value] = to_string(value);
     row[columns_output.m_col_value_type] = type_string;
 }
@@ -256,24 +271,27 @@ ScanWindow::on_button_first_scan()
     if (output_count > 1'000) {
         // todo[low] FIRST OF ALL - CALCULATE AND ALLOCATE, THEN - ADD TO TABLE!
         clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
+        return;
     }
     
     // For each address, that scanner found, add row to tree_output
-    for(const AddressEntry &address_entry : parent->hs->matches) {
-        if      (address_entry.flags == flags_i64) add_row<uint64_t>(&address_entry, "! uint64_t !");   // because we
-        else if (address_entry.flags == flags_i32) add_row<uint32_t>(&address_entry, "! uint32_t !");   // aren't know
-        else if (address_entry.flags == flags_i16) add_row<uint16_t>(&address_entry, "! uint16_t !");   // type of this
-        else if (address_entry.flags == flags_i8)  add_row<uint8_t>(&address_entry,  "! uint8_t !");    // value
-        else if (address_entry.flags == flag_ui64) add_row<uint64_t>(&address_entry, "uint64_t");
-        else if (address_entry.flags == flag_si64) add_row<int64_t> (&address_entry, "int64_t");
-        else if (address_entry.flags == flag_ui32) add_row<uint32_t>(&address_entry, "uint32_t");
-        else if (address_entry.flags == flag_si32) add_row<int32_t> (&address_entry, "int32_t");
-        else if (address_entry.flags == flag_ui16) add_row<uint16_t>(&address_entry, "uint16_t");
-        else if (address_entry.flags == flag_si16) add_row<int16_t> (&address_entry, "int16_t");
-        else if (address_entry.flags == flag_ui8)  add_row<uint8_t> (&address_entry, "uint8_t");
-        else if (address_entry.flags == flag_si8)  add_row<int8_t>  (&address_entry, "int8_t");
-        else if (address_entry.flags == flag_f64)  add_row<double>  (&address_entry, "double");
-        else if (address_entry.flags == flag_f32)  add_row<float>   (&address_entry, "float");
+    for(int i = 0; i < parent->hs->matches.size(); i++) {
+        AddressEntry *entry = &parent->hs->matches[i];
+        
+        if      (entry->flags == flags_i64) add_row<int64_t> (entry, "! int64_t");
+        else if (entry->flags == flags_i32) add_row<int32_t> (entry, "! int32_t");
+        else if (entry->flags == flags_i16) add_row<int16_t> (entry, "! int16_t");
+        else if (entry->flags == flags_i8)  add_row<int8_t>  (entry, "! int8_t");
+        else if (entry->flags == flag_ui64) add_row<uint64_t>(entry, "uint64_t");
+        else if (entry->flags == flag_si64) add_row<int64_t> (entry, "int64_t");
+        else if (entry->flags == flag_ui32) add_row<uint32_t>(entry, "uint32_t");
+        else if (entry->flags == flag_si32) add_row<int32_t> (entry, "int32_t");
+        else if (entry->flags == flag_ui16) add_row<uint16_t>(entry, "uint16_t");
+        else if (entry->flags == flag_si16) add_row<int16_t> (entry, "int16_t");
+        else if (entry->flags == flag_ui8)  add_row<uint8_t> (entry, "uint8_t");
+        else if (entry->flags == flag_si8)  add_row<int8_t>  (entry, "int8_t");
+        else if (entry->flags == flag_f64)  add_row<double>  (entry, "double");
+        else if (entry->flags == flag_f32)  add_row<float>   (entry, "float");
     }
     
     // Continue refresh values inside Scanner output
@@ -287,7 +305,12 @@ ScanWindow::on_button_next_scan()
 {
     conn.disconnect();
     
-    // ........
+    /// Parse string to calculator
+    Parser parser;
+    string in = this->entry_value->get_text();
+    float sol = parser.ParseInput(const_cast<char *>(in.c_str()));
+    cout << sol << endl;
+    ///
     
     // Continue refresh values inside Scanner output
     conn = Glib::signal_timeout().connect
@@ -297,20 +320,26 @@ ScanWindow::on_button_next_scan()
 bool
 ScanWindow::on_timer_refresh()
 {
-    printf("refresing");
     auto ref_child = ref_tree_output->children();
-    for(auto iter = ref_child.begin(); iter != ref_child.end(); ++iter) {
-        Gtk::TreeModel::Row row = *iter;
-        uintptr_t value;
-        if (!parent->handle->read
-                (&value, 
-                 (void *) strtol(((Glib::ustring)row[columns_output.m_col_address]).c_str(), nullptr, 16/*0*/), 
-                 sizeof(value)))
-            row[columns_output.m_col_value] = "NaN";
-        else
-            row[columns_output.m_col_value] = to_string(value);
+    for(int i = 0; i < parent->hs->matches.size(); i++) {
+        Gtk::TreeModel::Row row = *ref_child[i];
+        AddressEntry *entry = &parent->hs->matches[i];
+        
+        if      (entry->flags == flags_i64) refresh_row<int64_t> (entry, "! int64_t", row);
+        else if (entry->flags == flags_i32) refresh_row<int32_t> (entry, "! int32_t", row);
+        else if (entry->flags == flags_i16) refresh_row<int16_t> (entry, "! int16_t", row);
+        else if (entry->flags == flags_i8)  refresh_row<int8_t>  (entry, "! int8_t",  row);
+        else if (entry->flags == flag_ui64) refresh_row<uint64_t>(entry, "uint64_t",  row);
+        else if (entry->flags == flag_si64) refresh_row<int64_t> (entry, "int64_t",   row);
+        else if (entry->flags == flag_ui32) refresh_row<uint32_t>(entry, "uint32_t",  row);
+        else if (entry->flags == flag_si32) refresh_row<int32_t> (entry, "int32_t",   row);
+        else if (entry->flags == flag_ui16) refresh_row<uint16_t>(entry, "uint16_t",  row);
+        else if (entry->flags == flag_si16) refresh_row<int16_t> (entry, "int16_t",   row);
+        else if (entry->flags == flag_ui8)  refresh_row<uint8_t> (entry, "uint8_t",   row);
+        else if (entry->flags == flag_si8)  refresh_row<int8_t>  (entry, "int8_t",    row);
+        else if (entry->flags == flag_f64)  refresh_row<double>  (entry, "double",    row);
+        else if (entry->flags == flag_f32)  refresh_row<float>   (entry, "float",     row);
     }
-    printf("......done\n");
     return true;
 }
 

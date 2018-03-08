@@ -13,12 +13,12 @@ using namespace std;
 
 uint64_t r() {
     int64_t r = random();
-    return *(uint64_t *)(&r);
+    return *(int64_t *)(&r);
 }
 
 struct Entry {
     long id;
-    int32_t health;
+    int64_t health;
     double x;
     double y;
     double z;
@@ -37,7 +37,7 @@ public:
                 delete e;
                 Entry *e_new = new Entry;
                 e_new->id = i+50;
-                e_new->health = 100;
+                e_new->health = static_cast<int64_t>(-10);
                 e_new->x = -1000.+r()%2000;
                 e_new->y = -1000.+r()%2000;
                 e_new->z = -1000.+r()%2000;
@@ -57,7 +57,7 @@ public:
         for(int i=0; i<30; i++) {
             Entry *e = new Entry;
             e->id = i+50;
-            e->health = 100;
+            e->health = static_cast<int64_t>(-10);
             e->x = -1000.+r()%2000;
             e->y = -1000.+r()%2000;
             e->z = -1000.+r()%2000;
@@ -93,7 +93,7 @@ public:
         return nullptr;
     }
 
-    int32_t *GetHealth() {
+    int64_t *GetHealth() {
         return &GetLocalPlayer()->health;
     }
 
@@ -110,7 +110,7 @@ public:
     }
 
 private:
-    World *w;
+    World *w; 
     uint localPlayerId;
 };
 

@@ -420,7 +420,7 @@ Handle::findPattern(vector<uintptr_t> *out, region_t *region, const char *patter
 size_t
 Handle::scan_exact(vector<AddressEntry> *out, 
                    const region_t *region, 
-                   vector<ValueEntry> entries, 
+                   vector<AddressEntry> entries, 
                    size_t increment)
 {
     byte buffer[0x1000];
@@ -432,20 +432,21 @@ Handle::scan_exact(vector<AddressEntry> *out,
     // TODO[HIGH] научить не добавлять, если предыдущий (собсна, наибольший) уже есть 
     while (totalsize) {
         size_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
-        size_t readaddr = region->start + (chunksize * chunknum);
+        uintptr_t readaddr = region->start + (chunksize * chunknum);
         bzero(buffer, chunksize);
         
-        if (this->read(buffer, (void *) readaddr, readsize)) { // читаем в буфер
-            for(size_t b = 0; b < readsize; b += increment) {  // обрабатываем буфер
-                for(int k = 0; k < entries.size(); k++) {                             // для каждого шаблона
+        if (this->read(buffer, (void *) readaddr, readsize)) {    // read into buffer
+            for(uintptr_t b = 0; b < readsize; b += increment) {  // for each addr inside buffer
+                for(int k = 0; k < entries.size(); k++) {         // for each entry
                     size_t matches = 0;
                     while (buffer[b + matches] == entries[k].value.bytes[matches]) {  // находим адрес
                         matches++;
                         
                         if (matches == SIZEOF_FLAG(entries[k].flags)) {
                             found++;
-                            out->emplace_back(entries[k].flags, (uintptr_t)(readaddr + b), region);
-                            goto sorry_for_goto; //todo мне кажется, что нужно всё-таки добавить плавующую точку, посмотрим, как сделаю next_scan
+                            out->emplace_back(entries[k].flags, (uintptr_t)(readaddr + b), region, entries[k].value.bytes);
+                            //todo мне кажется, что нужно всё-таки добавить плавующую точку, посмотрим, как сделаю next_scan
+                            goto sorry_for_goto;
                         }
                     }
                 }
@@ -456,5 +457,5 @@ Handle::scan_exact(vector<AddressEntry> *out,
         totalsize -= readsize;
         chunknum++;
     }
-    return found;
+    return found; //size of pushed back values
 }

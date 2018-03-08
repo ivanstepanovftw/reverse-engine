@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <boost/lexical_cast.hpp>
 #include <boost/variant.hpp>
+#include "value.hh"
 
 
 enum ErrorCode { //todo #54 error codes and fn like dlError();
@@ -119,27 +120,7 @@ typedef enum __attribute__((__packed__)) {
     else printf("NaN");}
 
 
-/// Это то, что сканер возвращает
 class AddressEntry {
-public:
-    Flags flags = Flags::flags_empty;
-    union {
-        uintptr_t data;
-        byte bytes[sizeof(uintptr_t)];
-    } address;
-    const region_t *region;
-    
-    
-    AddressEntry(Flags flags, uintptr_t address, const region_t *region)
-    {
-        this->flags = flags;
-        this->address.data = address;
-        this->region = region;
-    }
-};
-
-/// Это то, что мы отдаём сканеру
-class ValueEntry {
 public:
     Flags flags = Flags::flags_empty;
     
@@ -157,15 +138,24 @@ public:
         byte     bytes[sizeof(uint64_t)];
     } value { ui64:0 };
     
-    ValueEntry() = default;
+    union {
+        uintptr_t data;
+        byte bytes[sizeof(uintptr_t)];
+    } address { data:0 };
     
-    ValueEntry(Flags flags, byte *bytes)
+    const region_t *region = nullptr;
+    
+    AddressEntry() = default;
+    
+    AddressEntry(Flags flags, uintptr_t address, const region_t *region = nullptr, byte *value = nullptr)
     {
         this->flags = flags;
-        size_t size = SIZEOF_FLAG(flags);
-        clog<<"size of Value is: "<<size<<endl;
-        for(size_t i = 0; i < size; i++)
-            this->value.bytes[i] = bytes[i];
+        this->address.data = address;
+        this->region = region;
+        
+        if (value)
+            for(size_t i = 0; i < SIZEOF_FLAG(flags); i++)
+                this->value.bytes[i] = value[i];
     }
 };
 
@@ -224,7 +214,7 @@ public:
     //fixme speedup it https://stackoverflow.com/questions/3664272/is-stdvector-so-much-slower-than-plain-arrays
     size_t scan_exact(vector<AddressEntry> *out,
                       const region_t *region,
-                      vector<ValueEntry> entries,  //attempt to implement Number scanner
+                      vector<AddressEntry> entries,  //attempt to implement Number scanner
                       size_t increment = 1);        //attempt to implement "Fast scan" (он же так работает?)
 };
 
@@ -248,77 +238,112 @@ public:
     
     void first_scan(const string &string_value, Flags flags)
     {
+        printf("~~~ First scan~~~ value: %s\n", string_value.c_str());
         matches.clear();
         
         if (scan_type == ScanType::NUMBER) {
-            vector<ValueEntry> values;
+            vector<AddressEntry> values;
             
-            ValueEntry entry;
+            AddressEntry entry;
+            bool isSigned = false;
             
-            /// сначала пытаемся определить, чё хотят от нас
-            int err = 0;
-            uint64_t uval = 0;
-            int64_t sval = 0;
-            try {
-                uval = boost::lexical_cast<uint64_t>(string_value);
-            } catch (boost::bad_lexical_cast &) {
-                err++;
+            if (flags == flags_i64 || flags == flags_full) {
                 try {
-                    sval = boost::lexical_cast<int64_t>(string_value);
-                } catch (boost::bad_lexical_cast &) {
-                    err++;
-                    printf("Error: value \"%s\" isn't signed or unsigned integer\n", string_value.c_str());
+                    entry.value.si64 = lexical_cast<int64_t>(string_value.c_str(), &isSigned);
+                    if (isSigned) {
+                        entry.flags = flag_si64;
+                        printf("Long: type is signed\n");
+                    } else {
+                        entry.flags = flags_i64;
+                        printf("Long: type is signed or unsigned\n");
+                    }
+                    values.push_back(entry);
+                } catch (lexical_cast_range &) {
+                    try {
+                        entry.value.ui64 = lexical_cast<uint64_t>(string_value.c_str());
+                        entry.flags = Flags::flag_ui64;
+                        printf("Long: type is unsigned\n");
+                        values.push_back(entry);
+                    } catch (lexical_cast_sign &) {
+                    } catch (lexical_cast_range &) {
+                        printf("Long: value is not integer\n");
+                    }
                 }
             }
-            if (err <= 1) {
-                if (flags == flags_i64 || flags == flags_full) {
-                    if (err == 0) {
-                        entry.value.ui64 = (uval);
-                        entry.flags = Flags::flags_i64;
+            if (flags == flags_i32 || flags == flags_full) {
+                try {
+                    entry.value.si32 = lexical_cast<int32_t>(string_value.c_str(), &isSigned);
+                    if (isSigned) {
+                        entry.flags = flag_si32;
+                        printf("Int: type is signed\n");
                     } else {
-                        entry.value.si64 = (sval);
-                        entry.flags = Flags::flag_si64;
+                        entry.flags = flags_i32;
+                        printf("Int: type is signed or unsigned\n");
                     }
                     values.push_back(entry);
-                }
-                if (flags == flags_i32 || flags == flags_full) {
-                    if (err == 0) {
-                        entry.value.ui32 = static_cast<uint32_t>(uval);
-                        entry.flags = Flags::flags_i32;
-                    } else {
-                        entry.value.si32 = static_cast<int32_t>(sval);
-                        entry.flags = Flags::flag_si32;
+                } catch (lexical_cast_range &) {
+                    try {
+                        entry.value.ui32 = lexical_cast<uint32_t>(string_value.c_str());
+                        entry.flags = Flags::flag_ui32;
+                        printf("Int: type is unsigned\n");
+                        values.push_back(entry);
+                    } catch (lexical_cast_sign &) {
+                    } catch (lexical_cast_range &) {
                     }
-                    values.push_back(entry);
-                }
-                if (flags == flags_i16 || flags == flags_full) {
-                    if (err == 0) {
-                        entry.value.ui16 = static_cast<uint16_t>(uval);
-                        entry.flags = Flags::flags_i16;
-                    } else {
-                        entry.value.si16 = static_cast<int16_t>(sval);
-                        entry.flags = Flags::flag_si16;
-                    }
-                    values.push_back(entry);
-                }
-                if (flags == flags_i8 || flags == flags_full) {
-                    if (err == 0) {
-                        entry.value.ui8 = static_cast<uint8_t>(uval);
-                        entry.flags = Flags::flags_i8;
-                    } else {
-                        entry.value.si8 = static_cast<int8_t>(sval);
-                        entry.flags = Flags::flag_si8;
-                    }
-                    values.push_back(entry);
                 }
             }
+            if (flags == flags_i16 || flags == flags_full) {
+                try {
+                    entry.value.si16 = lexical_cast<int16_t>(string_value.c_str(), &isSigned);
+                    if (isSigned) {
+                        entry.flags = flag_si16;
+                        printf("Short: type is signed\n");
+                    } else {
+                        entry.flags = flags_i16;
+                        printf("Short: type is signed or unsigned\n");
+                    }
+                    values.push_back(entry);
+                } catch (lexical_cast_range &) {
+                    try {
+                        entry.value.ui16 = lexical_cast<uint16_t>(string_value.c_str());
+                        entry.flags = Flags::flag_ui16;
+                        printf("Short: type is unsigned\n");
+                        values.push_back(entry);
+                    } catch (lexical_cast_sign &) {
+                    } catch (lexical_cast_range &) {
+                    }
+                }
+            }
+            if (flags == flags_i8 || flags == flags_full) {
+                try {
+                    entry.value.si8 = lexical_cast<int8_t>(string_value.c_str(), &isSigned);
+                    if (isSigned) {
+                        entry.flags = flag_si8;
+                        printf("Char: type is signed\n");
+                    } else {
+                        entry.flags = flags_i8;
+                        printf("Char: type is signed or unsigned\n");
+                    }
+                    values.push_back(entry);
+                } catch (lexical_cast_range &) {
+                    try {
+                        entry.value.ui8 = lexical_cast<uint8_t>(string_value.c_str());
+                        entry.flags = Flags::flag_ui8;
+                        printf("Char: type is unsigned\n");
+                        values.push_back(entry);
+                    } catch (lexical_cast_sign &) {
+                    } catch (lexical_cast_range &) {
+                    }
+                }
+            }
+            
+            /* boost */
             if (flags == flag_f64 || flags == flags_full) {
                 try {
                     entry.value.f64 = boost::lexical_cast<double>(string_value);
                     entry.flags = Flags::flag_f64;
                     values.push_back(entry);
                 } catch (boost::bad_lexical_cast &) {
-                    err++;
                     printf("Error: value \"%s\" isn't double\n", string_value.c_str());
                 }
             }
@@ -328,7 +353,6 @@ public:
                     entry.flags = Flags::flag_f32;
                     values.push_back(entry);
                 } catch (boost::bad_lexical_cast &) {
-                    err++;
                     printf("Error: value \"%s\" isn't float\n", string_value.c_str());
                 }
             }
@@ -338,12 +362,7 @@ public:
                 printf("There is no any value\n");
                 return;
             }
-            if (err == 4) {
-                printf("4 errors estimated (you shouldn't see this)\n");
-                return;
-            }
             
-            printf("Trying to scan\n");
             for(size_t i = 0; i < values.size(); i++) {
                 printf("patterns[%li]: ", i);
                 PRINT_VALUE_AS_BYTES(values[i])

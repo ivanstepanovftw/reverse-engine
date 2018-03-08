@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <Core/api.hh>
+#include <Core/value.hh>
 #include <iomanip>
 #include <chrono>
 
@@ -16,6 +17,8 @@ using namespace std::literals;
 
 const char *target = "HackMe";
 
+#define byte unsigned char
+
 int
 main() {
 //    float N = 8;
@@ -23,7 +26,7 @@ main() {
 //    high_resolution_clock::time_point t1, t2;
 //    duration<double> time_span;
 //
-//    printf("N: %f\n", N);
+//    printf("N: %f\data", N);
 //
 //    /// reinterpret_cast vs. union holywar:
 //    // Method "byte *ARRAY = reinterpret_cast<byte *>(&NUMBER);" done 10000000000 samples in 24.689415 seconds
@@ -35,20 +38,57 @@ main() {
 //    }
 //    t2 = high_resolution_clock::now();
 //    time_span = duration_cast<duration<double>>(t2 - t1);
-    float n = 8;
-    byte *a = reinterpret_cast<byte *>(&n);
-    printf("a: %x %x %x %x\n",
-           a[3], 
-           a[2], 
-           a[1], 
-           a[0]);
+    
+    
+    clog<<dec;
+    clog<<"======================================================================="<<endl;
+    
+    try { ///exception: type is unsigned
+        clog<<"~~~ 1 ~~~ lexical_cast<byte>(\"-128\")"<<endl;
+        auto val = lexical_cast<byte>("-128");
+        clog<<"value: "<<+val<<"\n";
+    } catch (lexical_cast_sign &e) {  }
+    
+    try {
+        clog<<"~~~ 2 ~~~ lexical_cast<char>(\"-128\")"<<endl;
+        auto val = lexical_cast<char>("-128");
+        clog<<"value: "<<+val<<"\n";
+    } catch (lexical_cast_sign &e) {  }
+    
+    try { ///exception: reached max value
+        clog<<"~~~ 3 ~~~ lexical_cast<char>(\"255\")"<<endl;
+        auto val = lexical_cast<char>("255");
+        clog<<"value: "<<+val<<"\n";
+    } catch (lexical_cast_range &e) {  }
+    
+    try {
+        clog<<"~~~ 4 ~~~ lexical_cast<byte>(\"255\")"<<endl;
+        auto val = lexical_cast<byte>("255");
+        clog<<"value: "<<+val<<"\n";
+    } catch (lexical_cast_sign &e) {  }
+    
+    try { ///exception: reached min value
+        clog<<"~~~ 5 ~~~ lexical_cast<char>(\"-129\")"<<endl;
+        auto val = lexical_cast<char>("-129");
+        clog<<"value: "<<val<<"\n";
+    } catch (lexical_cast_range &e) {  }
+    
+    
+    ///                       strtoul:             strtol:
+    // "0x1"                  0x0000000000000001   0x0000000000000001
+    // "-0x1"                 0xffffffffffffffff   0xffffffffffffffff
+    // "0xfffefffefffefffe"   0xfffefffefffefffe   0x7fffffffffffffff
+    // "-0xfffefffefffefffe"  0x8000000000000000   0x0001000100010002
+    
+    
+    
     
     
 //    boost::variant<float, byte *> u; boost::variant std::variant хуйня ебаная, union лучше
-//    u = n;
+//    u = data;
 //    cout<<"float: "<<u<<endl;
 //    byte *b = boost::get<byte *>(u);
-//    printf("b: %x %x %x %x\n",
+//    printf("b: %x %x %x %x\data",
 //           b[3], 
 //           b[2], 
 //           b[1], 
@@ -57,7 +97,7 @@ main() {
 //    variant<byte *, float> u = N;
 //    
 //    
-//    printf("byte6: %x %x %x %x, done %ld samples in %f seconds\n",
+//    printf("byte6: %x %x %x %x, done %ld samples in %f seconds\data",
 //           get<byte *>(u)[3], 
 //           get<byte *>(u)[2], 
 //           get<byte *>(u)[1], 

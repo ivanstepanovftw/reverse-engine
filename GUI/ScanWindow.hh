@@ -206,7 +206,10 @@ private:
     
     // Routine (fixme их ведь так называют?)
     template<typename T>
-    void inline add_row(const AddressEntry *address_string, const char *type_string);
+    void inline add_row(AddressEntry *address_string, const char *type_string);
+    
+    template<typename T>
+    void inline refresh_row(AddressEntry *address_string, const char *type_string, Gtk::TreeModel::Row &row);
 };
 
 //class 

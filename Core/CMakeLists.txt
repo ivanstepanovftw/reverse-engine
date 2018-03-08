@@ -7,4 +7,5 @@ project(RECore)
 # │  Build executable                                                │
 # └──────────────────────────────────────────────────────────────────┘
 add_library(RECore 
-        api.cc)
+        api.cc
+        value.cc)
