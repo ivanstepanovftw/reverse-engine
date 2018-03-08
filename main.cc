@@ -85,10 +85,10 @@ main() {
     
     
 //    boost::variant<float, byte *> u; boost::variant std::variant хуйня ебаная, union лучше
-//    u = data;
+//    u = n;
 //    cout<<"float: "<<u<<endl;
 //    byte *b = boost::get<byte *>(u);
-//    printf("b: %x %x %x %x\data",
+//    printf("b: %x %x %x %x\n",
 //           b[3], 
 //           b[2], 
 //           b[1], 
@@ -97,7 +97,7 @@ main() {
 //    variant<byte *, float> u = N;
 //    
 //    
-//    printf("byte6: %x %x %x %x, done %ld samples in %f seconds\data",
+//    printf("byte6: %x %x %x %x, done %ld samples in %f seconds\n",
 //           get<byte *>(u)[3], 
 //           get<byte *>(u)[2], 
 //           get<byte *>(u)[1], 
