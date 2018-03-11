@@ -2,8 +2,7 @@
 // Created by root on 22.02.18.
 //
 
-#include <Core/api.hh>
-#include <Core/value.hh>
+#include <Core/scanner.hh>
 #include "ScanWindow.hh"
 #include "MainWindow.hh"
 
@@ -19,6 +18,7 @@ ScanWindow::ScanWindow(MainWindow *parent)
     delete parent->handle;
     parent->handle = new Handle("HackMe");
     parent->handle->updateRegions();
+    parent->hs = new Scanner(parent->handle);
     
     Gtk::Widget *scanner_output = create_scanner_output();
     Gtk::Widget *scanner = create_scanner();
@@ -95,36 +95,42 @@ ScanWindow::create_scanner()
     ref_stype = Gtk::ListStore::create(columns_scan_type);
     combo_stype->set_model(ref_stype);
     
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Number";         row[columns_scan_type.m_col_scan_type] = ScanType::NUMBER;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Number";         row[columns_scan_type.m_col_scan_type] = scan_data_type_t::ANYNUMBER;
     combo_stype->set_active(row);
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Array of bytes"; row[columns_scan_type.m_col_scan_type] = ScanType::AOB;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "String";         row[columns_scan_type.m_col_scan_type] = ScanType::STRING;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Grouped";        row[columns_scan_type.m_col_scan_type] = ScanType::GROUPED;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Integer";        row[columns_scan_type.m_col_scan_type] = scan_data_type_t::ANYINTEGER;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Float";          row[columns_scan_type.m_col_scan_type] = scan_data_type_t::ANYFLOAT;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int8";               row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER8;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int16";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER16;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int32";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER32;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int64";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER64;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "float32";            row[columns_scan_type.m_col_scan_type] = scan_data_type_t::FLOAT32;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "float64";            row[columns_scan_type.m_col_scan_type] = scan_data_type_t::FLOAT64;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Array of Bytes";     row[columns_scan_type.m_col_scan_type] = scan_data_type_t::BYTEARRAY;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "String";             row[columns_scan_type.m_col_scan_type] = scan_data_type_t::STRING;
     combo_stype->pack_start(columns_scan_type.m_col_name);
-    on_combo_stype_changed();
-
+    
     
     /// ComboBox "Value Type"
-    ref_vtype = Gtk::ListStore::create(columns_value_type);
-    combo_vtype->set_model(ref_vtype);
-    
-    // Inactive rows (NOT combo box) if Scan Type is not (Number) or not (Array)
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "c: Byte";   row[columns_value_type.m_col_value_type] = Flags::flags_i8;
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "s: 2 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i16;
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "i: 4 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i32;
-    combo_vtype->set_active(row);
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "l: 8 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i64;
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "f: Float";  row[columns_value_type.m_col_value_type] = Flags::flag_f32;
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "d: Double"; row[columns_value_type.m_col_value_type] = Flags::flag_f64;
-    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "All";       row[columns_value_type.m_col_value_type] = Flags::flags_full;
-    combo_vtype->pack_start(columns_value_type.m_col_name);
+//    ref_vtype = Gtk::ListStore::create(columns_value_type);
+//    combo_vtype->set_model(ref_vtype);
+//    
+//    // Inactive rows (NOT combo box) if Scan Type is not (Number) or not (Array)
+//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "c: Byte";   row[columns_value_type.m_col_value_type] = Flags::flags_i8;
+//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "s: 2 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i16;
+//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "i: 4 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i32;
+//    combo_vtype->set_active(row);
+//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "l: 8 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i64;
+//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "f: Float";  row[columns_value_type.m_col_value_type] = Flags::flag_f32;
+//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "d: Double"; row[columns_value_type.m_col_value_type] = Flags::flag_f64;
+//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "All";       row[columns_value_type.m_col_value_type] = Flags::flags_full;
+//    combo_vtype->pack_start(columns_value_type.m_col_name);
     
     
     /// Signals
 //    combo_stype->signal_changed().connect
 //            (sigc::bind<Gtk::ComboBox *>(sigc::mem_fun(*this, &ScanWindow::on_combo_stype_changed), combo_stype));
-    combo_stype->signal_changed().connect
-            (sigc::mem_fun(*this, &ScanWindow::on_combo_stype_changed));
+//    combo_stype->signal_changed().connect
+//            (sigc::mem_fun(*this, &ScanWindow::on_combo_stype_changed));
     
     button_first->signal_clicked().connect
             (sigc::mem_fun(*this, &ScanWindow::on_button_first_scan));
@@ -198,33 +204,19 @@ ScanWindow::create_saved_list()
     return Gtk::manage(box);
 }
 
-void ScanWindow::on_combo_stype_changed()
-{
-    Gtk::TreeModel::iterator iter = combo_stype->get_active();
-    if(iter) {
-        Gtk::TreeModel::Row row = *iter;
-        if(row) {
-            delete parent->hs;
-            parent->hs = new HandleScanner(parent->handle, row[columns_scan_type.m_col_scan_type], 1);
-        }
-    }
-    else
-        cout<<"invalid iter"<<endl;
-}
-
-
 
 
 template<typename T>
-void inline ScanWindow::add_row(AddressEntry *address_entry, const char *type_string)
+void ScanWindow::add_row(match *val, const char *type_string)
 {
     char *address_string;
-    const byte *b = address_entry->address.bytes;
+    const uint8_t *b = val->address.bytes;
     asprintf(&address_string, /*0x*/"%02x%02x%02x%02x%02x%02x", b[5], b[4], b[3], b[2], b[1], b[0]);
+    
     T value;
     parent->handle->read
-            (&value, (void *) address_entry->address.data, sizeof(T));
-
+            (&value, (void *) val->address.data, sizeof(T));
+//    clog<<"address: "<<hex<<val->address.data<<dec<<", value: "<<value<<endl;
     Gtk::TreeModel::Row row = *(ref_tree_output->append());
     row[columns_output.m_col_address] = address_string;
     row[columns_output.m_col_value] = to_string(value);
@@ -232,14 +224,14 @@ void inline ScanWindow::add_row(AddressEntry *address_entry, const char *type_st
 }
 
 template<typename T>
-void inline ScanWindow::refresh_row(AddressEntry *address_entry, const char *type_string, Gtk::TreeModel::Row &row)
+void ScanWindow::refresh_row(match *val, const char *type_string, Gtk::TreeModel::Row &row)
 {
     char *address_string;
-    const byte *b = address_entry->address.bytes;
+    const uint8_t *b = val->address.bytes;
     asprintf(&address_string, /*0x*/"%02x%02x%02x%02x%02x%02x", b[5], b[4], b[3], b[2], b[1], b[0]);
     T value;
     parent->handle->read
-            (&value, (void *) address_entry->address.data, sizeof(T));
+            (&value, (void *) val->address.data, sizeof(T));
 
     row[columns_output.m_col_value] = to_string(value);
     row[columns_output.m_col_value_type] = type_string;
@@ -255,43 +247,44 @@ ScanWindow::on_button_first_scan()
         return;
     }
     
-    Gtk::TreeModel::iterator iter = combo_vtype->get_active();
+    Gtk::TreeModel::iterator iter = combo_stype->get_active();
     if(!iter) return;
     Gtk::TreeModel::Row row = *iter;
     if(!row) return;
     
+    delete parent->hs;
+    parent->hs = new Scanner(parent->handle);
+    
     // todo[low] THREADS
-    parent->hs->first_scan(entry_value->get_text(), row[columns_value_type.m_col_value_type]);
+    parent->hs->first_scan(row[columns_scan_type.m_col_scan_type], entry_value->get_text().c_str());
     
     ref_tree_output->clear();
     size_t output_count = parent->hs->matches.size();
     char *label_count_text;
     asprintf(&label_count_text, "Found: %li", output_count);
     label_found->set_text(label_count_text);
-    if (output_count > 1'000) {
+    if (output_count > 10'000) {
         // todo[low] FIRST OF ALL - CALCULATE AND ALLOCATE, THEN - ADD TO TABLE!
         clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
         return;
+    } else {
+        clog<<"SHOWING"<<endl;
     }
     
     // For each address, that scanner found, add row to tree_output
     for(int i = 0; i < parent->hs->matches.size(); i++) {
-        AddressEntry *entry = &parent->hs->matches[i];
+        match *val = &parent->hs->matches[i];
         
-        if      (entry->flags == flags_i64) add_row<int64_t> (entry, "! int64_t");
-        else if (entry->flags == flags_i32) add_row<int32_t> (entry, "! int32_t");
-        else if (entry->flags == flags_i16) add_row<int16_t> (entry, "! int16_t");
-        else if (entry->flags == flags_i8)  add_row<int8_t>  (entry, "! int8_t");
-        else if (entry->flags == flag_ui64) add_row<uint64_t>(entry, "uint64_t");
-        else if (entry->flags == flag_si64) add_row<int64_t> (entry, "int64_t");
-        else if (entry->flags == flag_ui32) add_row<uint32_t>(entry, "uint32_t");
-        else if (entry->flags == flag_si32) add_row<int32_t> (entry, "int32_t");
-        else if (entry->flags == flag_ui16) add_row<uint16_t>(entry, "uint16_t");
-        else if (entry->flags == flag_si16) add_row<int16_t> (entry, "int16_t");
-        else if (entry->flags == flag_ui8)  add_row<uint8_t> (entry, "uint8_t");
-        else if (entry->flags == flag_si8)  add_row<int8_t>  (entry, "int8_t");
-        else if (entry->flags == flag_f64)  add_row<double>  (entry, "double");
-        else if (entry->flags == flag_f32)  add_row<float>   (entry, "float");
+        if      (val->userflag & flag_s64b) add_row<int64_t> (val, "int64");
+        else if (val->userflag & flag_s32b) add_row<int32_t> (val, "int32");
+        else if (val->userflag & flag_s16b) add_row<int16_t> (val, "int16");
+        else if (val->userflag & flag_s8b)  add_row<int8_t>  (val, "int8");
+        else if (val->userflag & flag_u64b) add_row<uint64_t>(val, "uint64");
+        else if (val->userflag & flag_u32b) add_row<uint32_t>(val, "uint32");
+        else if (val->userflag & flag_u16b) add_row<uint16_t>(val, "uint16");
+        else if (val->userflag & flag_u8b)  add_row<uint8_t> (val, "uint8");
+        else if (val->userflag & flag_f64b) add_row<double>  (val, "double");
+        else if (val->userflag & flag_f32b) add_row<float>   (val, "float");
     }
     
     // Continue refresh values inside Scanner output
@@ -306,10 +299,10 @@ ScanWindow::on_button_next_scan()
     conn.disconnect();
     
     /// Parse string to calculator
-    Parser parser;
-    string in = this->entry_value->get_text();
-    float sol = parser.ParseInput(const_cast<char *>(in.c_str()));
-    cout << sol << endl;
+//    Parser parser;
+//    string in = this->entry_value->get_text();
+//    float sol = parser.ParseInput(const_cast<char *>(in.c_str()));
+//    cout << sol << endl;
     ///
     
     // Continue refresh values inside Scanner output
@@ -323,22 +316,18 @@ ScanWindow::on_timer_refresh()
     auto ref_child = ref_tree_output->children();
     for(int i = 0; i < parent->hs->matches.size(); i++) {
         Gtk::TreeModel::Row row = *ref_child[i];
-        AddressEntry *entry = &parent->hs->matches[i];
+        match *val = &parent->hs->matches[i];
         
-        if      (entry->flags == flags_i64) refresh_row<int64_t> (entry, "! int64_t", row);
-        else if (entry->flags == flags_i32) refresh_row<int32_t> (entry, "! int32_t", row);
-        else if (entry->flags == flags_i16) refresh_row<int16_t> (entry, "! int16_t", row);
-        else if (entry->flags == flags_i8)  refresh_row<int8_t>  (entry, "! int8_t",  row);
-        else if (entry->flags == flag_ui64) refresh_row<uint64_t>(entry, "uint64_t",  row);
-        else if (entry->flags == flag_si64) refresh_row<int64_t> (entry, "int64_t",   row);
-        else if (entry->flags == flag_ui32) refresh_row<uint32_t>(entry, "uint32_t",  row);
-        else if (entry->flags == flag_si32) refresh_row<int32_t> (entry, "int32_t",   row);
-        else if (entry->flags == flag_ui16) refresh_row<uint16_t>(entry, "uint16_t",  row);
-        else if (entry->flags == flag_si16) refresh_row<int16_t> (entry, "int16_t",   row);
-        else if (entry->flags == flag_ui8)  refresh_row<uint8_t> (entry, "uint8_t",   row);
-        else if (entry->flags == flag_si8)  refresh_row<int8_t>  (entry, "int8_t",    row);
-        else if (entry->flags == flag_f64)  refresh_row<double>  (entry, "double",    row);
-        else if (entry->flags == flag_f32)  refresh_row<float>   (entry, "float",     row);
+        if      (val->userflag & flag_u64b) refresh_row<uint64_t>(val, "uint64",row);
+        else if (val->userflag & flag_u32b) refresh_row<uint32_t>(val, "uint32",row);
+        else if (val->userflag & flag_u16b) refresh_row<uint16_t>(val, "uint16",row);
+        else if (val->userflag & flag_u8b)  refresh_row<uint8_t> (val, "uint8", row);
+        else if (val->userflag & flag_s64b) refresh_row<int64_t> (val, "int64", row);
+        else if (val->userflag & flag_s32b) refresh_row<int32_t> (val, "int32", row);
+        else if (val->userflag & flag_s16b) refresh_row<int16_t> (val, "int16", row);
+        else if (val->userflag & flag_s8b)  refresh_row<int8_t>  (val, "int8",  row);
+        else if (val->userflag & flag_f64b) refresh_row<double>  (val, "double",row);
+        else if (val->userflag & flag_f32b) refresh_row<float>   (val, "float", row);
     }
     return true;
 }

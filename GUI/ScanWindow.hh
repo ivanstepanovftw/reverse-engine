@@ -7,81 +7,10 @@
 
 #include <gtkmm.h>
 #include <iostream>
-#include <Core/api.hh>
+#include <Core/core.hh>
+#include <Core/value.hh>
+#include <Core/scanner.hh>
 #include "classes_predefines.hh"
-
-//class ScanWindow
-//        : public Gtk::Window
-//{
-//public:
-//    MainWindow *parent = nullptr;
-//    
-//    explicit ScanWindow(MainWindow *parent);
-//    
-//    virtual ~ScanWindow();
-//    
-//    void create_items();
-//
-//protected:
-//    //Handlers
-//    
-//    //Tree model columns:
-//    class ColumnsSaved : public Gtk::TreeModel::ColumnRecord
-//    {
-//    public:
-//        ColumnsSaved()
-//        {
-//            add(m_col_active);
-//            add(m_col_description);
-//            add(m_col_address);
-//            add(m_col_type);
-//            add(m_col_value);
-//        }
-//        
-//        Gtk::TreeModelColumn<bool> m_col_active;
-//        Gtk::TreeModelColumn<Glib::ustring> m_col_description;
-//        Gtk::TreeModelColumn<Glib::ustring> m_col_address;
-//        Gtk::TreeModelColumn<Glib::ustring> m_col_type;
-//        Gtk::TreeModelColumn<Glib::ustring> m_col_value;
-//    };
-//    
-//    class ColumnsOutput : public Gtk::TreeModel::ColumnRecord
-//    {
-//    public:
-//        ColumnsOutput()
-//        {
-//            add(m_col_address);
-//            add(m_col_value);
-//        }
-//        
-//        Gtk::TreeModelColumn<Glib::ustring> m_col_address;
-//        Gtk::TreeModelColumn<Glib::ustring> m_col_value;
-//    };
-//    
-//    ColumnsSaved columns_saved;
-//    ColumnsOutput columns_output;
-//    
-//    Glib::RefPtr<Gtk::ListStore> ref_tree_saved;
-//    Glib::RefPtr<Gtk::ListStore> ref_tree_output;
-//    
-//    //Childs
-//    Gtk::Widget *create_scanner_output();
-//    Gtk::Widget *create_scanner();
-//    Gtk::Widget *create_saved_list();
-//
-//private:
-//    Gdl::Dock m_dock;
-//    Glib::RefPtr<Gdl::DockLayout> m_layout_manager;
-//    
-//    Gdl::DockPlaceholder m_ph1;
-//    Gdl::DockPlaceholder m_ph2;
-//    Gdl::DockPlaceholder m_ph3;
-//    Gdl::DockPlaceholder m_ph4;
-//    
-//    // FIXME #22 что за hpaned и хули я ничего о нём не слышал?
-//    // @ref http://shecspi.blogspot.ru/2009/06/blog-post_07.html
-//    // Gtk::HPaned hpaned;
-//};
 
 class ScanWindow
         : public Gtk::Window
@@ -95,7 +24,6 @@ public:
 
 protected:
     //Handlers
-    void on_combo_stype_changed();
     void on_button_first_scan();
     void on_button_next_scan();
     
@@ -153,24 +81,24 @@ protected:
         { add(m_col_name); add(m_col_scan_type); }
         
         Gtk::TreeModelColumn<Glib::ustring> m_col_name;
-        Gtk::TreeModelColumn<ScanType> m_col_scan_type;
+        Gtk::TreeModelColumn<scan_data_type_t> m_col_scan_type;
     };
     
     //ComboBox
-    class ColumnsValueType : public Gtk::TreeModel::ColumnRecord
-    {
-    public:
-        ColumnsValueType()
-        { add(m_col_name); add(m_col_value_type); }
-        
-        Gtk::TreeModelColumn<Glib::ustring> m_col_name;
-        Gtk::TreeModelColumn<Flags> m_col_value_type;
-    };
-    
+//    class ColumnsValueType : public Gtk::TreeModel::ColumnRecord
+//    {
+//    public:
+//        ColumnsValueType()
+//        { add(m_col_name); add(m_col_value_type); }
+//        
+//        Gtk::TreeModelColumn<Glib::ustring> m_col_name;
+//        Gtk::TreeModelColumn<Flags> m_col_value_type;
+//    };
+//    
     ColumnsScanType columns_scan_type;
-    ColumnsValueType columns_value_type;
+//    ColumnsValueType columns_value_type;
     Glib::RefPtr<Gtk::ListStore> ref_stype;
-    Glib::RefPtr<Gtk::ListStore> ref_vtype;
+//    Glib::RefPtr<Gtk::ListStore> ref_vtype;
     
     //Childs
     Gtk::Widget *create_scanner_output();
@@ -206,10 +134,10 @@ private:
     
     // Routine (fixme их ведь так называют?)
     template<typename T>
-    void inline add_row(AddressEntry *address_string, const char *type_string);
+    void add_row(match *val, const char *type_string);
     
     template<typename T>
-    void inline refresh_row(AddressEntry *address_string, const char *type_string, Gtk::TreeModel::Row &row);
+    void refresh_row(match *val, const char *type_string, Gtk::TreeModel::Row &row);
 };
 
 //class 

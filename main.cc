@@ -6,7 +6,7 @@
 //#include <variant> //не работает нихуя...
 
 #include <iostream>
-#include <Core/api.hh>
+#include <Core/core.hh>
 #include <Core/value.hh>
 #include <iomanip>
 #include <chrono>
@@ -16,6 +16,8 @@ using namespace std::chrono;
 using namespace std::literals;
 
 const char *target = "HackMe";
+
+#define HEX(s) hex<<(s)<<dec
 
 #define byte unsigned char
 
@@ -38,40 +40,6 @@ main() {
 //    }
 //    t2 = high_resolution_clock::now();
 //    time_span = duration_cast<duration<double>>(t2 - t1);
-    
-    
-    clog<<dec;
-    clog<<"======================================================================="<<endl;
-    
-    try { ///exception: type is unsigned
-        clog<<"~~~ 1 ~~~ lexical_cast<byte>(\"-128\")"<<endl;
-        auto val = lexical_cast<byte>("-128");
-        clog<<"value: "<<+val<<"\n";
-    } catch (lexical_cast_sign &e) {  }
-    
-    try {
-        clog<<"~~~ 2 ~~~ lexical_cast<char>(\"-128\")"<<endl;
-        auto val = lexical_cast<char>("-128");
-        clog<<"value: "<<+val<<"\n";
-    } catch (lexical_cast_sign &e) {  }
-    
-    try { ///exception: reached max value
-        clog<<"~~~ 3 ~~~ lexical_cast<char>(\"255\")"<<endl;
-        auto val = lexical_cast<char>("255");
-        clog<<"value: "<<+val<<"\n";
-    } catch (lexical_cast_range &e) {  }
-    
-    try {
-        clog<<"~~~ 4 ~~~ lexical_cast<byte>(\"255\")"<<endl;
-        auto val = lexical_cast<byte>("255");
-        clog<<"value: "<<+val<<"\n";
-    } catch (lexical_cast_sign &e) {  }
-    
-    try { ///exception: reached min value
-        clog<<"~~~ 5 ~~~ lexical_cast<char>(\"-129\")"<<endl;
-        auto val = lexical_cast<char>("-129");
-        clog<<"value: "<<val<<"\n";
-    } catch (lexical_cast_range &e) {  }
     
     
     ///                       strtoul:             strtol:
@@ -106,7 +74,7 @@ main() {
     
     
     
-    /*    Handle *h = nullptr;
+        Handle *h = nullptr;
         region_t *entry = nullptr;
         region_t *libc = nullptr;
         region_t *ld = nullptr;
@@ -137,11 +105,7 @@ main() {
     
         
         size_t len = 32;
-        void *v = new char[len];    
-        if (h->findPointer(v, ld->start + 0x00225f50, {0x20, 0x40, 0x78, 0x238, 0x8}, len))
-            clog<<"v is ["<<*(float *)(v)<<"]"<<endl;
-        else
-            clog<<"FAIL"<<endl;
+        void *v = new char[len];
         clog<<"v in hex: "<<HEX(*(int *)(v))<<endl;
         string s((char *)v,len);
         clog<<"unconverted s: "<<HEX(*(int *)(v))<<endl;
@@ -156,7 +120,7 @@ main() {
             output.push_back(lut[c & 15]);
         }
         
-        clog<<"output: "<<output<<endl;*/
+        clog<<"output: "<<output<<endl;
     
 //    bool upper_case = false;
 //    ostringstream ret;

@@ -17,7 +17,7 @@
 #include <gtkmm/liststore.h>
 #include <gtkmm/grid.h>
 //
-#include <Core/api.hh>
+#include <Core/core.hh>
 #include "classes_predefines.hh"
 #include "MainWindow.hh"
 #include "SelectWindow.hh"
@@ -34,7 +34,7 @@ public:
     
     // Global
     Handle *handle = nullptr;
-    HandleScanner *hs = nullptr;
+    Scanner *hs = nullptr;
     
 protected:
     // Signals

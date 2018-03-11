@@ -1,222 +1,255 @@
 //
-// Created by root on 06.03.18.
+// Структуры, флаги и прочее
 //
 
-#ifndef RE_CALCULATOR_HH
-#define RE_CALCULATOR_HH
+#ifndef RE_VALUE_HH
+#define RE_VALUE_HH
 
-#include <iostream>
 #include <cstring>
-#include <vector>
-#include <list>
-#include <string>
-#include <fstream>
-#include <cmath>
-#include <functional>
+#include <cstdint>
+#include <cstdio>
 #include <cstdlib>
-#include <sstream>
-#include <regex>
-#include <cstddef>
-#include <climits>
+#include <cctype>
+#include <cerrno>
+#include <vector>
+#include <string>
 
-template<class T>
-struct Operator {
-    Operator(const char *s, std::function<T(T,T)> f, unsigned short arity):_symbol(s),_function(f),_arity(arity){}
-    T Fire(T a,T b){return _function(a,b);}
+//typedef uint8_t byte;
+typedef struct {
+    // Memory
+    uintptr_t start;
+    uintptr_t end;
     
-    const char* _symbol;
-    std::function<T(T,T)> _function;
-    unsigned short _arity;
+    // Permissions
+    bool readable;
+    bool writable;
+    bool executable;
+    bool shared;
     
+    // File data
+    uintptr_t offset;
+    unsigned char deviceMajor;
+    unsigned char deviceMinor;
+    unsigned long inodeFileNumber;
+    std::string pathname;
+    std::string filename;
+} region_t;
+
+
+typedef enum {
+    ANYNUMBER,              /* ANYINTEGER or ANYFLOAT */
+    ANYINTEGER,             /* INTEGER of whatever width */
+    ANYFLOAT,               /* FLOAT of whatever width */
+    INTEGER8,
+    INTEGER16,
+    INTEGER32,
+    INTEGER64,
+    FLOAT32,
+    FLOAT64,
+    BYTEARRAY,
+    STRING
+} scan_data_type_t;
+
+typedef enum {
+    MATCHANY,                /* for snapshot */
+    /* following: compare with a given value */
+    MATCHEQUALTO,
+    MATCHNOTEQUALTO,
+    MATCHGREATERTHAN,
+    MATCHLESSTHAN,
+    MATCHRANGE,
+    /* following: compare with the old value */
+    MATCHUPDATE,
+    MATCHNOTCHANGED,
+    MATCHCHANGED,
+    MATCHINCREASED,
+    MATCHDECREASED,
+    /* following: compare with both given value and old value */
+    MATCHINCREASEDBY,
+    MATCHDECREASEDBY
+} scan_match_type_t;
+
+
+/* some routines for working with value_t structures */
+
+/* match_flags: they MUST be implemented as an `uint16_t`, the `__packed__` ensures so.
+ * They are reinterpreted as a normal integer when scanning for VLT, which is
+ * valid for both endians, as the flags are ordered from smaller to bigger.
+ * NAMING: Primitive, single-bit flags are called `flag_*`, while aggregates,
+ * defined for convenience, are called `flags_*`*/
+typedef enum __attribute__((__packed__)) {
+    flags_empty = 0,
+    
+    flag_u8b  = 1 << 0,  /* could be an unsigned  8-bit variable (e.g. unsigned char)      */
+    flag_s8b  = 1 << 1,  /* could be a    signed  8-bit variable (e.g. signed char)        */
+    flag_u16b = 1 << 2,  /* could be an unsigned 16-bit variable (e.g. unsigned short)     */
+    flag_s16b = 1 << 3,  /* could be a    signed 16-bit variable (e.g. short)              */
+    flag_u32b = 1 << 4,  /* could be an unsigned 32-bit variable (e.g. unsigned int)       */
+    flag_s32b = 1 << 5,  /* could be a    signed 32-bit variable (e.g. int)                */
+    flag_u64b = 1 << 6,  /* could be an unsigned 64-bit variable (e.g. unsigned long long) */
+    flag_s64b = 1 << 7,  /* could be a    signed 64-bit variable (e.g. long long)          */
+    
+    flag_f32b = 1 << 8,  /* could be a 32-bit floating point variable (i.e. float)         */
+    flag_f64b = 1 << 9,  /* could be a 64-bit floating point variable (i.e. double)        */
+    
+    flags_i8b  = flag_u8b  | flag_s8b,
+    flags_i16b = flag_u16b | flag_s16b,
+    flags_i32b = flag_u32b | flag_s32b,
+    flags_i64b = flag_u64b | flag_s64b,
+    
+    flags_integer = flags_i8b | flags_i16b | flags_i32b | flags_i64b,
+    flags_float = flag_f32b | flag_f64b,
+    flags_all = flags_integer | flags_float,
+    
+    flags_8b   = flags_i8b,
+    flags_16b  = flags_i16b,
+    flags_32b  = flags_i32b | flag_f32b,
+    flags_64b  = flags_i64b | flag_f64b,
+    
+    flags_max = 0xffffU /* ensures we're using an uint16_t */
+} match_flags;
+
+
+/* Possible flags per scan data type: if an incoming uservalue has none of the
+ * listed flags we're sure it's not going to be matched by the scan,
+ * so we reject it without even trying */
+static match_flags scan_data_type_to_flags[] = {
+        [ANYNUMBER]  = flags_all,
+        [ANYINTEGER] = flags_integer,
+        [ANYFLOAT]   = flags_float,
+        [INTEGER8]   = flags_i8b,
+        [INTEGER16]  = flags_i16b,
+        [INTEGER32]  = flags_i32b,
+        [INTEGER64]  = flags_i64b,
+        [FLOAT32]    = flag_f32b,
+        [FLOAT64]    = flag_f64b,
+        [BYTEARRAY]  = flags_max,
+        [STRING]     = flags_max
 };
 
-struct ExpressionInterval{
-    ExpressionInterval(unsigned i, unsigned j):_start(i),_end(j){}
-    void Set(unsigned i, unsigned j){_start=i;_end=j;}
-    unsigned _start;
-    unsigned _end;
-};
-
-class Parser
+static inline size_t flags_to_memlength(scan_data_type_t scan_data_type, match_flags flags)
 {
-public:
-    Parser();
-    ~Parser();
-    
-    float ParseInput(char *in);
-    
-    bool StrCompare(char *one, const char *two, unsigned numberOfChars);
-
-private:
-    
-    void NewInput(char *input);
-    
-    float BuildSubTree(ExpressionInterval ei,int delimiter);
-    float Leaf(ExpressionInterval ei);
-    
-    
-    std::vector<Operator<float>> _operators;
-    
-    char *_inputString;
-};
-
-
-
-class lexical_cast_sign : public std::bad_cast
-{
-public:
-    lexical_cast_sign() noexcept
-            : source(&typeid(void)), target(&typeid(void)) {}
-    
-    virtual const char *what() const noexcept
-    {
-        return wat.c_str();
+    switch(scan_data_type) {
+        case BYTEARRAY:
+        case STRING:
+            return flags;
+        default: /* NUMBER */
+            return (flags & flags_64b)?8:
+                   (flags & flags_32b)?4:
+                   (flags & flags_16b)?2:
+                   (flags & flags_8b )?1:0;
     }
-    
-    virtual ~lexical_cast_sign() noexcept {}
-    
-    lexical_cast_sign(const std::type_info &source_type_arg, 
-                     const std::type_info &target_type_arg) noexcept
-            : source(&source_type_arg)
-            , target(&target_type_arg)
-    { }
-    
-    const std::type_info &source_type() const noexcept
-    {
-        return *source;
-    }
-    
-    const std::type_info &target_type() const noexcept
-    {
-        return *target;
-    }
-
-private:
-    const std::type_info *source;
-    const std::type_info *target;
-    std::string wat = "bad lexical cast: source type value could not be interpreted as target";
-};
-
-class lexical_cast_range : public std::bad_cast
-{
-public:
-    lexical_cast_range() noexcept
-            : source(&typeid(void)), target(&typeid(void)) {}
-    
-    virtual const char *what() const noexcept
-    {
-        return wat.c_str();
-    }
-    
-    virtual ~lexical_cast_range() noexcept {}
-    
-    lexical_cast_range(const std::type_info &source_type_arg, 
-                     const std::type_info &target_type_arg)
-    noexcept
-            : source(&source_type_arg)
-            , target(&target_type_arg)
-    { }
-    
-    const std::type_info &source_type() const noexcept
-    {
-        return *source;
-    }
-    
-    const std::type_info &target_type() const noexcept
-    {
-        return *target;
-    }
-
-private:
-    const std::type_info *source;
-    const std::type_info *target;
-    std::string wat = "bad lexical cast: source type value could not be interpreted as target";
-};
-
-
-using namespace std;
-
-template<typename T>
-T lexical_cast(const char *nptr, bool *negative = 0, char **endptr = 0, int base = 0)
-{
-    const char *s = nptr;
-    int c;
-    T cutoff;
-    int neg = 0, any, cutlim;
-    T output;
-    
-    // skip spaces, set sign, set base
-    do {
-        c = *s++;
-    } while (isspace(c));
-    if (c == '-') {
-        if (!std::numeric_limits<T>::is_signed) {
-//            std::clog<<"bad lexical cast: found minus sig but type is unsigned"<<std::endl;
-            throw lexical_cast_sign();
-        }
-        neg = 1;
-        if (negative != 0)
-            *negative = static_cast<bool>(neg);
-        c = *s++;
-    } else if (c == '+') {
-        c = *s++;
-    }
-    if ((base == 0 || base == 16) &&
-        c == '0' && (*s == 'x' || *s == 'X')) {
-        c = s[1];
-        s += 2;
-        base = 16;
-    }
-    if (base == 0)
-        base = c == '0' ? 8 : 10;
-    
-    /*
-     * Compute the cutoff value between legal numbers and illegal
-     * numbers.  That is the largest legal value, divided by the
-     * base.  An input number that is greater than this value, if
-     * followed by a legal input character, is too big.  One that
-     * is equal to this value may be valid or not; the limit
-     * between valid and invalid numbers is then based on the last
-     * digit.  For instance, if the range for longs is
-     * [-2147483648..2147483647] and the input base is 10,
-     * cutoff will be set to 214748364 and cutlim to either
-     * 7 (neg==0) or 8 (neg==1), meaning that if we have accumulated
-     * a value > 214748364, or equal but the next digit is > 7 (or 8),
-     * the number is too big, and we will return a range error.
-     *
-     * Set any if any `digits' consumed; make it negative to indicate
-     * overflow.
-     */
-    cutoff = std::numeric_limits<T>::max() / (T)base;
-    cutlim = std::numeric_limits<T>::max() % (T)base;
-//    std::clog<<"["<<+std::numeric_limits<T>::min()<<", "<<+std::numeric_limits<T>::max()<<"]"<<std::endl;
-    for(output = 0, any = 0;; c = *s++) {
-        if (isdigit(c))
-            c -= '0';
-        else if (isalpha(c))
-            c -= isupper(c) ? 'A' - 10 : 'a' - 10;
-        else
-            break;
-        if (c >= base)
-            break;
-        if (any < 0 || output > cutoff || (output == cutoff && c > cutlim))
-            any = -1;
-        else {
-            any = 1;
-            output *= base;
-            output += c;
-        }
-    }
-    if (any < 0) {
-        throw lexical_cast_range();
-//        output = is_unsigned<T>()?type_max<T>():(neg?type_min<T>():type_max<T>());
-//        errno = ERANGE;
-    } else if (neg) {
-        output = -output;
-    }
-    if (endptr != 0)
-        *endptr = (char *) (any ? s - 1 : nptr);
-    return (output);
 }
 
-#endif //RE_CALCULATOR_HH
+#define SIZEOF_FLAG(flags) ( \
+    (flags) & flags_64?8:    \
+    (flags) & flags_32?4:    \
+    (flags) & flags_16?2:    \
+    (flags) & flags_8 ?1:0)
+
+#define ISSIGNED_FLAG(flags) ( \
+    (flags) & flags_si?true:false)
+
+#define ISUNSIGNED_FLAG(flags) ( \
+    (flags) & flags_ui?true:false)
+
+#define MAKESIGNED_FLAG(flags) ( \
+    (flags) & flag_ui64?(flags)=flag_si64:\
+    (flags) & flag_ui32?(flags)=flag_si32:\
+    (flags) & flag_ui16?(flags)=flag_si16:\
+    (flags) & flag_ui8? (flags)=flag_si8:0)
+
+//fixme value: 21245, double: 00 00 00 00 40 bf d4 40, float: 00 00 00 00
+#define PRINT_VALUE_AS_BYTES(e) {\
+    size_t size = SIZEOF_FLAG((e).flags);\
+    if      (size == 1) printf("%02x", (e).value.bytes[0]);\
+    else if (size == 2) printf("%02x %02x", (e).value.bytes[0], (e).value.bytes[1]);\
+    else if (size == 4) printf("%02x %02x %02x %02x", (e).value.bytes[0], (e).value.bytes[1],\
+                                                      (e).value.bytes[2], (e).value.bytes[3]);\
+    else if (size == 8) printf("%02x %02x %02x %02x %02x %02x %02x %02x", (e).value.bytes[0], (e).value.bytes[1],\
+                                                                          (e).value.bytes[2], (e).value.bytes[3],\
+                                                                          (e).value.bytes[4], (e).value.bytes[5],\
+                                                                          (e).value.bytes[6], (e).value.bytes[7]);\
+    else printf("NaN");}
+
+
+/* this struct describes matched values */
+typedef struct {
+    union {
+        int8_t int8_value;
+        uint8_t uint8_value;
+        int16_t int16_value;
+        uint16_t uint16_value;
+        int32_t int32_value;
+        uint32_t uint32_value;
+        int64_t int64_value;
+        uint64_t uint64_value;
+        float float32_value;
+        double float64_value;
+        uint8_t bytes[sizeof(int64_t)];
+        char chars[sizeof(int64_t)];
+    };
+    
+    match_flags flags;
+} value_t;
+
+/* This union describes 8 bytes retrieved from target memory.
+ * Pointers to this union are the only ones that are allowed to be unaligned:
+ * to avoid performance degradation/crashes on arches that don't support unaligned access
+ * (e.g. ARM) we access unaligned memory only through the attributes of this packed union.
+ * As described in http://www.alfonsobeato.net/arm/how-to-access-safely-unaligned-data/ ,
+ * a packed structure forces the compiler to write general access methods to its members
+ * that don't depend on alignment.
+ * So NEVER EVER dereference a mem64_t*, but use its accessors to obtain the needed type.
+ */
+typedef union __attribute__((packed)) {
+    int8_t int8_value;
+    uint8_t uint8_value;
+    int16_t int16_value;
+    uint16_t uint16_value;
+    int32_t int32_value;
+    uint32_t uint32_value;
+    int64_t int64_value;
+    uint64_t uint64_value;
+    float float32_value;
+    double float64_value;
+    uint8_t bytes[sizeof(int64_t)];
+    char chars[sizeof(int64_t)];
+} mem64_t;
+
+/* bytearray wildcards: they must be uint8_t. They are ANDed with the incoming
+ * memory before the comparison, so that '??' wildcards always return true
+ * It's possible to extend them to fully granular wildcard-ing, if needed */
+typedef enum __attribute__ ((__packed__)) {
+    FIXED = 0xffu,
+    WILDCARD = 0x00u,
+} wildcard_t;
+
+/* this struct describes values provided by users */
+typedef struct {
+    int8_t int8_value;
+    uint8_t uint8_value;
+    int16_t int16_value;
+    uint16_t uint16_value;
+    int32_t int32_value;
+    uint32_t uint32_value;
+    int64_t int64_value;
+    uint64_t uint64_value;
+    float float32_value;
+    double float64_value;
+    
+    std::vector<uint8_t> bytearray_value;
+    std::vector<wildcard_t> wildcard_value;
+    
+    const char *string_value;
+    
+    match_flags flags;
+} uservalue_t;
+
+bool parse_uservalue_int(const char *nptr, uservalue_t *val);
+bool parse_uservalue_float(const char *nptr, uservalue_t *val);
+bool parse_uservalue_number(const char *nptr, uservalue_t *val);     // parse int or float
+bool parse_uservalue_bytearray(const char *text, uservalue_t *val);
+bool parse_uservalue_default(const char *str, uservalue_t *val);
+
+#endif //RE_VALUE_HH

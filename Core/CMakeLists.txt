@@ -6,6 +6,9 @@ project(RECore)
 # ┌──────────────────────────────────────────────────────────────────┐
 # │  Build executable                                                │
 # └──────────────────────────────────────────────────────────────────┘
-add_library(RECore 
-        api.cc
-        value.cc)
+add_library(RECore
+        core.cc         core.hh
+        external.hh
+        scanner.cc      scanner.hh
+        value.cc        value.hh
+        external.cc)
