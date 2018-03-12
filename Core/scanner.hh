@@ -25,7 +25,7 @@ public:
         this->region = region;
         this->offset = offset;
         this->address.data = region->start + offset;
-        this->val = val;
+        this->val = memory_ptr;
         this->userflag = userflag;
     }
 };

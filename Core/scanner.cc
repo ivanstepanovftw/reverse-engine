@@ -261,21 +261,21 @@ Scanner::first_scan(scan_data_type_t data_type, const char *ustr)
         
         for(uintptr_t offset = 0; totalsize > 0; totalsize-=this->step, offset+=this->step) {
             const mem64_t *memory_ptr = reinterpret_cast<mem64_t *>(&buffer[offset]);
+            match_flags flags = vals[0].flags;
             
             switch (mt) {
-                case MATCHEQUALTO: //fixme не удаляет флаг
-                    if ((vals[0].flags & flag_s64b) && memory_ptr->int64_value  == vals[0].int64_value
-                    ||  (vals[0].flags & flag_s32b) && memory_ptr->int32_value  == vals[0].int32_value
-                    ||  (vals[0].flags & flag_s16b) && memory_ptr->int16_value  == vals[0].int16_value
-                    ||  (vals[0].flags & flag_s8b ) && memory_ptr->int8_value   == vals[0].int8_value
-                    ||  (vals[0].flags & flag_u64b) && memory_ptr->uint64_value == vals[0].uint64_value
-                    ||  (vals[0].flags & flag_u32b) && memory_ptr->uint32_value == vals[0].uint32_value
-                    ||  (vals[0].flags & flag_u16b) && memory_ptr->uint16_value == vals[0].uint16_value
-                    ||  (vals[0].flags & flag_u8b ) && memory_ptr->uint8_value  == vals[0].uint8_value
-                            ) {
-                        clog<<"address: "<<hex<<(region.start+offset)<<dec<<", flags: "<<bitset<16>(vals[0].flags)<<endl;
-                        this->matches.emplace_back(&region, offset, *memory_ptr, vals[0].flags);
-                    }
+                case MATCHEQUALTO:
+                    if ((flags & flag_s64b) && !(memory_ptr->int64_value  == vals[0].int64_value )) flags = static_cast<match_flags>(flags & ~flag_s64b);
+                    if ((flags & flag_s32b) && !(memory_ptr->int32_value  == vals[0].int32_value )) flags = static_cast<match_flags>(flags & ~flag_s32b);
+                    if ((flags & flag_s16b) && !(memory_ptr->int16_value  == vals[0].int16_value )) flags = static_cast<match_flags>(flags & ~flag_s16b);
+                    if ((flags & flag_s8b ) && !(memory_ptr->int8_value   == vals[0].int8_value  )) flags = static_cast<match_flags>(flags & ~flag_s8b);
+                    if ((flags & flag_u64b) && !(memory_ptr->uint64_value == vals[0].uint64_value)) flags = static_cast<match_flags>(flags & ~flag_u64b);
+                    if ((flags & flag_u32b) && !(memory_ptr->uint32_value == vals[0].uint32_value)) flags = static_cast<match_flags>(flags & ~flag_u32b);
+                    if ((flags & flag_u16b) && !(memory_ptr->uint16_value == vals[0].uint16_value)) flags = static_cast<match_flags>(flags & ~flag_u16b);
+                    if ((flags & flag_u8b ) && !(memory_ptr->uint8_value  == vals[0].uint8_value )) flags = static_cast<match_flags>(flags & ~flag_u8b);
+                    
+                    if (flags) this->matches.emplace_back(&region, offset, *memory_ptr, flags);
+                    
                     break;
                 case MATCHNOTEQUALTO:
                     break;
