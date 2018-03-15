@@ -2,12 +2,16 @@
 // Created by root on 09.03.18.
 //
 
+//#pragma clang diagnostic push
+//#pragma ide diagnostic ignored "OCUnusedGlobalDeclarationInspection"
 #ifndef RE_SCANNER_HH
 #define RE_SCANNER_HH
 
 #include "core.hh"
 #include "inttypes.h"
 #include "value.hh"
+#include <memory>
+#include <functional>
 
 class match {
 public:
@@ -39,13 +43,14 @@ public:
     bool stop_flag = false;
     double scan_progress = 0;
     uintptr_t step = 1;
-    
+        
     explicit Scanner(Handle *handle) {
         this->handle = handle;
     }
     
     //обрабатываем текст с текущими параметрами поиска
-    bool parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *mt, uservalue_t *vals);
+    bool parse(scan_data_type_t data_type, const char *ustr,
+               scan_match_type_t *mt, uservalue_t *vals);
     
     bool first_scan(scan_data_type_t data_type, const char *ustr);
     
@@ -59,6 +64,73 @@ public:
      * it reduces the list to those that still match. It returns false on failure to attach, detach, or reallocate memory, otherwise true. */
     //    bool sm_checkmatches(scan_match_type_t match_type, const uservalue_t *uservalue);
     
+    
+    /// Iterator over target memory
+private:
+    region_t *i_region;
+    size_t i_region_number = 0;
+    uintptr_t i_totalsize = 0;
+    uint8_t *i_buffer = nullptr;
+    uintptr_t i_offset = 0;
+    mem64_t *i_memory_ptr;
+    
+    bool i_nextRegion() {
+        for(; i_region_number < handle->regions.size();) {
+            i_region = &handle->regions[i_region_number++];
+            if (!i_region->writable || !i_region->readable)
+                continue;
+            /// calculate size of region
+            i_totalsize = i_region->end - i_region->start;
+            /// allocate buffer
+            delete [] i_buffer;
+            i_buffer = new uint8_t[i_totalsize];
+            /// read into buffer
+            if (!handle->read(i_buffer, static_cast<void *>(i_region->start), i_totalsize)) {
+                std::clog<<"error: invalid region: cant read memory: "<<i_region<<std::endl;
+                continue;
+            }
+            /// valid region found
+            i_offset = static_cast<uintptr_t>(-this->step);
+            return true;
+        }
+        /// reset for next execution
+        i_region_number = 0;
+        /// no region found
+        return false;
+    }
+    
+    bool i_nextMemory() {
+        if (i_totalsize > 0) {
+            i_offset += this->step;
+            i_totalsize -= this->step;
+            i_memory_ptr = reinterpret_cast<mem64_t *>(&i_buffer[i_offset]);
+            return true;
+        }
+        return false;
+    }
 };
 
 #endif //RE_SCANNER_HH
+
+//#pragma clang diagnostic pop
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

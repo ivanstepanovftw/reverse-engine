@@ -3,10 +3,12 @@
 //
 
 #include <bitset>
+#include <chrono>
 #include "scanner.hh"
 #include "value.hh"
 
 using namespace std;
+using namespace std::chrono;
 
 //bool
 //Scanner::sm_checkmatches(scan_match_type_t match_type,
@@ -146,46 +148,46 @@ bool
 Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *mt, uservalue_t *vals) {
     switch (data_type) {
         case BYTEARRAY:
-//            if (!parse_uservalue_bytearray(ustr, &vals[0])) {
-//                printf("AOB parse error\n");
-//                return false;
-//            }
-            printf("AOB parse not implemented yet\n");
-            return false;
+            if (!parse_uservalue_bytearray(ustr, &vals[0])) {
+                clog<<"AOB parse error"<<endl;
+                return false;
+            }
+            break;
         case STRING:
-            printf("String parse not implemented yet\n");
+            clog<<"String parse not implemented yet"<<endl;
             return false;
         default:
             /// detect a range
             char *pos = strstr(const_cast<char *>(ustr), "..");
             if (pos) {
                 *pos = '\0';
-                if (!parse_uservalue_default(ustr, &vals[0]))
+                if (!parse_uservalue_number(ustr, &vals[0]))
                     return false;
                 ustr = pos + 2;
-                if (!parse_uservalue_default(ustr, &vals[1]))
+                if (!parse_uservalue_number(ustr, &vals[1]))
                     return false;
                 
-                /* Check that the range is nonempty */
+                /// Check that the range is nonempty
                 if (vals[0].float64_value > vals[1].float64_value) {
-                    printf("Empty range\n");
+                    clog<<"Empty range"<<endl;
                     return false;
                 }
                 
-                /* Store the bitwise AND of both flags in the first value,
-                 * so that range scanroutines need only one flag testing. */
-                vals[0].flags = static_cast<match_flags>(vals[0].flags&vals[1].flags);
+                /// store the bitwise AND of both flags in the first value
+                vals[0].flags = static_cast<match_flags>(vals[0].flags & vals[1].flags);
                 *mt = MATCHRANGE;
             } else {
-                *mt = MATCHEQUALTO;
-                if (!parse_uservalue_default(ustr, &vals[0]))
+                if (!parse_uservalue_number(ustr, &vals[0])) {
+                    clog<<"Not an number"<<endl;
                     return false;
+                }
+                *mt = MATCHEQUALTO;
             }
             break;
     }
     
-    vals[0].flags = static_cast<match_flags>(vals[0].flags&scan_data_type_to_flags[data_type]);
-    vals[1].flags = static_cast<match_flags>(vals[1].flags&scan_data_type_to_flags[data_type]);
+    vals[0].flags = static_cast<match_flags>(vals[0].flags & scan_data_type_to_flags[data_type]);
+    vals[1].flags = static_cast<match_flags>(vals[1].flags & scan_data_type_to_flags[data_type]);
     return true;
 }
 
@@ -207,7 +209,7 @@ Scanner::first_scan(scan_data_type_t data_type, const char *ustr)
     uintptr_t total_scan_bytes = 0;
     for(const region_t &region : this->handle->regions) {
         if (region.start > region.end) {
-            clog<<"error: invalid region. filename: \""<<region.filename<<"\", start: "<<region.start<<" end: "<<region.end<<endl;
+            clog<<"error: invalid region: empty range: "<<region<<endl;
             return false;
         }
         total_scan_bytes += region.end - region.start;
@@ -220,93 +222,122 @@ Scanner::first_scan(scan_data_type_t data_type, const char *ustr)
             clog<<"error: "<<this->handle->regions.size()<<" regions defined, but each have 0 bytes"<<endl;
         return false;
     }
+// Release
+//    Searching took 0.00681768 seconds.
+//    We currently have 333305 matches.
+// Debug
+//    Searching took 0.0475823 seconds.
+//    We currently have 333305 matches.
+//    Searching took 0.040084 seconds.
+//    We currently have 333305 matches.
     
-    this->matches.clear();
-    this->scan_progress = 0.0;
-    this->stop_flag = false;
-    
-    /// for each region scan for a uservalue
-    for(const region_t &region : this->handle->regions) {
-        if (!region.writable || !region.readable)
-            continue;
-//        /// we will use chunks for better memory usage
-//        uint8_t buffer[CHUNK_SIZE];
-//        uintptr_t totalsize = region.end - region.start;
-//        uintptr_t chunknum = 0;
-//        while (totalsize) {
-//            uintptr_t readsize = (totalsize < CHUNK_SIZE) ? totalsize : CHUNK_SIZE;
-//            uintptr_t readaddr = region.start + CHUNK_SIZE * chunknum;
-//            bzero(buffer, CHUNK_SIZE); //should we use it?
-//            
-//            /// read into buffer
-//            if (this->handle->read(buffer, (void *) readaddr, readsize)) {
-//                for(uintptr_t cursor = 0; cursor < readsize; cursor += 1) {
-//                    // etc ...
-//                }
-//            }
-//            
-//            // memory       |_|_|_|_|_|_|_|x|x|_|_|_|_|_|_|_|_|_|_|_|
-//            // buf 8 bytes  [               ] <- lost 1 byte for our int16_t value
-//            totalsize -= MAX(readsize-7, totalsize);
-//            chunknum++;
-//        }
-        uintptr_t totalsize = region.end - region.start;
-        uint8_t buffer[totalsize];
+    {
+        this->matches.clear();
+        this->scan_progress = 0.0;
+        this->stop_flag = false;
         
-        /// read into buffer
-        if (!this->handle->read(buffer, (void *) region.start, totalsize)) {
-            clog<<"error: cant read memory region. filename: \""<<region.filename<<"\", start: "<<region.start<<" end: "<<region.end<<endl;
-            break;
-        }
+        auto time_point = high_resolution_clock::now();
         
-        for(uintptr_t offset = 0; totalsize > 0; totalsize-=this->step, offset+=this->step) {
-            const mem64_t *memory_ptr = reinterpret_cast<mem64_t *>(&buffer[offset]);
-            match_flags flags = vals[0].flags;
-            
-            switch (mt) {
-                case MATCHEQUALTO:
-                    if ((flags & flag_s64b) && !(memory_ptr->int64_value  == vals[0].int64_value )) flags = static_cast<match_flags>(flags & ~flag_s64b);
-                    if ((flags & flag_s32b) && !(memory_ptr->int32_value  == vals[0].int32_value )) flags = static_cast<match_flags>(flags & ~flag_s32b);
-                    if ((flags & flag_s16b) && !(memory_ptr->int16_value  == vals[0].int16_value )) flags = static_cast<match_flags>(flags & ~flag_s16b);
-                    if ((flags & flag_s8b ) && !(memory_ptr->int8_value   == vals[0].int8_value  )) flags = static_cast<match_flags>(flags & ~flag_s8b);
-                    if ((flags & flag_u64b) && !(memory_ptr->uint64_value == vals[0].uint64_value)) flags = static_cast<match_flags>(flags & ~flag_u64b);
-                    if ((flags & flag_u32b) && !(memory_ptr->uint32_value == vals[0].uint32_value)) flags = static_cast<match_flags>(flags & ~flag_u32b);
-                    if ((flags & flag_u16b) && !(memory_ptr->uint16_value == vals[0].uint16_value)) flags = static_cast<match_flags>(flags & ~flag_u16b);
-                    if ((flags & flag_u8b ) && !(memory_ptr->uint8_value  == vals[0].uint8_value )) flags = static_cast<match_flags>(flags & ~flag_u8b);
-                    
-                    if (flags) this->matches.emplace_back(&region, offset, *memory_ptr, flags);
-                    
-                    break;
-                case MATCHNOTEQUALTO:
-                    break;
-                case MATCHGREATERTHAN:break;
-                case MATCHLESSTHAN:break;
-                case MATCHRANGE:
-                    break;
-                case MATCHINCREASEDBY:break;
-                case MATCHDECREASEDBY:break;
-                case MATCHANY:break;
-                case MATCHUPDATE:break;
-                case MATCHNOTCHANGED:break;
-                case MATCHCHANGED:break;
-                case MATCHINCREASED:break;
-                case MATCHDECREASED:break;
-            }
-    
-            /// stop scanning if asked to
-            if (this->stop_flag)
+        switch (mt) {
+            case MATCHEQUALTO:
+                for(;i_nextRegion();)
+                    for(;i_nextMemory();) {
+                        match_flags flags = vals[0].flags;
+                        if ((flags & flag_s64b) && (i_memory_ptr->int64_value   != vals[0].int64_value))   flags = static_cast<match_flags>(flags & ~flag_s64b);
+                        if ((flags & flag_s32b) && (i_memory_ptr->int32_value   != vals[0].int32_value))   flags = static_cast<match_flags>(flags & ~flag_s32b);
+                        if ((flags & flag_s16b) && (i_memory_ptr->int16_value   != vals[0].int16_value))   flags = static_cast<match_flags>(flags & ~flag_s16b);
+                        if ((flags & flag_s8b)  && (i_memory_ptr->int8_value    != vals[0].int8_value))    flags = static_cast<match_flags>(flags & ~flag_s8b);
+                        if ((flags & flag_u64b) && (i_memory_ptr->uint64_value  != vals[0].uint64_value))  flags = static_cast<match_flags>(flags & ~flag_u64b);
+                        if ((flags & flag_u32b) && (i_memory_ptr->uint32_value  != vals[0].uint32_value))  flags = static_cast<match_flags>(flags & ~flag_u32b);
+                        if ((flags & flag_u16b) && (i_memory_ptr->uint16_value  != vals[0].uint16_value))  flags = static_cast<match_flags>(flags & ~flag_u16b);
+                        if ((flags & flag_u8b)  && (i_memory_ptr->uint8_value   != vals[0].uint8_value))   flags = static_cast<match_flags>(flags & ~flag_u8b);
+                        if ((flags & flag_f64b) && (i_memory_ptr->float64_value != vals[0].float64_value)) flags = static_cast<match_flags>(flags & ~flag_f64b);
+                        if ((flags & flag_f32b) && (i_memory_ptr->float32_value != vals[0].float32_value)) flags = static_cast<match_flags>(flags & ~flag_f32b);
+                        if (flags) this->matches.emplace_back(i_region, i_offset, *i_memory_ptr, flags);
+                        if (this->stop_flag) return false;
+                    }
+                break;
+            case MATCHNOTEQUALTO:
+                for(;i_nextRegion();)
+                    for(;i_nextMemory();) {
+                        match_flags flags = vals[0].flags;
+                        if ((flags & flag_s64b) && (i_memory_ptr->int64_value   == vals[0].int64_value))   flags = static_cast<match_flags>(flags & ~flag_s64b);
+                        if ((flags & flag_s32b) && (i_memory_ptr->int32_value   == vals[0].int32_value))   flags = static_cast<match_flags>(flags & ~flag_s32b);
+                        if ((flags & flag_s16b) && (i_memory_ptr->int16_value   == vals[0].int16_value))   flags = static_cast<match_flags>(flags & ~flag_s16b);
+                        if ((flags & flag_s8b)  && (i_memory_ptr->int8_value    == vals[0].int8_value))    flags = static_cast<match_flags>(flags & ~flag_s8b);
+                        if ((flags & flag_u64b) && (i_memory_ptr->uint64_value  == vals[0].uint64_value))  flags = static_cast<match_flags>(flags & ~flag_u64b);
+                        if ((flags & flag_u32b) && (i_memory_ptr->uint32_value  == vals[0].uint32_value))  flags = static_cast<match_flags>(flags & ~flag_u32b);
+                        if ((flags & flag_u16b) && (i_memory_ptr->uint16_value  == vals[0].uint16_value))  flags = static_cast<match_flags>(flags & ~flag_u16b);
+                        if ((flags & flag_u8b)  && (i_memory_ptr->uint8_value   == vals[0].uint8_value))   flags = static_cast<match_flags>(flags & ~flag_u8b);
+                        if ((flags & flag_f64b) && (i_memory_ptr->float64_value == vals[0].float64_value)) flags = static_cast<match_flags>(flags & ~flag_f64b);
+                        if ((flags & flag_f32b) && (i_memory_ptr->float32_value == vals[0].float32_value)) flags = static_cast<match_flags>(flags & ~flag_f32b);
+                        if (flags) this->matches.emplace_back(i_region, i_offset, *i_memory_ptr, flags);
+                        if (this->stop_flag) return false;
+                    }
+                break;
+            case MATCHGREATERTHAN:
+                for(;i_nextRegion();)
+                    for(;i_nextMemory();) {
+                        match_flags flags = vals[0].flags;
+                        if ((flags & flag_s64b) && (i_memory_ptr->int64_value   <= vals[0].int64_value))   flags = static_cast<match_flags>(flags & ~flag_s64b);
+                        if ((flags & flag_s32b) && (i_memory_ptr->int32_value   <= vals[0].int32_value))   flags = static_cast<match_flags>(flags & ~flag_s32b);
+                        if ((flags & flag_s16b) && (i_memory_ptr->int16_value   <= vals[0].int16_value))   flags = static_cast<match_flags>(flags & ~flag_s16b);
+                        if ((flags & flag_s8b)  && (i_memory_ptr->int8_value    <= vals[0].int8_value))    flags = static_cast<match_flags>(flags & ~flag_s8b);
+                        if ((flags & flag_u64b) && (i_memory_ptr->uint64_value  <= vals[0].uint64_value))  flags = static_cast<match_flags>(flags & ~flag_u64b);
+                        if ((flags & flag_u32b) && (i_memory_ptr->uint32_value  <= vals[0].uint32_value))  flags = static_cast<match_flags>(flags & ~flag_u32b);
+                        if ((flags & flag_u16b) && (i_memory_ptr->uint16_value  <= vals[0].uint16_value))  flags = static_cast<match_flags>(flags & ~flag_u16b);
+                        if ((flags & flag_u8b)  && (i_memory_ptr->uint8_value   <= vals[0].uint8_value))   flags = static_cast<match_flags>(flags & ~flag_u8b);
+                        if ((flags & flag_f64b) && (i_memory_ptr->float64_value <= vals[0].float64_value)) flags = static_cast<match_flags>(flags & ~flag_f64b);
+                        if ((flags & flag_f32b) && (i_memory_ptr->float32_value <= vals[0].float32_value)) flags = static_cast<match_flags>(flags & ~flag_f32b);
+                        if (flags) this->matches.emplace_back(i_region, i_offset, *i_memory_ptr, flags);
+                        if (this->stop_flag) return false;
+                    }
+                break;
+            case MATCHLESSTHAN:
+                for(;i_nextRegion();)
+                    for(;i_nextMemory();) {
+                        match_flags flags = vals[0].flags;
+                        if ((flags & flag_s64b) && (i_memory_ptr->int64_value   >= vals[0].int64_value))   flags = static_cast<match_flags>(flags & ~flag_s64b);
+                        if ((flags & flag_s32b) && (i_memory_ptr->int32_value   >= vals[0].int32_value))   flags = static_cast<match_flags>(flags & ~flag_s32b);
+                        if ((flags & flag_s16b) && (i_memory_ptr->int16_value   >= vals[0].int16_value))   flags = static_cast<match_flags>(flags & ~flag_s16b);
+                        if ((flags & flag_s8b)  && (i_memory_ptr->int8_value    >= vals[0].int8_value))    flags = static_cast<match_flags>(flags & ~flag_s8b);
+                        if ((flags & flag_u64b) && (i_memory_ptr->uint64_value  >= vals[0].uint64_value))  flags = static_cast<match_flags>(flags & ~flag_u64b);
+                        if ((flags & flag_u32b) && (i_memory_ptr->uint32_value  >= vals[0].uint32_value))  flags = static_cast<match_flags>(flags & ~flag_u32b);
+                        if ((flags & flag_u16b) && (i_memory_ptr->uint16_value  >= vals[0].uint16_value))  flags = static_cast<match_flags>(flags & ~flag_u16b);
+                        if ((flags & flag_u8b)  && (i_memory_ptr->uint8_value   >= vals[0].uint8_value))   flags = static_cast<match_flags>(flags & ~flag_u8b);
+                        if ((flags & flag_f64b) && (i_memory_ptr->float64_value >= vals[0].float64_value)) flags = static_cast<match_flags>(flags & ~flag_f64b);
+                        if ((flags & flag_f32b) && (i_memory_ptr->float32_value >= vals[0].float32_value)) flags = static_cast<match_flags>(flags & ~flag_f32b);
+                        if (flags) this->matches.emplace_back(i_region, i_offset, *i_memory_ptr, flags);
+                        if (this->stop_flag) return false;
+                    }
+                break;
+            case MATCHRANGE:
+                for(;i_nextRegion();)
+                    for(;i_nextMemory();) {
+                        match_flags flags = vals[0].flags;
+                        if ((flags & flag_s64b) && (i_memory_ptr->int64_value   < vals[0].int64_value   || i_memory_ptr->int64_value   > vals[1].int64_value))   flags = static_cast<match_flags>(flags & ~flag_s64b);
+                        if ((flags & flag_s32b) && (i_memory_ptr->int32_value   < vals[0].int32_value   || i_memory_ptr->int32_value   > vals[1].int32_value))   flags = static_cast<match_flags>(flags & ~flag_s32b);
+                        if ((flags & flag_s16b) && (i_memory_ptr->int16_value   < vals[0].int16_value   || i_memory_ptr->int16_value   > vals[1].int16_value))   flags = static_cast<match_flags>(flags & ~flag_s16b);
+                        if ((flags & flag_s8b)  && (i_memory_ptr->int8_value    < vals[0].int8_value    || i_memory_ptr->int8_value    > vals[1].int8_value))    flags = static_cast<match_flags>(flags & ~flag_s8b);
+                        if ((flags & flag_u64b) && (i_memory_ptr->uint64_value  < vals[0].uint64_value  || i_memory_ptr->uint64_value  > vals[1].uint64_value))  flags = static_cast<match_flags>(flags & ~flag_u64b);
+                        if ((flags & flag_u32b) && (i_memory_ptr->uint32_value  < vals[0].uint32_value  || i_memory_ptr->uint32_value  > vals[1].uint32_value))  flags = static_cast<match_flags>(flags & ~flag_u32b);
+                        if ((flags & flag_u16b) && (i_memory_ptr->uint16_value  < vals[0].uint16_value  || i_memory_ptr->uint16_value  > vals[1].uint16_value))  flags = static_cast<match_flags>(flags & ~flag_u16b);
+                        if ((flags & flag_u8b)  && (i_memory_ptr->uint8_value   < vals[0].uint8_value   || i_memory_ptr->uint8_value   > vals[1].uint8_value))   flags = static_cast<match_flags>(flags & ~flag_u8b);
+                        if ((flags & flag_f64b) && (i_memory_ptr->float64_value < vals[0].float64_value || i_memory_ptr->float64_value > vals[1].float64_value)) flags = static_cast<match_flags>(flags & ~flag_f64b);
+                        if ((flags & flag_f32b) && (i_memory_ptr->float32_value < vals[0].float32_value || i_memory_ptr->float32_value > vals[1].float32_value)) flags = static_cast<match_flags>(flags & ~flag_f32b);
+                        if (flags) this->matches.emplace_back(i_region, i_offset, *i_memory_ptr, flags);
+                        if (this->stop_flag) return false;
+                    }
                 break;
         }
         
-        /// stop scanning if asked to
-        if (this->stop_flag)
-            break;
+        clog<<"Scan finished: "<<this->matches.size()/duration_cast<duration<double>>(high_resolution_clock::now() - time_point).count()<<" matches/second."<<endl;
+        
+        this->scan_progress = 1.0;
     }
-    
-    this->scan_progress = 1.0;
-    printf("we currently have %ld matches.\n", this->matches.size());
     return true;
 }
+
 
 
 //bool

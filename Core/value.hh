@@ -2,6 +2,8 @@
 // Структуры, флаги и прочее
 //
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "OCUnusedGlobalDeclarationInspection"
 #ifndef RE_VALUE_HH
 #define RE_VALUE_HH
 
@@ -13,9 +15,10 @@
 #include <cerrno>
 #include <vector>
 #include <string>
+#include <iostream>
 
-//typedef uint8_t byte;
-typedef struct {
+class region_t {
+public:
     // Memory
     uintptr_t start;
     uintptr_t end;
@@ -33,7 +36,12 @@ typedef struct {
     unsigned long inodeFileNumber;
     std::string pathname;
     std::string filename;
-} region_t;
+    
+    friend std::ostream &operator<<(std::ostream &outputStream, const region_t &p)
+    {
+        return outputStream<<"region: {"<<"filename: \""<<p.filename<<"\", start: "<<std::hex<<p.start<<", end: "<<p.end<<std::dec<<"}";
+    }
+};
 
 
 typedef enum {
@@ -141,58 +149,6 @@ static inline size_t flags_to_memlength(scan_data_type_t scan_data_type, match_f
     }
 }
 
-#define SIZEOF_FLAG(flags) ( \
-    (flags) & flags_64?8:    \
-    (flags) & flags_32?4:    \
-    (flags) & flags_16?2:    \
-    (flags) & flags_8 ?1:0)
-
-#define ISSIGNED_FLAG(flags) ( \
-    (flags) & flags_si?true:false)
-
-#define ISUNSIGNED_FLAG(flags) ( \
-    (flags) & flags_ui?true:false)
-
-#define MAKESIGNED_FLAG(flags) ( \
-    (flags) & flag_ui64?(flags)=flag_si64:\
-    (flags) & flag_ui32?(flags)=flag_si32:\
-    (flags) & flag_ui16?(flags)=flag_si16:\
-    (flags) & flag_ui8? (flags)=flag_si8:0)
-
-//fixme value: 21245, double: 00 00 00 00 40 bf d4 40, float: 00 00 00 00
-#define PRINT_VALUE_AS_BYTES(e) {\
-    size_t size = SIZEOF_FLAG((e).flags);\
-    if      (size == 1) printf("%02x", (e).value.bytes[0]);\
-    else if (size == 2) printf("%02x %02x", (e).value.bytes[0], (e).value.bytes[1]);\
-    else if (size == 4) printf("%02x %02x %02x %02x", (e).value.bytes[0], (e).value.bytes[1],\
-                                                      (e).value.bytes[2], (e).value.bytes[3]);\
-    else if (size == 8) printf("%02x %02x %02x %02x %02x %02x %02x %02x", (e).value.bytes[0], (e).value.bytes[1],\
-                                                                          (e).value.bytes[2], (e).value.bytes[3],\
-                                                                          (e).value.bytes[4], (e).value.bytes[5],\
-                                                                          (e).value.bytes[6], (e).value.bytes[7]);\
-    else printf("NaN");}
-
-
-/* this struct describes matched values */
-typedef struct {
-    union {
-        int8_t int8_value;
-        uint8_t uint8_value;
-        int16_t int16_value;
-        uint16_t uint16_value;
-        int32_t int32_value;
-        uint32_t uint32_value;
-        int64_t int64_value;
-        uint64_t uint64_value;
-        float float32_value;
-        double float64_value;
-        uint8_t bytes[sizeof(int64_t)];
-        char chars[sizeof(int64_t)];
-    };
-    
-    match_flags flags;
-} value_t;
-
 /* This union describes 8 bytes retrieved from target memory.
  * Pointers to this union are the only ones that are allowed to be unaligned:
  * to avoid performance degradation/crashes on arches that don't support unaligned access
@@ -250,6 +206,7 @@ bool parse_uservalue_int(const char *nptr, uservalue_t *val);
 bool parse_uservalue_float(const char *nptr, uservalue_t *val);
 bool parse_uservalue_number(const char *nptr, uservalue_t *val);     // parse int or float
 bool parse_uservalue_bytearray(const char *text, uservalue_t *val);
-bool parse_uservalue_default(const char *str, uservalue_t *val);
 
 #endif //RE_VALUE_HH
+
+#pragma clang diagnostic pop

@@ -90,7 +90,8 @@ bool parse_uservalue_bytearray(const char *text, uservalue_t *val)
     vector<wildcard_t> wildcards_array;
     
     /// @see https://stackoverflow.com/questions/7397768/choice-between-vectorresize-and-vectorreserve
-    bytes_array.reserve(32);      // never saw a pattern of more than 20 bytes in a row
+    // never saw a pattern of more than 20 bytes in a row
+    bytes_array.reserve(32);
     wildcards_array.reserve(32);
     
     /// skip past any whitespace
@@ -101,7 +102,7 @@ bool parse_uservalue_bytearray(const char *text, uservalue_t *val)
     char *cur_str;
     cur_str = strtok(const_cast<char *>(text), R"( \x)");
     
-    for(; cur_str != NULL; ) {
+    for(; cur_str != '\0'; ) { //fixme должно же работать, не?
         /// test its length
         if (strlen(cur_str) != 2)
             return false;
@@ -131,15 +132,4 @@ bool parse_uservalue_bytearray(const char *text, uservalue_t *val)
     val->bytearray_value = bytes_array;
     val->flags = flags_all;
     return true;
-}
-
-bool parse_uservalue_default(const char *str, uservalue_t *val)
-{
-    bool ret = true;
-    
-    if (!parse_uservalue_number(str, val)) {
-        printf("unable to parse number `%s`\n", str);
-        ret = false;
-    }
-    return ret;
 }
