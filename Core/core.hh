@@ -102,18 +102,18 @@ public:
     bool isRunning();
 
     // Read_from/write_to this handle
-    bool read(void *out, void *address, size_t size);
+    bool read(void *out, uintptr_t address, size_t size);
 
-    bool write(void *address, void *buffer, size_t size);
+    bool write(uintptr_t address, void *buffer, size_t size);
 
     // Modules
     void updateRegions();
 
     region_t *getRegion(const std::string &region_name = "");
 
-    region_t *getModuleOfAddress(void *address);
+    region_t *getRegionOfAddress(uintptr_t address);
 
-    bool getCallAddress(uintptr_t *out, void *address);
+    bool getCallAddress(uintptr_t *out, uintptr_t address);
     
     static bool dumpMemory(const std::string &path) {
         //todo

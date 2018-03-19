@@ -215,7 +215,7 @@ void ScanWindow::add_row(match *val, const char *type_string)
     
     T value;
     parent->handle->read
-            (&value, (void *) val->address.data, sizeof(T));
+            (&value, val->address.data, sizeof(T));
 //    clog<<"address: "<<hex<<val->address.data<<dec<<", value: "<<value<<endl;
     Gtk::TreeModel::Row row = *(ref_tree_output->append());
     row[columns_output.m_col_address] = address_string;
@@ -231,7 +231,7 @@ void ScanWindow::refresh_row(match *val, const char *type_string, Gtk::TreeModel
     asprintf(&address_string, /*0x*/"%02x%02x%02x%02x%02x%02x", b[5], b[4], b[3], b[2], b[1], b[0]);
     T value;
     parent->handle->read
-            (&value, (void *) val->address.data, sizeof(T));
+            (&value, val->address.data, sizeof(T));
 
     row[columns_output.m_col_value] = to_string(value);
     row[columns_output.m_col_value_type] = type_string;
@@ -275,16 +275,16 @@ ScanWindow::on_button_first_scan()
     for(int i = 0; i < parent->hs->matches.size(); i++) {
         match *val = &parent->hs->matches[i];
         
-        if      (val->userflag & flag_s64b) add_row<int64_t> (val, "int64");
-        else if (val->userflag & flag_s32b) add_row<int32_t> (val, "int32");
-        else if (val->userflag & flag_s16b) add_row<int16_t> (val, "int16");
-        else if (val->userflag & flag_s8b)  add_row<int8_t>  (val, "int8");
-        else if (val->userflag & flag_u64b) add_row<uint64_t>(val, "uint64");
-        else if (val->userflag & flag_u32b) add_row<uint32_t>(val, "uint32");
-        else if (val->userflag & flag_u16b) add_row<uint16_t>(val, "uint16");
-        else if (val->userflag & flag_u8b)  add_row<uint8_t> (val, "uint8");
-        else if (val->userflag & flag_f64b) add_row<double>  (val, "double");
-        else if (val->userflag & flag_f32b) add_row<float>   (val, "float");
+        if      (val->flags & flag_s64b) add_row<int64_t> (val, "int64");
+        else if (val->flags & flag_s32b) add_row<int32_t> (val, "int32");
+        else if (val->flags & flag_s16b) add_row<int16_t> (val, "int16");
+        else if (val->flags & flag_s8b)  add_row<int8_t>  (val, "int8");
+        else if (val->flags & flag_u64b) add_row<uint64_t>(val, "uint64");
+        else if (val->flags & flag_u32b) add_row<uint32_t>(val, "uint32");
+        else if (val->flags & flag_u16b) add_row<uint16_t>(val, "uint16");
+        else if (val->flags & flag_u8b)  add_row<uint8_t> (val, "uint8");
+        else if (val->flags & flag_f64b) add_row<double>  (val, "double");
+        else if (val->flags & flag_f32b) add_row<float>   (val, "float");
     }
     
     // Continue refresh values inside Scanner output
@@ -305,6 +305,47 @@ ScanWindow::on_button_next_scan()
 //    cout << sol << endl;
     ///
     
+    if (entry_value->get_text().empty()) {
+        clog<<"Enter value first!"<<endl;
+        return;
+    }
+    
+    Gtk::TreeModel::iterator iter = combo_stype->get_active();
+    if(!iter) return;
+    Gtk::TreeModel::Row row = *iter;
+    if(!row) return;
+    
+    parent->hs->next_scan(row[columns_scan_type.m_col_scan_type], entry_value->get_text().c_str());
+    
+    ref_tree_output->clear();
+    size_t output_count = parent->hs->matches.size();
+    char *label_count_text;
+    asprintf(&label_count_text, "Found: %li", output_count);
+    label_found->set_text(label_count_text);
+    if (output_count > 10'000) {
+        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
+        return;
+    } else {
+        clog<<"SHOWING"<<endl;
+    }
+    
+    // For each address, that scanner found, add row to tree_output
+    for(int i = 0; i < parent->hs->matches.size(); i++) {
+        match *val = &parent->hs->matches[i];
+        
+        if      (val->flags & flag_s64b) add_row<int64_t> (val, "int64");
+        else if (val->flags & flag_s32b) add_row<int32_t> (val, "int32");
+        else if (val->flags & flag_s16b) add_row<int16_t> (val, "int16");
+        else if (val->flags & flag_s8b)  add_row<int8_t>  (val, "int8");
+        else if (val->flags & flag_u64b) add_row<uint64_t>(val, "uint64");
+        else if (val->flags & flag_u32b) add_row<uint32_t>(val, "uint32");
+        else if (val->flags & flag_u16b) add_row<uint16_t>(val, "uint16");
+        else if (val->flags & flag_u8b)  add_row<uint8_t> (val, "uint8");
+        else if (val->flags & flag_f64b) add_row<double>  (val, "double");
+        else if (val->flags & flag_f32b) add_row<float>   (val, "float");
+    }
+    
+    
     // Continue refresh values inside Scanner output
     conn = Glib::signal_timeout().connect
             (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
@@ -318,16 +359,16 @@ ScanWindow::on_timer_refresh()
         Gtk::TreeModel::Row row = *ref_child[i];
         match *val = &parent->hs->matches[i];
         
-        if      (val->userflag & flag_u64b) refresh_row<uint64_t>(val, "uint64",row);
-        else if (val->userflag & flag_u32b) refresh_row<uint32_t>(val, "uint32",row);
-        else if (val->userflag & flag_u16b) refresh_row<uint16_t>(val, "uint16",row);
-        else if (val->userflag & flag_u8b)  refresh_row<uint8_t> (val, "uint8", row);
-        else if (val->userflag & flag_s64b) refresh_row<int64_t> (val, "int64", row);
-        else if (val->userflag & flag_s32b) refresh_row<int32_t> (val, "int32", row);
-        else if (val->userflag & flag_s16b) refresh_row<int16_t> (val, "int16", row);
-        else if (val->userflag & flag_s8b)  refresh_row<int8_t>  (val, "int8",  row);
-        else if (val->userflag & flag_f64b) refresh_row<double>  (val, "double",row);
-        else if (val->userflag & flag_f32b) refresh_row<float>   (val, "float", row);
+        if      (val->flags & flag_u64b) refresh_row<uint64_t>(val, "uint64",row);
+        else if (val->flags & flag_u32b) refresh_row<uint32_t>(val, "uint32",row);
+        else if (val->flags & flag_u16b) refresh_row<uint16_t>(val, "uint16",row);
+        else if (val->flags & flag_u8b)  refresh_row<uint8_t> (val, "uint8", row);
+        else if (val->flags & flag_s64b) refresh_row<int64_t> (val, "int64", row);
+        else if (val->flags & flag_s32b) refresh_row<int32_t> (val, "int32", row);
+        else if (val->flags & flag_s16b) refresh_row<int16_t> (val, "int16", row);
+        else if (val->flags & flag_s8b)  refresh_row<int8_t>  (val, "int8",  row);
+        else if (val->flags & flag_f64b) refresh_row<double>  (val, "double",row);
+        else if (val->flags & flag_f32b) refresh_row<float>   (val, "float", row);
     }
     return true;
 }

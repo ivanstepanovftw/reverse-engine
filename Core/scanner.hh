@@ -23,14 +23,16 @@ public:
     } address { data:0 };
     mem64_t val;
     mem64_t val_old;
-    match_flags userflag;
+    match_flags flags;
     
-    explicit match(const region_t *region, uintptr_t offset, mem64_t memory_ptr, match_flags userflag) {
+    explicit match(const region_t *region, uintptr_t offset, mem64_t memory_ptr, match_flags userflag, mem64_t *val_old = nullptr) {
         this->region = region;
         this->offset = offset;
         this->address.data = region->start + offset;
         this->val = memory_ptr;
-        this->userflag = userflag;
+        this->flags = userflag;
+        if (val_old)
+            this->val_old = *val_old;
     }
 };
 
@@ -54,7 +56,7 @@ public:
     
     bool first_scan(scan_data_type_t data_type, const char *ustr);
     
-    bool next_scan(scan_data_type_t data_type, char *ustr);
+    bool next_scan(scan_data_type_t data_type, const char *ustr);
     
 //    bool update();
     
@@ -85,7 +87,7 @@ private:
             delete [] i_buffer;
             i_buffer = new uint8_t[i_totalsize];
             /// read into buffer
-            if (!handle->read(i_buffer, reinterpret_cast<void *>(i_region->start), i_totalsize)) {
+            if (!handle->read(i_buffer, (i_region->start), i_totalsize)) {
                 std::clog<<"error: invalid region: cant read memory: "<<i_region<<std::endl;
                 continue;
             }

@@ -110,28 +110,28 @@ Handle::isRunning()
 }
 
 bool
-Handle::read(void *out, void *address, size_t size) 
+Handle::read(void *out, uintptr_t address, size_t size) 
 {
     struct iovec local[1];
     struct iovec remote[1];
     
     local[0].iov_base = out;
     local[0].iov_len = size;
-    remote[0].iov_base = address;
+    remote[0].iov_base = reinterpret_cast<void *>(address);
     remote[0].iov_len = size;
     
     return (process_vm_readv(pid, local, 1, remote, 1, 0) == size);
 }
 
 bool
-Handle::write(void *address, void *buffer, size_t size) 
+Handle::write(uintptr_t address, void *buffer, size_t size) 
 {
     struct iovec local[1];
     struct iovec remote[1];
     
     local[0].iov_base = buffer;
     local[0].iov_len = size;
-    remote[0].iov_base = address;
+    remote[0].iov_base = reinterpret_cast<void *>(address);
     remote[0].iov_len = size;
     
     return (process_vm_writev(pid, local, 1, remote, 1, 0) == size);
@@ -229,11 +229,16 @@ Handle::getRegion(const std::string &region_name) {
 }
 
 region_t *
-Handle::getModuleOfAddress(void *address) 
+Handle::getRegionOfAddress(uintptr_t address) 
 {
-    for(size_t i = 0; i < regions.size(); i++) {
-        if (regions[i].start > (unsigned long) address && (regions[i].start + regions[i].end) <= (unsigned long) address) {
-            return &regions[i];
+//    for(size_t i = 0; i < regions.size(); i++) {
+//        if (regions[i].start > (unsigned long) address && (regions[i].start + regions[i].end) <= (unsigned long) address) {
+//            return &regions[i];
+//        }
+//    }
+    for(region_t &region : this->regions) {
+        if (region.start <= address && address < region.end) {
+            return &region;
         }
     }
     
@@ -241,12 +246,12 @@ Handle::getModuleOfAddress(void *address)
 }
 
 bool
-Handle::getCallAddress(uintptr_t *out, void *address) 
+Handle::getCallAddress(uintptr_t *out, uintptr_t address) 
 {
-    unsigned long code = 0;
+    uintptr_t code = 0;
     
-    if (read((char *) address + 1, &code, sizeof(unsigned int))) {
-        *out = code + (unsigned long) address + 5;
+    if (read(&code, address + 1, sizeof(code))) {
+        *out = code + address + 5;
         return true;
     }
     

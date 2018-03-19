@@ -40,41 +40,46 @@ main() {
 //    }
 //    t2 = high_resolution_clock::now();
 //    time_span = duration_cast<duration<double>>(t2 - t1);
-    double a = -1./0.;
-    double b = 0./0. ;
-    double c = 1./0. ;
-    clog<<"-1./0.  = "<<a<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&a)<<dec<<endl;
-    clog<<"0./0.   = "<<b<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&b)<<dec<<endl;
-    clog<<"1./0.   = "<<c<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&c)<<dec<<endl;
+
+//    double a = -1./0.;
+//    double b = 0./0. ;
+//    double c = 1./0. ;
+//    clog<<"-1./0.  = "<<a<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&a)<<dec<<endl;
+//    clog<<"0./0.   = "<<b<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&b)<<dec<<endl;
+//    clog<<"1./0.   = "<<c<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&c)<<dec<<endl;
+
+    Handle *h = nullptr;
+    region_t *entry = nullptr;
+    region_t *libc = nullptr;
+    region_t *ld = nullptr;
+
+
+    clog<<"Waiting for ["<<target<<"] process"<<endl;
+    for(;;) {
+        delete h;
+        h = new Handle(target);
+        if (h->isRunning())
+            break;
+        usleep(500'000);
+    }
+    clog<<"Found! PID is ["<<h->pid<<"]"<<endl; //как не переводить в хекс и обратно?
+
+    for(;;) {
+        h->updateRegions();
+        entry = h->getRegion();
+        libc = h->getRegion("libc-2.26.so");
+        ld = h->getRegion("ld-2.26.so");
+        if (entry && libc && ld)
+            break;
+        usleep(500'000);
+    }
+    clog<<"Found ["<<entry->filename<<"] at ["<<HEX(entry->start)<<"]"<<endl;
+    clog<<"Found ["<<libc->filename<<"] at ["<<HEX(libc->start)<<"]"<<endl;
+    clog<<"Found ["<<ld->filename<<"] at ["<<HEX(ld->start)<<"]"<<endl;
     
-//    Handle *h = nullptr;
-//    region_t *entry = nullptr;
-//    region_t *libc = nullptr;
-//    region_t *ld = nullptr;
-//
-//
-//    clog<<"Waiting for ["<<target<<"] process"<<endl;
-//    for(;;) {
-//        delete h;
-//        h = new Handle(target);
-//        if (h->isRunning())
-//            break;
-//        usleep(500'000);
-//    }
-//    clog<<"Found! PID is ["<<h->pid<<"]"<<endl; //как не переводить в хекс и обратно?
-//
-//    for(;;) {
-//        h->updateRegions();
-//        entry = h->getRegion();
-//        libc = h->getRegion("libc-2.26.so");
-//        ld = h->getRegion("ld-2.26.so");
-//        if (entry && libc && ld)
-//            break;
-//        usleep(500'000);
-//    }
-//    clog<<"Found ["<<entry->filename<<"] at ["<<HEX(entry->start)<<"]"<<endl;
-//    clog<<"Found ["<<libc->filename<<"] at ["<<HEX(libc->start)<<"]"<<endl;
-//    clog<<"Found ["<<ld->filename<<"] at ["<<HEX(ld->start)<<"]"<<endl;
+    region_t *aas = h->getRegionOfAddress(ld->start+8);
+    clog<<"aas: "<<aas->filename.c_str()<<endl;
+    
 //    
 //    
 //    
