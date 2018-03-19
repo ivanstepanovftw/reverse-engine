@@ -50,11 +50,11 @@ public:
     
     //обрабатываем текст с текущими параметрами поиска
     bool parse(scan_data_type_t data_type, const char *ustr,
-               scan_match_type_t *mt, uservalue_t *vals);
+               scan_match_type_t *match_type, uservalue_t *vals);
     
     bool first_scan(scan_data_type_t data_type, const char *ustr);
     
-//    bool next_scan(scan_data_type_t data_type, char *ustr);
+    bool next_scan(scan_data_type_t data_type, char *ustr);
     
 //    bool update();
     
@@ -85,7 +85,7 @@ private:
             delete [] i_buffer;
             i_buffer = new uint8_t[i_totalsize];
             /// read into buffer
-            if (!handle->read(i_buffer, static_cast<void *>(i_region->start), i_totalsize)) {
+            if (!handle->read(i_buffer, reinterpret_cast<void *>(i_region->start), i_totalsize)) {
                 std::clog<<"error: invalid region: cant read memory: "<<i_region<<std::endl;
                 continue;
             }

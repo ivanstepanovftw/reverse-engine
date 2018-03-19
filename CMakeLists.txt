@@ -8,6 +8,7 @@ project(RE)
 # │  Compilation flags                                               │
 # └──────────────────────────────────────────────────────────────────┘
 set(CMAKE_CXX_STANDARD 17)
+message(STATUS "${COMPILER_FLAGS}")
 
 # ┌──────────────────────────────────────────────────────────────────┐
 # │  Load libraries                                                  │

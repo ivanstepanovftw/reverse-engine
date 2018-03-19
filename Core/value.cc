@@ -6,10 +6,6 @@ using namespace std;
 
 bool parse_uservalue_int(const char *nptr, uservalue_t *val)
 {
-    /// skip past any whitespace
-    while (isspace(*nptr))
-        ++nptr;
-    
     char *endptr;
     
     /// parse it as signed int
@@ -102,7 +98,57 @@ bool parse_uservalue_bytearray(const char *text, uservalue_t *val)
     char *cur_str;
     cur_str = strtok(const_cast<char *>(text), R"( \x)");
     
-    for(; cur_str != '\0'; ) { //fixme должно же работать, не?
+    for(; *cur_str != '\0'; ) { //fixme должно же работать, не?
+        /// test its length
+        if (strlen(cur_str) != 2)
+            return false;
+    
+        /// if unknown value
+        if ((strcmp(cur_str, "??") == 0)) {
+            bytes_array.push_back(0x00);
+            wildcards_array.push_back(WILDCARD);
+        }
+        else {
+            /// parse as hex integer
+            char *endptr;
+            uint8_t cur_byte = static_cast<uint8_t>(strtoul(cur_str, &endptr, 16));
+            if (*endptr != '\0')
+                return false;
+    
+            bytes_array.push_back(cur_byte);
+            wildcards_array.push_back(FIXED);
+        }
+        
+        /// get next byte
+        cur_str = strtok(NULL, R"( \x)");
+    }
+    
+    /* everything is ok */
+    val->wildcard_value = wildcards_array;
+    val->bytearray_value = bytes_array;
+    val->flags = flags_all;
+    return true;
+}
+
+bool parse_uservalue_string(const char *text, uservalue_t *val)
+{
+    vector<uint8_t> bytes_array;
+    vector<wildcard_t> wildcards_array;
+    
+    /// @see https://stackoverflow.com/questions/7397768/choice-between-vectorresize-and-vectorreserve
+    // never saw a pattern of more than 20 bytes in a row
+    bytes_array.reserve(32);
+    wildcards_array.reserve(32);
+    
+    /// skip past any whitespace
+    while (isspace(*text))
+        ++text;
+    
+    /// split text by whitespace and(or) \x-like sequence "\xDE\xAD" and "BE EF" (and "x\DExAD", sorry xD)
+    char *cur_str;
+    cur_str = strtok(const_cast<char *>(text), R"( \x)");
+    
+    for(; *cur_str != '\0'; ) { //fixme должно же работать, не?
         /// test its length
         if (strlen(cur_str) != 2)
             return false;

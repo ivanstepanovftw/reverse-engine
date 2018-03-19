@@ -198,6 +198,7 @@ typedef struct {
     std::vector<wildcard_t> wildcard_value;
     
     const char *string_value;
+    const wchar_t *wstring_value;
     
     match_flags flags;
 } uservalue_t;
@@ -206,6 +207,7 @@ bool parse_uservalue_int(const char *nptr, uservalue_t *val);
 bool parse_uservalue_float(const char *nptr, uservalue_t *val);
 bool parse_uservalue_number(const char *nptr, uservalue_t *val);     // parse int or float
 bool parse_uservalue_bytearray(const char *text, uservalue_t *val);
+bool parse_uservalue_string(const char *text, uservalue_t *val);
 
 #endif //RE_VALUE_HH
 

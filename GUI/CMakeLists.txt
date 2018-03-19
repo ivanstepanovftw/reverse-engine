@@ -6,7 +6,7 @@ project(GUI)
 # ┌──────────────────────────────────────────────────────────────────┐
 # │  Load libraries                                                  │
 # └──────────────────────────────────────────────────────────────────┘
-find_package(Boost)
+#find_package(Boost) # see https://stackoverflow.com/questions/6646405/how-do-you-add-boost-libraries-in-cmakelists-txt
 
 find_package(PkgConfig)
 pkg_check_modules(GTKMM gtkmm-3.0)
@@ -22,7 +22,8 @@ link_directories(
 
 include_directories(
         ${GTKMM_INCLUDE_DIRS}
-        ${GDLMM_INCLUDE_DIRS})
+        ${GDLMM_INCLUDE_DIRS}
+        ${Boost_INCLUDE_DIRS})
 
 add_executable(GUI
         main.cc
@@ -34,4 +35,5 @@ add_executable(GUI
 target_link_libraries(GUI
         ${GTKMM_LIBRARIES}
         ${GDLMM_LIBRARIES}
+        ${Boost_LIBRARIES}
         RECore)

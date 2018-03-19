@@ -40,87 +40,63 @@ main() {
 //    }
 //    t2 = high_resolution_clock::now();
 //    time_span = duration_cast<duration<double>>(t2 - t1);
+    double a = -1./0.;
+    double b = 0./0. ;
+    double c = 1./0. ;
+    clog<<"-1./0.  = "<<a<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&a)<<dec<<endl;
+    clog<<"0./0.   = "<<b<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&b)<<dec<<endl;
+    clog<<"1./0.   = "<<c<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&c)<<dec<<endl;
     
-    
-    ///                       strtoul:             strtol:
-    // "0x1"                  0x0000000000000001   0x0000000000000001
-    // "-0x1"                 0xffffffffffffffff   0xffffffffffffffff
-    // "0xfffefffefffefffe"   0xfffefffefffefffe   0x7fffffffffffffff
-    // "-0xfffefffefffefffe"  0x8000000000000000   0x0001000100010002
-    
-    
-    
-    
-    
-//    boost::variant<float, byte *> u; boost::variant std::variant хуйня ебаная, union лучше
-//    u = n;
-//    cout<<"float: "<<u<<endl;
-//    byte *b = boost::get<byte *>(u);
-//    printf("b: %x %x %x %x\n",
-//           b[3], 
-//           b[2], 
-//           b[1], 
-//           b[0]);
-    
-//    variant<byte *, float> u = N;
+//    Handle *h = nullptr;
+//    region_t *entry = nullptr;
+//    region_t *libc = nullptr;
+//    region_t *ld = nullptr;
+//
+//
+//    clog<<"Waiting for ["<<target<<"] process"<<endl;
+//    for(;;) {
+//        delete h;
+//        h = new Handle(target);
+//        if (h->isRunning())
+//            break;
+//        usleep(500'000);
+//    }
+//    clog<<"Found! PID is ["<<h->pid<<"]"<<endl; //как не переводить в хекс и обратно?
+//
+//    for(;;) {
+//        h->updateRegions();
+//        entry = h->getRegion();
+//        libc = h->getRegion("libc-2.26.so");
+//        ld = h->getRegion("ld-2.26.so");
+//        if (entry && libc && ld)
+//            break;
+//        usleep(500'000);
+//    }
+//    clog<<"Found ["<<entry->filename<<"] at ["<<HEX(entry->start)<<"]"<<endl;
+//    clog<<"Found ["<<libc->filename<<"] at ["<<HEX(libc->start)<<"]"<<endl;
+//    clog<<"Found ["<<ld->filename<<"] at ["<<HEX(ld->start)<<"]"<<endl;
 //    
 //    
-//    printf("byte6: %x %x %x %x, done %ld samples in %f seconds\n",
-//           get<byte *>(u)[3], 
-//           get<byte *>(u)[2], 
-//           get<byte *>(u)[1], 
-//           get<byte *>(u)[0], 
-//           SAMPLES, time_span.count());
-    
-    
-    
-        Handle *h = nullptr;
-        region_t *entry = nullptr;
-        region_t *libc = nullptr;
-        region_t *ld = nullptr;
-    
-    
-        clog<<"Waiting for ["<<target<<"] process"<<endl;
-        for(;;) {
-            delete h;
-            h = new Handle(target);
-            if (h->isRunning())
-                break;
-            usleep(500'000);
-        }
-        clog<<"Found! PID is ["<<h->pid<<"]"<<endl; //как не переводить в хекс и обратно?
-    
-        for(;;) {
-            h->updateRegions();
-            entry = h->getRegion();
-            libc = h->getRegion("libc-2.26.so");
-            ld = h->getRegion("ld-2.26.so");
-            if (entry && libc && ld)
-                break;
-            usleep(500'000);
-        }
-        clog<<"Found ["<<entry->filename<<"] at ["<<HEX(entry->start)<<"]"<<endl;
-        clog<<"Found ["<<libc->filename<<"] at ["<<HEX(libc->start)<<"]"<<endl;
-        clog<<"Found ["<<ld->filename<<"] at ["<<HEX(ld->start)<<"]"<<endl;
-    
-        
-        size_t len = 32;
-        void *v = new char[len];
-        clog<<"v in hex: "<<HEX(*(int *)(v))<<endl;
-        string s((char *)v,len);
-        clog<<"unconverted s: "<<HEX(*(int *)(v))<<endl;
-        
-        static const char* const lut = "0123456789ABCDEF";
-        string output;
-        output.reserve(2 * len);
-        
-        for(int i=0; i<len; i++) {
-            const unsigned char c = s[i];
-            output.push_back(lut[c >> 4]);
-            output.push_back(lut[c & 15]);
-        }
-        
-        clog<<"output: "<<output<<endl;
+//    
+//    
+//    
+//    size_t len = 32;
+//    void *v = new char[len];
+//    clog<<"v in hex: "<<HEX(*(int *)(v))<<endl;
+//    string s((char *)v,len);
+//    clog<<"unconverted s: "<<HEX(*(int *)(v))<<endl;
+//    
+//    static const char* const lut = "0123456789ABCDEF";
+//    string output;
+//    output.reserve(2 * len);
+//    
+//    for(int i=0; i<len; i++) {
+//        const unsigned char c = s[i];
+//        output.push_back(lut[c >> 4]);
+//        output.push_back(lut[c & 15]);
+//    }
+//    
+//    clog<<"output: "<<output<<endl;
     
 //    bool upper_case = false;
 //    ostringstream ret;

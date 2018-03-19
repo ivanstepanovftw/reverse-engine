@@ -69,7 +69,7 @@ protected:
     ColumnsOutput columns_output;
     Glib::RefPtr<Gtk::ListStore> ref_tree_saved;
     Glib::RefPtr<Gtk::ListStore> ref_tree_output;
-    Gtk::TreeView *tree_saved = new Gtk::TreeView();
+//    Gtk::TreeView *tree_saved = new Gtk::TreeView();
     Gtk::TreeView *tree_output = new Gtk::TreeView();
     
     
