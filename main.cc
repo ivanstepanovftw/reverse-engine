@@ -38,14 +38,14 @@ LIFT_ENUM_OP(^, ^=)
 enum class Flags : uint16_t
 {
     empty = 0,
-    u1 = 1 << 0,  // could be an unsigned  8-bit variable (e.g. unsigned char)
-    s1 = 1 << 1,  // could be a    signed  8-bit variable (e.g. signed char)
-    u2 = 1 << 2,  // could be an unsigned 16-bit variable (e.g. unsigned short)
-    s2 = 1 << 3,  // could be a    signed 16-bit variable (e.g. short)
-    u4 = 1 << 4,  // could be an unsigned 32-bit variable (e.g. unsigned int)
-    s4 = 1 << 5,  // could be a    signed 32-bit variable (e.g. int)
-    u8 = 1 << 6,  // could be an unsigned 64-bit variable (e.g. unsigned long long)
-    s8 = 1 << 7,  // could be a    signed 64-bit variable (e.g. long long)
+    s1 = 1 << 0,  // could be a    signed  8-bit variable (e.g. signed char)
+    u1 = 1 << 1,  // could be an unsigned  8-bit variable (e.g. unsigned char)
+    s2 = 1 << 2,  // could be a    signed 16-bit variable (e.g. short)
+    u2 = 1 << 3,  // could be an unsigned 16-bit variable (e.g. unsigned short)
+    s4 = 1 << 4,  // could be a    signed 32-bit variable (e.g. int)
+    u4 = 1 << 5,  // could be an unsigned 32-bit variable (e.g. unsigned int)
+    s8 = 1 << 6,  // could be a    signed 64-bit variable (e.g. long long)
+    u8 = 1 << 7,  // could be an unsigned 64-bit variable (e.g. unsigned long long)
     f4 = 1 << 8,  // could be a 32-bit floating point variable (i.e. float)
     f8 = 1 << 9,  // could be a 64-bit floating point variable (i.e. double)
     full = 0xffff
@@ -69,14 +69,14 @@ static inline size_t flags_size(Flags flags)
 }
 
 union memory {
-    uint8_t     u1;
     int8_t      s1;
-    uint16_t    u2;
+    uint8_t     u1;
     int16_t     s2;
-    uint32_t    u4;
+    uint16_t    u2;
     int32_t     s4;
-    uint64_t    u8;
+    uint32_t    u4;
     int64_t     s8;
+    uint64_t    u8;
     float       f4;
     double      f8;
     uint8_t     bytes[sizeof(int64_t)];
@@ -84,54 +84,45 @@ union memory {
 
 class Pattern {
 public:
+    int8_t   s1;
+    uint8_t  u1;
+    int16_t  s2;
+    uint16_t u2;
+    int32_t  s4;
+    uint32_t u4;
+    int64_t  s8;
+    uint64_t u8;
+    float    f4;
+    double   f8;
+    
     Flags flags = Flags::empty;
-    
-    memory u1;
-    memory s1;
-    memory u2;
-    memory s2;
-    memory u4;
-    memory s4;
-    memory u8;
-    memory s8;
-    memory f4;
-    memory f8;
-    
-    memory* operator[](size_t idx) {
-        switch(idx) {
-            case 0: return &u1;
-            case 1: return &s1;
-            case 2: return &u2;
-            case 3: return &s2;
-            case 4: return &u4;
-            case 5: return &s4;
-            case 6: return &u8;
-            case 7: return &s8;
-            case 8: return &f4;
-            case 9: return &f8;
-            default:return nullptr;
-        }
-    }
 };
 
 int
 main() {
-    /// Parse user value
-    Pattern p;
-    p.flags = Flags::s8 | Flags::u4;
-    p.s8.s8 = 0;
-    p.u4.u4 = 0;
-    
-    /// Get memory chunk
-    memory *m = new memory;
-    for(int i=0; i<8; i++)
-        m->bytes[i] = 0;
-    
-    /// Scan routine
-    Flags flags = Flags::empty;
-    for(int i=0; i<=9; i++) {
-        if ((p.flags & static_cast<Flags>(1 << i)) && m->bytes == p[i]->bytes) flags |= static_cast<Flags>(1 << i);
-    }
+//    /// Parse user value
+//    Pattern p;
+//    p.flags = Flags::s8 |Flags::u8 | Flags::u4;
+//    p.u4 = 0;
+//    p.u8 = 0;
+//    p.s8 = 0;
+//    
+//    /// Get memory chunk
+//    memory *m = new memory;
+//    for(int i=0; i<8; i++)
+//        m->bytes[i] = 0;
+//    
+//    /// Scan routine
+//    Flags flags = Flags::empty;
+//    size_t s = flags_size(p.flags);
+//    for(int i=0; i<=9; i++) {
+//        if ((p.flags & static_cast<Flags>(1 << i)) != Flags::empty)
+//            if (s == 8 && m->u8 == p.u8
+//            ||  s == 4 && m->u4 == p.u4
+//            ||  s == 2 && m->u2 == p.u4
+//            ||  s == 1 && m->u1 == p.u4) flags |= static_cast<Flags>(1<<i);
+//        }
+//    }
     
     
 //    float N = 8;
