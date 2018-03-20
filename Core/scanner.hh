@@ -67,6 +67,7 @@ public:
     //    bool sm_checkmatches(scan_match_type_t match_type, const uservalue_t *uservalue);
     
     
+    mem64_t *i_memory_ptr;
     /// Iterator over target memory
 private:
     region_t *i_region;
@@ -74,7 +75,6 @@ private:
     uintptr_t i_totalsize = 0;
     uint8_t *i_buffer = nullptr;
     uintptr_t i_offset = 0;
-    mem64_t *i_memory_ptr;
     
     bool i_nextRegion() {
         for(; i_region_number < handle->regions.size();) {
@@ -101,14 +101,10 @@ private:
         return false;
     }
     
-    bool i_nextMemory() {
-        if (i_totalsize > 0) {
-            i_offset += this->step;
-            i_totalsize -= this->step;
-            i_memory_ptr = reinterpret_cast<mem64_t *>(&i_buffer[i_offset]);
-            return true;
-        }
-        return false;
+    mem64_t *i_nextMemory() {
+        i_offset += this->step;
+        i_totalsize -= this->step;
+        return reinterpret_cast<mem64_t *>(&i_buffer[i_offset]);
     }
 };
 

@@ -411,8 +411,9 @@ Scanner::first_scan(scan_data_type_t data_type, const char *ustr)
                         }
                     break;
                 case MATCHEQUALTO:
-                    for(;i_nextRegion();)
-                        for(;i_nextMemory();) {
+                    for(;i_nextRegion();) {
+                        for(; i_totalsize > 8; ) {
+                            i_memory_ptr = i_nextMemory();
                             flags = flags_empty;
                             if ((vals[0].flags & flag_s64b) && i_memory_ptr->int64_value   == vals[0].int64_value)   flags = static_cast<match_flags>(flags | flag_s64b);
                             if ((vals[0].flags & flag_s32b) && i_memory_ptr->int32_value   == vals[0].int32_value)   flags = static_cast<match_flags>(flags | flag_s32b);
@@ -427,6 +428,7 @@ Scanner::first_scan(scan_data_type_t data_type, const char *ustr)
                             if (flags) this->matches.emplace_back(i_region, i_offset, *i_memory_ptr, flags);
                             if (this->stop_flag) return false;
                         }
+                    }
                     break;
                 case MATCHNOTEQUALTO:
                     for(;i_nextRegion();)
@@ -573,10 +575,7 @@ Scanner::next_scan(scan_data_type_t data_type, const char *ustr)
                         /// read into memory_ptr
                         if (!handle->read(i_memory_ptr,
                                           this->matches[i].address.data,
-                                /// TODO we cant read any byte at the end of region, so we should decide between read 8 byets or whole region
-                                /// FIXME WATAFAK IS THIS
-                                          MIN(flags_to_memlength(data_type, this->matches[i].flags),
-                                              handle->getRegionOfAddress(this->matches[i].address.data)->end - this->matches[i].address.data)))
+                                          flags_to_memlength(data_type, this->matches[i].flags)))
                         {
                             clog<<"error: cant read memory: "<<hex<<this->matches[i].address.data<<dec<<endl;
                             clog<<"flags_to_memlength(data_type, this->matches[i].flags): "<<flags_to_memlength(data_type, this->matches[i].flags)<<endl;

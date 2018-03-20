@@ -17,6 +17,7 @@ ScanWindow::ScanWindow(MainWindow *parent)
 {
     delete parent->handle;
     parent->handle = new Handle("HackMe");
+//    parent->handle = new Handle("7DaysToDie.x86_64");
     parent->handle->updateRegions();
     parent->hs = new Scanner(parent->handle);
     
