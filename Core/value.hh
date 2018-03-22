@@ -17,6 +17,25 @@
 #include <string>
 #include <iostream>
 
+/// Enable enum operator overload.
+/// Use -O3 for better performance
+#define LIFT_ENUM_OP(OP, ASSIGNOP)                                              \
+    template <typename E, typename U = typename std::underlying_type<E>::type>  \
+    static inline E operator OP (E lhs, E rhs)                                  \
+    { return static_cast<E>(static_cast<U>(lhs) OP static_cast<U>(rhs)); }      \
+                                                                                \
+    template <typename E, typename U = typename std::underlying_type<E>::type>  \
+    static inline E& operator ASSIGNOP (E& lhs, E rhs)                          \
+    { lhs = lhs OP rhs; return lhs; }
+
+template <typename E, typename U = typename std::underlying_type<E>::type>
+static inline E operator ~ (E lhs)
+{ return static_cast<E>(~static_cast<U>(lhs)); }
+LIFT_ENUM_OP(&, &=)
+LIFT_ENUM_OP(|, |=)
+LIFT_ENUM_OP(^, ^=)
+#undef LIFT_ENUM_OP
+
 class region_t {
 public:
     // Memory
@@ -158,7 +177,7 @@ static inline size_t flags_to_memlength(scan_data_type_t scan_data_type, match_f
  * that don't depend on alignment.
  * So NEVER EVER dereference a mem64_t*, but use its accessors to obtain the needed type.
  */
-typedef union __attribute__((packed)) {
+typedef union {
     int8_t int8_value;
     uint8_t uint8_value;
     int16_t int16_value;

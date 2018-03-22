@@ -67,7 +67,6 @@ public:
     //    bool sm_checkmatches(scan_match_type_t match_type, const uservalue_t *uservalue);
     
     
-    mem64_t *i_memory_ptr;
     /// Iterator over target memory
 private:
     region_t *i_region;
@@ -75,9 +74,11 @@ private:
     uintptr_t i_totalsize = 0;
     uint8_t *i_buffer = nullptr;
     uintptr_t i_offset = 0;
+    mem64_t *i_memory;
     
     bool i_nextRegion() {
         for(; i_region_number < handle->regions.size();) {
+            if (stop_flag) return false;
             i_region = &handle->regions[i_region_number++];
             if (!i_region->writable || !i_region->readable)
                 continue;
@@ -91,20 +92,12 @@ private:
                 std::clog<<"error: invalid region: cant read memory: "<<i_region<<std::endl;
                 continue;
             }
-            /// valid region found
-            i_offset = static_cast<uintptr_t>(-this->step);
             return true;
         }
         /// reset for next execution
         i_region_number = 0;
         /// no region found
         return false;
-    }
-    
-    mem64_t *i_nextMemory() {
-        i_offset += this->step;
-        i_totalsize -= this->step;
-        return reinterpret_cast<mem64_t *>(&i_buffer[i_offset]);
     }
 };
 

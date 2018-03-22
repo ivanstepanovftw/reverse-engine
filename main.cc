@@ -6,6 +6,8 @@
 #include <iomanip>
 #include <chrono>
 #include <type_traits>
+#include <zconf.h>
+#include <functional>
 
 using namespace std;
 using namespace std::chrono;
@@ -14,25 +16,6 @@ using namespace std::literals;
 const char *target = "HackMe";
 
 #define HEX(s) hex<<(s)<<dec
-
-
-#define LIFT_ENUM_OP(OP, ASSIGNOP)                                              \
-    template <typename E, typename U = typename std::underlying_type<E>::type>  \
-    static inline E operator OP (E lhs, E rhs)                                  \
-    { return static_cast<E>(static_cast<U>(lhs) OP static_cast<U>(rhs)); }      \
-                                                                                \
-    template <typename E, typename U = typename std::underlying_type<E>::type>  \
-    static inline E& operator ASSIGNOP (E& lhs, E rhs)                          \
-    { lhs = lhs OP rhs; return lhs; }
-
-template <typename E, typename U = typename std::underlying_type<E>::type>
-static inline E operator ~ (E lhs)
-{ return static_cast<E>(~static_cast<U>(lhs)); }
-LIFT_ENUM_OP(&, &=)
-LIFT_ENUM_OP(|, |=)
-LIFT_ENUM_OP(^, ^=)
-
-#undef LIFT_ENUM_OP
 
 
 enum class Flags : uint16_t
@@ -98,8 +81,23 @@ public:
     Flags flags = Flags::empty;
 };
 
+
+template<typename Op>
+int Calc(Pattern a, memory *b, Op f) {
+    return f(a.u8, b->u8);
+}
+
+
 int
 main() {
+    Pattern p;
+    memory *m = new memory;
+    
+    p.u8 = 11;
+    m->u8 = 11;
+    
+    cout << Calc(p, m, std::equal_to{});
+    cout << Calc(p, m, std::not_equal_to{});
 //    /// Parse user value
 //    Pattern p;
 //    p.flags = Flags::s8 |Flags::u8 | Flags::u4;
@@ -123,8 +121,6 @@ main() {
 //            ||  s == 1 && m->u1 == p.u4) flags |= static_cast<Flags>(1<<i);
 //        }
 //    }
-    
-    
 //    float N = 8;
 //    long SAMPLES = 100'000'000;
 //    high_resolution_clock::time_point t1, t2;
