@@ -7,8 +7,8 @@ project(RECore)
 # │  Build executable                                                │
 # └──────────────────────────────────────────────────────────────────┘
 add_library(RECore
-        core.cc         core.hh
-        external.hh
-        scanner.cc      scanner.hh
-        value.cc        value.hh
-        external.cc)
+        core.hh         core.cc
+        external.hh     external.cc
+        scanner.hh      scanner.cc
+        value.hh        value.cc
+        )

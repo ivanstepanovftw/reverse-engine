@@ -28,9 +28,10 @@ include_directories(
 add_executable(GUI
         main.cc
         classes_predefines.hh
-        MainWindow.cc   MainWindow.hh
-        ScanWindow.cc   ScanWindow.hh
-        SelectWindow.cc SelectWindow.hh)
+        MainWindow.hh           MainWindow.cc   
+        ScanWindow.hh           ScanWindow.cc   
+        SelectWindow.hh         SelectWindow.cc 
+        )
 
 target_link_libraries(GUI
         ${GTKMM_LIBRARIES}

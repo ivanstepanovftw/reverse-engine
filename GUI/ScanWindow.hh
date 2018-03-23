@@ -10,7 +10,7 @@
 #include <Core/core.hh>
 #include <Core/value.hh>
 #include <Core/scanner.hh>
-#include "classes_predefines.hh"
+#include "classes_predefines.hh" //fixme remove this file
 
 class ScanWindow
         : public Gtk::Window
