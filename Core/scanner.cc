@@ -184,8 +184,8 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
             // ╟────────────┼───────┼───────────────────────╢
             // ║ ==         │       │ not changed           ║
             // ║ !=         │       │ changed               ║
-            // ║ ++         │ >     │ increased             ║
-            // ║ --         │ <     │ decreased             ║
+            // ║ ++         │       │ increased             ║
+            // ║ --         │       │ decreased             ║
             // ║ += N       │       │ increased by N        ║
             // ║ -= N       │       │ decreased by N        ║
             // ╚════════════╧═══════╧═══════════════════════╝
@@ -193,25 +193,16 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
             
             sign = strstr(pattern, "?");
             if (sign) {
-                clog<<"?"<<endl;
                 sign += 1;
-                while (isspace(*sign)) sign++;
                 if (*sign != '\0') return false;
                 *match_type = MATCHANY;
                 goto valid_number;
             }
             
-            sign = strstr(pattern, "==");
-            if (sign) {
-                clog<<"=="<<endl;
-                clog<<"sign: "<<sign<<endl;
+            if ((sign = strstr(pattern, "=="))) {
                 sign += 2;
-                clog<<"sign+=2: sign: "<<sign<<endl;
                 while (isspace(*sign)) sign++;
-                clog<<"isspace(sign): "<<sign<<endl;
                 if (!parse_uservalue_number(sign, &vals[0])) {
-                    clog<<"cant parse uservalue (sign): "<<sign<<endl;
-                    while (isspace(*sign)) sign++;
                     if (*sign != '\0') return false;
                     *match_type = MATCHNOTCHANGED;
                     goto valid_number;
@@ -226,7 +217,6 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
                 sign += 2;
                 while (isspace(*sign)) sign++;
                 if (!parse_uservalue_number(sign, &vals[0])) {
-                    while (isspace(*sign)) sign++;
                     if (*sign != '\0') return false;
                     *match_type = MATCHCHANGED;
                     goto valid_number;
@@ -235,13 +225,9 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
                 goto valid_number;
             }
             
-            sign = strstr(pattern, ">");
-            if (sign) {
-                clog<<">"<<endl;
+            if ((sign = strstr(pattern, ">"))) {
                 sign += 1;
-                while (isspace(*sign)) sign++;
                 if (!parse_uservalue_number(sign, &vals[0])) {
-                    while (isspace(*sign)) sign++;
                     if (*sign != '\0') return false;
                     *match_type = MATCHINCREASED;
                     goto valid_number;
@@ -250,9 +236,7 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
                 goto valid_number;
             }
             
-            sign = strstr(pattern, "<");
-            if (sign) {
-                clog<<"<"<<endl;
+            if ((sign = strstr(pattern, "<"))) {
                 sign += 1;
                 while (isspace(*sign)) sign++;
                 if (!parse_uservalue_number(sign, &vals[0])) {
@@ -267,9 +251,7 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
         
             sign = strstr(pattern, "++");
             if (sign) {
-                clog<<"++"<<endl;
                 sign += 2;
-                while (isspace(*sign)) sign++;
                 if (*sign != '\0') return false;
                 *match_type = MATCHINCREASED;
                 goto valid_number;
@@ -279,7 +261,6 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
             if (sign) {
                 clog<<"--"<<endl;
                 sign += 2;
-                while (isspace(*sign)) sign++;
                 if (*sign != '\0') return false;
                 *match_type = MATCHDECREASED;
                 goto valid_number;
@@ -289,7 +270,6 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
             if (sign) {
                 clog<<"+="<<endl;
                 sign += 2;
-                while (isspace(*sign)) sign++;
                 if (!parse_uservalue_number(sign, &vals[0])) {
                     return false;
                 }
@@ -301,7 +281,6 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
             if (sign) {
                 clog<<"-="<<endl;
                 sign += 2;
-                while (isspace(*sign)) sign++;
                 if (!parse_uservalue_number(sign, &vals[0])) {
                     return false;
                 }
@@ -320,6 +299,7 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
                 char *rev = pattern;
                 reverse(rev, rev+strlen(rev));
                 rev = strstr(pattern, "..") + 2;
+                reverse(rev, rev+strlen(rev));
                 if (!parse_uservalue_number(rev, &vals[0]))
                     return false;
                 
@@ -330,7 +310,7 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
                 }
                 
                 /// Store the bitwise AND of both flags in the first value
-                vals[0].flags = static_cast<match_flags>(vals[0].flags & vals[1].flags);
+                vals[0].flags &= vals[1].flags;
                 *match_type = MATCHRANGE;
                 goto valid_number;
             }
@@ -343,8 +323,8 @@ Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *
     }
     
 valid_number:;
-    vals[0].flags = static_cast<match_flags>(vals[0].flags & scan_data_type_to_flags[data_type]);
-    vals[1].flags = static_cast<match_flags>(vals[1].flags & scan_data_type_to_flags[data_type]);
+    vals[0].flags &= scan_data_type_to_flags[data_type];
+    vals[1].flags &= scan_data_type_to_flags[data_type];
     return true;
 }
 

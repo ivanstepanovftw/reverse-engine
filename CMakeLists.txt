@@ -15,14 +15,9 @@ message(STATUS "${COMPILER_FLAGS}")
 # └──────────────────────────────────────────────────────────────────┘
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-# Reverse Engine library
-add_subdirectory(Core)
-
-# Tutorial
-add_subdirectory(HackMe)
-
-# Front-end
-add_subdirectory(GUI)
+add_subdirectory(Core)      # Reverse Engine library
+add_subdirectory(HackMe)    # Tutorial
+add_subdirectory(GUI)       # Front-end
 
 # ┌──────────────────────────────────────────────────────────────────┐
 # │  Build executable                                                │

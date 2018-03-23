@@ -216,8 +216,8 @@ typedef struct {
     std::vector<uint8_t> bytearray_value;
     std::vector<wildcard_t> wildcard_value;
     
-    const char *string_value;
-    const wchar_t *wstring_value;
+    std::string string_value;
+    std::wstring wstring_value;
     
     match_flags flags;
 } uservalue_t;
