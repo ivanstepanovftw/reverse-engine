@@ -37,6 +37,34 @@ public:
 };
 
 
+class bad_uservalue_cast
+{
+    std::string _text;   // оригинальная строка
+    std::size_t _at;     // указывает, на каком символе ошибка
+
+public:
+    bad_uservalue_cast(const std::string &original, const std::size_t &at) _GLIBCXX_USE_NOEXCEPT {
+        _text = original;
+        _at = at;
+    }
+    
+    // This declaration is not useless: http://gcc.gnu.org/onlinedocs/gcc-3.0.2/gcc_6.html#SEC118
+    ~bad_uservalue_cast() _GLIBCXX_USE_NOEXCEPT { }
+    
+    const std::string what() const _GLIBCXX_USE_NOEXCEPT {
+        return ("bad_uservalue_cast(): \n"
+                + _text + "\n"
+                + std::string(_at, ' ') + "^" + std::string(_text.size() - _at - 1, '~'));
+    };
+    
+    const std::string text() _GLIBCXX_USE_NOEXCEPT {
+        return _text;
+    };
+    const std::size_t at() const _GLIBCXX_USE_NOEXCEPT {
+        return _at;
+    };
+};
+
 class Scanner
 {
 public:
@@ -50,13 +78,16 @@ public:
         this->handle = handle;
     }
     
-    //обрабатываем текст с текущими параметрами поиска
-    bool parse(scan_data_type_t data_type, const char *ustr,
-               scan_match_type_t *match_type, uservalue_t *vals);
+    /** 
+     * @throws 
+     * @return 
+     */
+    void string_to_uservalue(const scan_data_type_t &data_type, const std::string &text,
+                               scan_match_type_t *match_type, uservalue_t *vals);
     
-    bool first_scan(scan_data_type_t data_type, const char *ustr);
+    bool first_scan(scan_data_type_t data_type, const std::string &text);
     
-    bool next_scan(scan_data_type_t data_type, const char *ustr);
+    bool next_scan(scan_data_type_t data_type, const std::string &text);
     
 //    bool update();
     

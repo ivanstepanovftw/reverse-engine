@@ -8,209 +8,346 @@
 #include <type_traits>
 #include <zconf.h>
 #include <functional>
+#include <Core/core.hh>
+#include <Core/value.hh>
+#include <Core/scanner.hh>
+#include <cmath>
+#include <cassert>
 
 using namespace std;
 using namespace std::chrono;
 using namespace std::literals;
 
-const char *target = "HackMe";
+const string target = "HackMe";
 
 #define HEX(s) hex<<(s)<<dec
 
 
-enum class Flags : uint16_t
-{
-    empty = 0,
-    s1 = 1 << 0,  // could be a    signed  8-bit variable (e.g. signed char)
-    u1 = 1 << 1,  // could be an unsigned  8-bit variable (e.g. unsigned char)
-    s2 = 1 << 2,  // could be a    signed 16-bit variable (e.g. short)
-    u2 = 1 << 3,  // could be an unsigned 16-bit variable (e.g. unsigned short)
-    s4 = 1 << 4,  // could be a    signed 32-bit variable (e.g. int)
-    u4 = 1 << 5,  // could be an unsigned 32-bit variable (e.g. unsigned int)
-    s8 = 1 << 6,  // could be a    signed 64-bit variable (e.g. long long)
-    u8 = 1 << 7,  // could be an unsigned 64-bit variable (e.g. unsigned long long)
-    f4 = 1 << 8,  // could be a 32-bit floating point variable (i.e. float)
-    f8 = 1 << 9,  // could be a 64-bit floating point variable (i.e. double)
-    full = 0xffff
-};
-
-static inline size_t flags_size(Flags flags)
-{
-    switch (flags) {
-        case Flags::u8:
-        case Flags::s8:
-        case Flags::f8: return 8;
-        case Flags::u4:
-        case Flags::s4:
-        case Flags::f4: return 4;
-        case Flags::u2:
-        case Flags::s2: return 2;
-        case Flags::u1:
-        case Flags::s1: return 1;
-        default:        return 0;
-    }
-}
-
-union memory {
-    int8_t      s1;
-    uint8_t     u1;
-    int16_t     s2;
-    uint16_t    u2;
-    int32_t     s4;
-    uint32_t    u4;
-    int64_t     s8;
-    uint64_t    u8;
-    float       f4;
-    double      f8;
-    uint8_t     bytes[sizeof(int64_t)];
-};
-
-class Pattern {
-public:
-    int8_t   s1;
-    uint8_t  u1;
-    int16_t  s2;
-    uint16_t u2;
-    int32_t  s4;
-    uint32_t u4;
-    int64_t  s8;
-    uint64_t u8;
-    float    f4;
-    double   f8;
-    
-    Flags flags = Flags::empty;
-};
-
-
-template<typename Op>
-int Calc(Pattern a, memory *b, Op f) {
-    return f(a.u8, b->u8);
-}
-
-
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
 int
 main() {
-    Pattern p;
-    memory *m = new memory;
     
-    p.u8 = 11;
-    m->u8 = 11;
+    /*
+     * -funswitch-loops:
+    Method A: done 333301 matches, in: 0.0136228 seconds, overall: 1.39055 seconds.
+    Method B: done 333301 matches, in: 0.00767857 seconds, overall: 0.618613 seconds.
+     * -O0 -funswitch-loops:
+    Method A: done 333301 matches, in: 0.0161664 seconds, overall: 1.6087 seconds.
+    Method B: done 333301 matches, in: 0.0114342 seconds, overall: 0.975553 seconds.
+     * -O0 -fno-unswitch-loops:
+    Method A: done 333301 matches, in: 0.0155338 seconds, overall: 1.60998 seconds.
+    Method B: done 333301 matches, in: 0.0100367 seconds, overall: 0.958184 seconds.
+     * -O3 -funswitch-loops
+    Method A: done 333301 matches, in: 0.0326429 seconds, overall: 3.25194 seconds.
+    Method B: done 333301 matches, in: 0.0117518 seconds, overall: 1.28925 seconds.
+     * -O3 -fno-unswitch-loops
+    Method A: done 333301 matches, in: 0.0330074 seconds, overall: 2.85701 seconds.
+    Method B: done 333301 matches, in: 0.0126842 seconds, overall: 1.1504 seconds.
+     * -O3 -Os -funswitch-loops
+    Method A: done 333261 matches, in: 0.0329324 seconds, overall: 2.1788 seconds.
+    Method B: done 333261 matches, in: 0.0134741 seconds, overall: 1.10469 seconds.
+     *
+     * My PC are too slow, CLion takes a lot of processor time, so this shit overheats, drop MHz and results are various.
+     * Conclusion: -funswitch-loops doesn't work. Manual unswitching works well.
+     */
+    /// Trainer and scanner example
+    Handle *h = nullptr;
+    region_t *exe = nullptr;
+    region_t *libc = nullptr;
+    region_t *ld = nullptr;
     
-    cout << Calc(p, m, std::equal_to{});
-    cout << Calc(p, m, std::not_equal_to{});
-//    /// Parse user value
-//    Pattern p;
-//    p.flags = Flags::s8 |Flags::u8 | Flags::u4;
-//    p.u4 = 0;
-//    p.u8 = 0;
-//    p.s8 = 0;
-//    
-//    /// Get memory chunk
-//    memory *m = new memory;
-//    for(int i=0; i<8; i++)
-//        m->bytes[i] = 0;
-//    
-//    /// Scan routine
-//    Flags flags = Flags::empty;
-//    size_t s = flags_size(p.flags);
-//    for(int i=0; i<=9; i++) {
-//        if ((p.flags & static_cast<Flags>(1 << i)) != Flags::empty)
-//            if (s == 8 && m->u8 == p.u8
-//            ||  s == 4 && m->u4 == p.u4
-//            ||  s == 2 && m->u2 == p.u4
-//            ||  s == 1 && m->u1 == p.u4) flags |= static_cast<Flags>(1<<i);
-//        }
-//    }
-//    float N = 8;
-//    long SAMPLES = 100'000'000;
-//    high_resolution_clock::time_point t1, t2;
-//    duration<double> time_span;
-//
-//    printf("N: %f\data", N);
-//
-//    /// reinterpret_cast vs. union holywar:
-//    // Method "byte *ARRAY = reinterpret_cast<byte *>(&NUMBER);" done 10000000000 samples in 24.689415 seconds
-//    // Method "union u {byte b[sizeof(T)], T a};" done 10000000000 samples in 25.245812 seconds
-//    
-//    t1 = high_resolution_clock::now();
-//    for(long ii=0; ii<SAMPLES; ii++) {
-//        boost::variant<byte *, float> u = N;
-//    }
-//    t2 = high_resolution_clock::now();
-//    time_span = duration_cast<duration<double>>(t2 - t1);
-
-//    double a = -1./0.;
-//    double b = 0./0. ;
-//    double c = 1./0. ;
-//    clog<<"-1./0.  = "<<a<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&a)<<dec<<endl;
-//    clog<<"0./0.   = "<<b<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&b)<<dec<<endl;
-//    clog<<"1./0.   = "<<c<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&c)<<dec<<endl;
-
-//    Handle *h = nullptr;
-//    region_t *entry = nullptr;
-//    region_t *libc = nullptr;
-//    region_t *ld = nullptr;
-//
-//
-//    clog<<"Waiting for ["<<target<<"] process"<<endl;
-//    for(;;) {
-//        delete h;
-//        h = new Handle(target);
-//        if (h->isRunning())
-//            break;
-//        usleep(500'000);
-//    }
-//    clog<<"Found! PID is ["<<h->pid<<"]"<<endl; //как не переводить в хекс и обратно?
-//
-//    for(;;) {
-//        h->updateRegions();
-//        entry = h->getRegion();
-//        libc = h->getRegion("libc-2.26.so");
-//        ld = h->getRegion("ld-2.26.so");
-//        if (entry && libc && ld)
-//            break;
-//        usleep(500'000);
-//    }
-//    clog<<"Found ["<<entry->filename<<"] at ["<<HEX(entry->start)<<"]"<<endl;
-//    clog<<"Found ["<<libc->filename<<"] at ["<<HEX(libc->start)<<"]"<<endl;
-//    clog<<"Found ["<<ld->filename<<"] at ["<<HEX(ld->start)<<"]"<<endl;
-//    
-//    region_t *aas = h->getRegionOfAddress(ld->start+8);
-//    clog<<"aas: "<<aas->filename.c_str()<<endl;
+stage_waiting:;
+    cout<<"Waiting for ["<<target<<"] process"<<endl;
+    for(;;) {
+        delete h;
+        h = new Handle(target);
+        if (h->isRunning())
+            break;
+        usleep(500'000);
+    }
+    cout<<"Found! PID is ["<<h->pid<<"]"<<endl;
     
-//    
-//    
-//    
-//    
-//    
-//    size_t len = 32;
-//    void *v = new char[len];
-//    clog<<"v in hex: "<<HEX(*(int *)(v))<<endl;
-//    string s((char *)v,len);
-//    clog<<"unconverted s: "<<HEX(*(int *)(v))<<endl;
-//    
-//    static const char* const lut = "0123456789ABCDEF";
-//    string output;
-//    output.reserve(2 * len);
-//    
-//    for(int i=0; i<len; i++) {
-//        const unsigned char c = s[i];
-//        output.push_back(lut[c >> 4]);
-//        output.push_back(lut[c & 15]);
-//    }
-//    
-//    clog<<"output: "<<output<<endl;
+stage_updating:;
+    for(;;) {
+        h->updateRegions();
+        exe = h->getRegion();
+        libc = h->getRegion("libc-2.26.so");
+        ld = h->getRegion("ld-2.26.so");
+        if (exe && libc && ld)
+            break;
+        usleep(500'000);
+    }
+    cout<<"Found ["<<exe->filename<<"] at ["<<HEX(exe->start)<<"]"<<endl;
+    cout<<"Found ["<<libc->filename<<"] at ["<<HEX(libc->start)<<"]"<<endl;
+    cout<<"Found ["<<ld->filename<<"] at ["<<HEX(ld->start)<<"]"<<endl;
     
-//    bool upper_case = false;
-//    ostringstream ret;
-//
-//    for (string::size_type i = 0; i < v.length(); ++i)
-//        ret << std::hex << std::setfill('0') << std::setw(2) << (upper_case ? std::uppercase : std::nouppercase) << (int)v[i];
-//
-//    clog<<"ret: "<<ret.str()<<endl;
+    /// Find region of address (it's so slow)
+    region_t *roa = h->getRegionOfAddress(ld->start+8);
+    cout<<"Region of address is: "<<roa->filename.c_str()<<endl;
+    
+stage_scanning:;
+    size_t rescanned = 0;
+    Scanner sc(h);
+    
+    // Known variables
+    scan_data_type_t data_type;
+    string data_type_s;
+    
+    cout<<"Enter data type: (a(ii(c,s,i,l), ff(f,d)), b, s): ";
+    cin>>data_type_s;
+    if (cin.fail()) {
+        cout<<""<<endl;
+        cin.clear(); // clear error state
+        cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // discard 'bad' character(s)
+    }
+    if      (data_type_s == "ii")   data_type = ANYINTEGER;
+    else if (data_type_s == "ff")   data_type = ANYFLOAT;
+    else if (data_type_s == "c")    data_type = INTEGER8;
+    else if (data_type_s == "s")    data_type = INTEGER16;
+    else if (data_type_s == "i")    data_type = INTEGER32;
+    else if (data_type_s == "l")    data_type = INTEGER64;
+    else if (data_type_s == "f")    data_type = FLOAT32;
+    else if (data_type_s == "d")    data_type = FLOAT64;
+    else if (data_type_s == "b")    data_type = BYTEARRAY;
+    else if (data_type_s == "s")    data_type = STRING;
+    else                            data_type = ANYNUMBER;
+    
+    cout<<"Enter pattern: ";
+    string text;
+    cin>>text;
     
     
+    // Unknown variables
+    uservalue_t uservalue[2];
+    scan_match_type_t match_type;
+    try {
+        // Parse text as uservalue
+        sc.string_to_uservalue(data_type, text, &match_type, uservalue);
+    } catch (bad_uservalue_cast &e) {
+        clog<<e.what()<<endl;
+        goto stage_scanning;
+    }
     
+    // Clock for performance report
+    high_resolution_clock::time_point t1, t2;
+    duration<double> time_span;
+    
+    // Overall time counted for both methods
+    static duration<double> counterA = high_resolution_clock::duration::zero();
+    static duration<double> counterB = high_resolution_clock::duration::zero();
+    
+    /// Now, most interesting begin
+    // HackMe contains about 333274 (0x515DA) matches, so it will be 0x80000
+    const size_t RESERVED = static_cast<size_t>(pow(2, ceil(log2(333274))));
+    
+    
+    // Method A - sexy, but slow.
+stage_rescanning:;
+    if (!h->isRunning())
+        goto stage_waiting;
+    
+    // Now create an array to store our matches
+    vector<match> matches;
+    matches.reserve(RESERVED);
+    
+    
+    uint8_t *buffer = nullptr;
+    uintptr_t r_off = 0;
+    uintptr_t total = 0;
+    mem64_t *memory;
+    size_t step = 1;
+    match_flags flags;
+    
+    t1 = high_resolution_clock::now();
+    for(const region_t &r : h->regions) {
+        if (!r.writable || !r.readable) continue;
+        total = r.end - r.start; // calculate size of region
+        delete [] buffer; buffer = new uint8_t[total];  // reallocate buffer
+        if (!h->read(buffer, r.start, total)) { clog<<"error: invalid region: cant read memory: "<<r<<endl; continue; }
+        for(r_off = 0;  total > 0;  r_off += step, total -= step) {
+            memory = reinterpret_cast<mem64_t *>(&buffer[r_off]);
+            
+            switch (data_type) {
+                case BYTEARRAY: clog<<"not supported"<<endl; break;
+                case STRING: clog<<"not supported"<<endl; break;
+                default:
+                    switch(match_type) {
+                        case MATCHANY:
+                            flags = flags_all;
+                            break;
+                        case MATCHEQUALTO:
+                            flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   == uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  == uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  == uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  == uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value == uservalue[0].float32_value)) flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value == uservalue[0].float64_value)) flags |= (flag_f64b);
+                            break;
+                        case MATCHNOTEQUALTO:
+                            flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   != uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  != uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  != uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  != uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value != uservalue[0].float32_value)) flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value != uservalue[0].float64_value)) flags |= (flag_f64b);
+                            break;
+                        case MATCHGREATERTHAN:
+                            flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   >  uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  >  uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  >  uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  >  uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value >  uservalue[0].float32_value)) flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value >  uservalue[0].float64_value)) flags |= (flag_f64b);
+                            break;
+                        case MATCHLESSTHAN:
+                            flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   <  uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  <  uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  <  uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  <  uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value <  uservalue[0].float32_value)) flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value <  uservalue[0].float64_value)) flags |= (flag_f64b);
+                            break;
+                        case MATCHRANGE:
+                            flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (uservalue[0].uint8_value   <= memory->uint8_value   ) && (memory->uint8_value   >= uservalue[1].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (uservalue[0].uint16_value  <= memory->uint16_value  ) && (memory->uint16_value  >= uservalue[1].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (uservalue[0].uint32_value  <= memory->uint32_value  ) && (memory->uint32_value  >= uservalue[1].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (uservalue[0].uint64_value  <= memory->uint64_value  ) && (memory->uint64_value  >= uservalue[1].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (uservalue[0].float32_value <= memory->float32_value ) && (memory->float32_value >= uservalue[1].float32_value)) flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (uservalue[0].float64_value <= memory->float64_value ) && (memory->float64_value >= uservalue[1].float64_value)) flags |= (flag_f64b);
+                            break;
+                        default:
+                            clog<<"error: only first_scan supported"<<endl;
+                            goto stage_scanning;
+                    }
+                    if (flags) matches.push_back(match(&r, r_off, *memory, flags));
+            }
+        }
+    }
+    t2 = high_resolution_clock::now();
+    time_span = duration_cast<duration<double>>(t2 - t1);
+    counterA += time_span;
+    cout<<"Method A: done "<<matches.size()<<" matches, in: "<<time_span.count()<<" seconds, overall: "<<counterA.count()<<" seconds."<<endl;
+    
+    if (matches.capacity() > RESERVED) {
+        cout<<"warning: matches.capacity() > RESERVED: matches.capacity(): "<<matches.capacity()<<endl;
+    }
+    
+    // Method B - fastest, but with crappy macros
+    matches.clear();
+    matches.shrink_to_fit();
+    matches.reserve(RESERVED);
+    
+#define PART1                                                                                                           \
+    for(const region_t &r : h->regions) {                                                                               \
+        if (!r.writable || !r.readable) continue;                                                                       \
+        total = r.end - r.start; /* calculate size of region */                                                         \
+        delete [] buffer; buffer = new uint8_t[total];  /* reallocate buffer */                                         \
+        if (!h->read(buffer, r.start, total)) { clog<<"error: invalid region: cant read memory: "<<r<<endl; continue; } \
+        for(r_off = 0;  total > 0;  r_off += step, total -= step) {                                                     \
+            memory = reinterpret_cast<mem64_t *>(&buffer[r_off]);
+//define PART1
+#define PART2                                                                                                           \
+            if (flags) matches.emplace_back(&r, r_off, *memory, flags);                                                 \
+        }                                                                                                               \
+    }
+//define PART2
+    
+    t1 = high_resolution_clock::now();
+    switch (data_type) {
+        case BYTEARRAY: clog<<"not supported"<<endl; break;
+        case STRING: clog<<"not supported"<<endl; break;
+        default:
+            switch(match_type) {
+                case MATCHANY:
+                    PART1 
+                            flags = flags_all;
+                    PART2
+                    break;
+                case MATCHEQUALTO:
+                    PART1
+                            flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   == uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  == uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  == uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  == uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value == uservalue[0].float32_value)) flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value == uservalue[0].float64_value)) flags |= (flag_f64b);
+                    PART2
+                    break;
+                case MATCHNOTEQUALTO:
+                    PART1
+                            flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   != uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  != uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  != uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  != uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value != uservalue[0].float32_value)) flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value != uservalue[0].float64_value)) flags |= (flag_f64b);
+                    PART2
+                    break;
+                case MATCHGREATERTHAN:
+                    PART1
+                            flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   >  uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  >  uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  >  uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  >  uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value >  uservalue[0].float32_value)) flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value >  uservalue[0].float64_value)) flags |= (flag_f64b);
+                    PART2
+                    break;
+                case MATCHLESSTHAN:
+                    PART1
+                            flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   <  uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  <  uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  <  uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  <  uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value <  uservalue[0].float32_value)) flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value <  uservalue[0].float64_value)) flags |= (flag_f64b);
+                    PART2
+                    break;
+                case MATCHRANGE:
+                    PART1
+                            flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (uservalue[0].uint8_value   <= memory->uint8_value   ) && (memory->uint8_value   >= uservalue[1].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (uservalue[0].uint16_value  <= memory->uint16_value  ) && (memory->uint16_value  >= uservalue[1].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (uservalue[0].uint32_value  <= memory->uint32_value  ) && (memory->uint32_value  >= uservalue[1].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (uservalue[0].uint64_value  <= memory->uint64_value  ) && (memory->uint64_value  >= uservalue[1].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (uservalue[0].float32_value <= memory->float32_value ) && (memory->float32_value >= uservalue[1].float32_value)) flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (uservalue[0].float64_value <= memory->float64_value ) && (memory->float64_value >= uservalue[1].float64_value)) flags |= (flag_f64b);
+                    PART2
+                    break;
+                default:
+                    clog<<"error: only first_scan supported"<<endl;
+                    goto stage_scanning;
+            }
+    }
+    t2 = high_resolution_clock::now();
+    time_span = duration_cast<duration<double>>(t2 - t1);
+    counterB += time_span;
+    cout<<"Method B: done "<<matches.size()<<" matches, in: "<<time_span.count()<<" seconds, overall: "<<counterB.count()<<" seconds."<<endl;
+    
+    if (matches.capacity() > RESERVED) {
+        cout<<"warning: matches.capacity() > RESERVED: matches.capacity(): "<<matches.capacity()<<endl;
+    }
+    
+    // Method B - fastest, but with crappy macros
+    matches.clear();
+    matches.shrink_to_fit();
+    matches.reserve(RESERVED);
+    if (rescanned++ < 100)
+        goto stage_rescanning;
+    else
+        goto stage_scanning;
+    
+/// other example
 //    vector<uintptr_t> sig;
 //    size_t found = h->findPattern(&sig, ld,
 //                   "\x48\x89\xC7\xE8\x00\x00\x00\x00",
@@ -220,10 +357,29 @@ main() {
 //        for(uintptr_t a : sig) { 
 //            clog<<"\tat 0x"<<HEX(a)<<endl;
 //        }
-
-
+    
+/// idk what is it
+//    size_t len = 32;
+//    void *v = new char[len];
+//    clog<<"v in hex: "<<HEX(*(int *)(v))<<endl;
+//    string s((char *)v,len);
+//    clog<<"unconverted s: "<<HEX(*(int *)(v))<<endl;
+//
+//    static const char* const lut = "0123456789ABCDEF";
+//    string output;
+//    output.reserve(2 * len);
+//
+//    for(int i=0; i<len; i++) {
+//        const unsigned char c = s[i];
+//        output.push_back(lut[c >> 4]);
+//        output.push_back(lut[c & 15]);
+//    }
+//
+//    clog<<"output: "<<output<<endl;
+    
     return 0;
 }
+#pragma clang diagnostic pop
 
 
 

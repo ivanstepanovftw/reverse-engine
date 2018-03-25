@@ -3,23 +3,32 @@
 //
 #include "value.hh"
 using namespace std;
+#undef	MAX
+#define MAX(a, b)  (((a) > (b)) ? (a) : (b))
 
-bool parse_uservalue_int(const char *nptr, uservalue_t *val)
+#undef	MIN
+#define MIN(a, b)  (((a) < (b)) ? (a) : (b))
+
+
+/// fixme https://gist.github.com/gocha/b11a5dc682c15e3640f08ba2620c085c
+size_t parse_uservalue_int(const string &text, uservalue_t *val)
 {
+    const char *text_c = text.c_str();
     char *endptr;
+    char *endptr2;
     
     /// parse it as signed int
     errno = 0;
-    int64_t snum = strtoll(nptr, &endptr, 0);
+    int64_t snum = strtoll(text_c, &endptr, 0);
     bool valid_sint = (errno == 0) && (*endptr == '\0');
     
     /// parse it as unsigned int
     errno = 0;
-    uint64_t unum = strtoull(nptr, &endptr, 0);
-    bool valid_uint = (*nptr != '-') && (errno == 0) && (*endptr == '\0');
+    uint64_t unum = strtoull(text_c, &endptr2, 0);
+    bool valid_uint = (text[0] != '-') && (errno == 0) && (*endptr2 == '\0');
     
     if (!valid_sint && !valid_uint)
-        return false;
+        return strlen(text_c) - MAX(strlen(endptr), strlen(endptr2));
     
     /// determine correct flags
     if (valid_sint && snum >= INT64_MIN && snum <=  INT64_MAX) { val-> int64_value = static_cast< int64_t>(snum); val->flags |= flag_s64b; }
@@ -36,27 +45,38 @@ bool parse_uservalue_int(const char *nptr, uservalue_t *val)
     if ((val->flags & flag_s32b) && !(val->flags & flag_u32b)) { val->uint32_value = static_cast<uint32_t>(val->int32_value); }
     if ((val->flags & flag_s16b) && !(val->flags & flag_u16b)) { val->uint16_value = static_cast<uint16_t>(val->int16_value); }
     if ((val->flags & flag_s8b ) && !(val->flags & flag_u8b )) { val->uint8_value  = static_cast<uint8_t >(val->int8_value ); }
-    return true;
+    return strlen(text_c);
 }
 
-bool parse_uservalue_float(const char *nptr, uservalue_t *val)
+//fixme this shit parses float only with comma, dot won't parse
+//fixme also can't parse "nan", "inf" and "-inf"
+//    double a = -1./0.;
+//    double b = 0./0. ;
+//    double c = 1./0. ;
+//    clog<<"-1./0.  = "<<a<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&a)<<dec<<endl;
+//    clog<<"0./0.   = "<<b<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&b)<<dec<<endl;
+//    clog<<"1./0.   = "<<c<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&c)<<dec<<endl;
+size_t parse_uservalue_float(const string &text, uservalue_t *val)
 {
     char *endptr;
+    const char *text_c = text.c_str();
     
     errno = 0;
-    double num = strtod(nptr, &endptr);
+    double num = strtod(text_c, &endptr);
     if ((errno != 0) || (*endptr != '\0'))
-        return false;
+        return strlen(text_c) - strlen(endptr);
     
     val->flags |= flags_float;
     val->float32_value = static_cast<float>(num);
     val->float64_value = num;
-    return true;
+    return strlen(text_c);
 }
 
-bool parse_uservalue_number(const char *nptr, uservalue_t *val)
+size_t parse_uservalue_number(const string &text, uservalue_t *val)
 {
-    if (parse_uservalue_int(nptr, val)) {
+    size_t ret;
+    if ((ret = parse_uservalue_int(text, val)) && ret == text.size()) {
+        clog<<"parse_uservalue_number(): passed as int value"<<endl;
         val->flags |= flags_float;
         if (val->flags & flag_s64b) {
             val->float32_value = static_cast<float>(val->int64_value);
@@ -66,9 +86,10 @@ bool parse_uservalue_number(const char *nptr, uservalue_t *val)
             val->float32_value = static_cast<float>(val->uint64_value);
             val->float64_value = static_cast<double>(val->uint64_value);
         }
-        return true;
+        return ret;
     }
-    else if(parse_uservalue_float(nptr, val)) {
+    else if((ret = parse_uservalue_float(text, val)) && ret == text.size()) {
+        clog<<"parse_uservalue_number(): passed as float value"<<endl;
         double num = val->float64_value;
         if (num >= INT64_MIN && num <=  INT64_MAX) { val->int64_value =  static_cast< int64_t>(num); val->flags |= flag_s64b; }
         if (num >= INT32_MIN && num <=  INT32_MAX) { val->int32_value =  static_cast< int32_t>(num); val->flags |= flag_s32b; }
@@ -84,14 +105,16 @@ bool parse_uservalue_number(const char *nptr, uservalue_t *val)
         if ((val->flags & flag_s32b) && !(val->flags & flag_u32b)) { val->uint32_value = static_cast<uint32_t>(val->int32_value); }
         if ((val->flags & flag_s16b) && !(val->flags & flag_u16b)) { val->uint16_value = static_cast<uint16_t>(val->int16_value); }
         if ((val->flags & flag_s8b ) && !(val->flags & flag_u8b )) { val->uint8_value  = static_cast<uint8_t >(val->int8_value ); }
-        return true;
+        return ret;
     }
-    return false;
+    clog<<"parse_uservalue_number(): cannot parse ret: ret: "<<ret<<endl;
+    return ret;
 }
 
 /* parse bytearray, it will allocate the arrays itself, then needs to be free'd by `free_uservalue()` */
 //TODO create entry for mask, not only for pattern
-bool parse_uservalue_bytearray(const char *text, uservalue_t *val)
+//FIXME UNDONE
+size_t parse_uservalue_bytearray(const char *text, uservalue_t *val)
 {
     vector<uint8_t> bytes_array;
     vector<wildcard_t> wildcards_array;
@@ -105,7 +128,7 @@ bool parse_uservalue_bytearray(const char *text, uservalue_t *val)
     while (isspace(*text))
         ++text;
     
-    /// split text by whitespace and(or) \x-like sequence "\xDE\xAD" and "BE EF" (and "x\DExAD", sorry xD)
+    /// split text by whitespace and(or) \x-like sequence "\xDE\xAD" (even "x\DExAD", sorry xD) and "BE EF" 
     char *cur_str;
     cur_str = strtok(const_cast<char *>(text), R"( \x)");
     
@@ -141,7 +164,8 @@ bool parse_uservalue_bytearray(const char *text, uservalue_t *val)
     return true;
 }
 
-bool parse_uservalue_string(const char *text, uservalue_t *val)
+//FIXME UNDONE
+size_t parse_uservalue_string(const char *text, uservalue_t *val)
 {
     vector<uint8_t> bytes_array;
     vector<wildcard_t> wildcards_array;
@@ -163,7 +187,7 @@ bool parse_uservalue_string(const char *text, uservalue_t *val)
         /// test its length
         if (strlen(cur_str) != 2)
             return false;
-    
+        
         /// if unknown value
         if ((strcmp(cur_str, "??") == 0)) {
             bytes_array.push_back(0x00);
@@ -175,7 +199,7 @@ bool parse_uservalue_string(const char *text, uservalue_t *val)
             uint8_t cur_byte = static_cast<uint8_t>(strtoul(cur_str, &endptr, 16));
             if (*endptr != '\0')
                 return false;
-    
+            
             bytes_array.push_back(cur_byte);
             wildcards_array.push_back(FIXED);
         }

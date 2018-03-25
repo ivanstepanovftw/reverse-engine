@@ -85,6 +85,7 @@ typedef enum {
     MATCHGREATERTHAN,
     MATCHLESSTHAN,
     MATCHRANGE,
+    MATCHEXCLUDE,
     /* following: compare with the old value */
     MATCHUPDATE,
     MATCHNOTCHANGED,
@@ -222,11 +223,11 @@ typedef struct {
     match_flags flags;
 } uservalue_t;
 
-bool parse_uservalue_int(const char *nptr, uservalue_t *val);
-bool parse_uservalue_float(const char *nptr, uservalue_t *val);
-bool parse_uservalue_number(const char *nptr, uservalue_t *val);     // parse int or float
-bool parse_uservalue_bytearray(const char *text, uservalue_t *val);
-bool parse_uservalue_string(const char *text, uservalue_t *val);
+size_t parse_uservalue_int(const std::string &text, uservalue_t *uservalue);
+size_t parse_uservalue_float(const std::string &text, uservalue_t *uservalue);
+size_t parse_uservalue_number(const std::string &text, uservalue_t *uservalue);     // parse int or float
+size_t parse_uservalue_bytearray(const std::string &text, uservalue_t *uservalue);
+size_t parse_uservalue_string(const std::string &text, uservalue_t *uservalue);
 
 #endif //RE_VALUE_HH
 

@@ -157,175 +157,138 @@ using namespace std::chrono;
 //}
 
 
-bool
-Scanner::parse(scan_data_type_t data_type, const char *ustr, scan_match_type_t *match_type, uservalue_t *vals) {
+void
+Scanner::string_to_uservalue(const scan_data_type_t &data_type, const string &text,
+                             scan_match_type_t *match_type, uservalue_t *uservalue) {
+    if (text.empty())
+        throw bad_uservalue_cast(text,0);
+    
     switch (data_type) {
         case BYTEARRAY:
-            if (!parse_uservalue_bytearray(ustr, &vals[0])) {
-                return false;
-            }
-            return true;
+//            if (!parse_uservalue_bytearray(text, &uservalue[0])) {
+//                return false;
+//            }
+            return;
         case STRING:
-            vals[0].string_value = ustr;
-            vals[0].flags = flags_max;
-            return true;
+            uservalue[0].string_value = text;
+            uservalue[0].flags = flags_max;
+            return;
         default:
-            char *pattern = const_cast<char *>(ustr);
-            char *sign;
-            // ╔════════════╤═══════╤═══════════════════════╗
-            // ║ C operator │ Alias │ Description           ║
-            // ╠════════════╪═══════╪═══════════════════════╣
-            // ║            │ ?     │ unknown initial value ║
-            // ║ == N       │ N     │ exactly N             ║
-            // ║ != N       │       │ not N                 ║
-            // ║ > N        │       │ greater than N        ║
-            // ║ < N        │       │ less than N           ║
-            // ║            │ N..M  │ range                 ║
-            // ╟────────────┼───────┼───────────────────────╢
-            // ║ ==         │       │ not changed           ║
-            // ║ !=         │       │ changed               ║
-            // ║ ++         │       │ increased             ║
-            // ║ --         │       │ decreased             ║
-            // ║ += N       │       │ increased by N        ║
-            // ║ -= N       │       │ decreased by N        ║
-            // ╚════════════╧═══════╧═══════════════════════╝
-            while (isspace(*pattern)) pattern++;
+            // ╔════╤════════════╤═══════╤═══════════════════════════╤═════════════════════════════════════╗
+            // ║    │ C operator │ Alias │ Description               │ Description (if no number provided) ║
+            // ╠════╪════════════╪═══════╪═══════════════════════════╪═════════════════════════════════════╣
+            // ║ a1 │            │ ?     │ unknown initial value     │                                     ║
+            // ║ a2 │ ++         │       │ increased                 │                                     ║
+            // ║ a3 │ --         │       │ decreased                 │                                     ║
+            // ╟────┼────────────┼───────┼───────────────────────────┼─────────────────────────────────────╢
+            // ║ b1 │ == N       │ N     │ exactly N                 │ not changed                         ║
+            // ║ b2 │ != N       │       │ not N                     │ changed                             ║
+            // ║ b3 │ += N       │       │ increased by N            │ increased                           ║
+            // ║ b4 │ -= N       │       │ decreased by N            │ decreased                           ║
+            // ║ b5 │ > N        │       │ greater than N            │ increased (just for ux)             ║
+            // ║ b6 │ < N        │       │ less than N               │ decreased (just for ux)             ║
+            // ╟────┼────────────┼───────┼───────────────────────────┼─────────────────────────────────────╢
+            // ║ d  │            │ N..M  │ range                     │                                     ║
+            // ╚════╧════════════╧═══════╧═══════════════════════════╧═════════════════════════════════════╝
+            string pattern(text.size(), '\0');
             
-            sign = strstr(pattern, "?");
-            if (sign) {
-                sign += 1;
-                if (*sign != '\0') return false;
-                *match_type = MATCHANY;
-                goto valid_number;
-            }
+            //remove all spaces
+            auto it = copy_if(text.begin(),
+                              text.end(),
+                              pattern.begin(),
+                              [](int i) { return (!isspace(i) && i != '_' && i != '\''); });
+            pattern.resize(static_cast<size_t>(std::distance(pattern.begin(), it)));
             
-            if ((sign = strstr(pattern, "=="))) {
-                sign += 2;
-                while (isspace(*sign)) sign++;
-                if (!parse_uservalue_number(sign, &vals[0])) {
-                    if (*sign != '\0') return false;
-                    *match_type = MATCHNOTCHANGED;
-                    goto valid_number;
-                }
-                *match_type = MATCHEQUALTO;
-                goto valid_number;
-            }
-            
-            sign = strstr(pattern, "!=");
-            if (sign) {
-            clog<<"!="<<endl;
-                sign += 2;
-                while (isspace(*sign)) sign++;
-                if (!parse_uservalue_number(sign, &vals[0])) {
-                    if (*sign != '\0') return false;
-                    *match_type = MATCHCHANGED;
-                    goto valid_number;
-                }
-                *match_type = MATCHNOTEQUALTO;
-                goto valid_number;
-            }
-            
-            if ((sign = strstr(pattern, ">"))) {
-                sign += 1;
-                if (!parse_uservalue_number(sign, &vals[0])) {
-                    if (*sign != '\0') return false;
-                    *match_type = MATCHINCREASED;
-                    goto valid_number;
-                }
-                *match_type = MATCHGREATERTHAN;
-                goto valid_number;
-            }
-            
-            if ((sign = strstr(pattern, "<"))) {
-                sign += 1;
-                while (isspace(*sign)) sign++;
-                if (!parse_uservalue_number(sign, &vals[0])) {
-                    while (isspace(*sign)) sign++;
-                    if (*sign != '\0') return false;
-                    *match_type = MATCHDECREASED;
-                    goto valid_number;
-                }
-                *match_type = MATCHLESSTHAN;
-                goto valid_number;
-            }
-        
-            sign = strstr(pattern, "++");
-            if (sign) {
-                sign += 2;
-                if (*sign != '\0') return false;
-                *match_type = MATCHINCREASED;
-                goto valid_number;
-            }
-        
-            sign = strstr(pattern, "--");
-            if (sign) {
-                clog<<"--"<<endl;
-                sign += 2;
-                if (*sign != '\0') return false;
-                *match_type = MATCHDECREASED;
-                goto valid_number;
-            }
-            
-            sign = strstr(pattern, "+=");
-            if (sign) {
-                clog<<"+="<<endl;
-                sign += 2;
-                if (!parse_uservalue_number(sign, &vals[0])) {
+            auto boilerplate_a = [&](const string &MASK, scan_match_type_t MATCH_TYPE_NO_VALUE) -> bool
+            {
+                size_t cursor = pattern.find(MASK);
+                if (cursor == string::npos)  // if mask not found
                     return false;
-                }
-                *match_type = MATCHINCREASEDBY;
-                goto valid_number;
-            }
+                cursor += MASK.size();
+                if (cursor != pattern.size())  // if extra symbols after
+                    throw bad_uservalue_cast(pattern, cursor);
+                *match_type = MATCH_TYPE_NO_VALUE;
+                return true;
+            };
+            if (boilerplate_a("?", MATCHANY))        goto valid_number;  // a1
+            if (boilerplate_a("++", MATCHINCREASED)) goto valid_number;  // a2
+            if (boilerplate_a("--", MATCHDECREASED)) goto valid_number;  // a3
             
-            sign = strstr(pattern, "-=");
-            if (sign) {
-                clog<<"-="<<endl;
-                sign += 2;
-                if (!parse_uservalue_number(sign, &vals[0])) {
+            auto boilerplate_b = [&](const string &MASK, scan_match_type_t MATCH_TYPE, scan_match_type_t MATCH_TYPE_NO_VALUE) -> bool
+            {
+                size_t cursor = pattern.find(MASK);
+                if (cursor == string::npos)  // if mask not found
                     return false;
+                cursor += MASK.size();
+                if (cursor == pattern.size()) {  // end reached
+                    *match_type = MATCH_TYPE_NO_VALUE;
+                    return true;
                 }
-                *match_type = MATCHDECREASEDBY;
-                goto valid_number;
-            }
+                const string &possible_number = pattern.substr(cursor);  // slice [cursor:-1]
+                size_t pos = parse_uservalue_number(possible_number, &uservalue[0]);
+                if (pos != possible_number.size())  // if parse_uservalue_number() not parsed whole possible_number
+                    throw bad_uservalue_cast(pattern, cursor + pos);
+                *match_type = MATCH_TYPE;
+                return true;
+            };
+            if (boilerplate_b("==", MATCHEQUALTO,     MATCHNOTCHANGED)) goto valid_number; // 1
+            if (boilerplate_b("!=", MATCHNOTEQUALTO,  MATCHCHANGED))    goto valid_number; // 2
+            if (boilerplate_b("+=", MATCHINCREASEDBY, MATCHINCREASED))  goto valid_number; // 3
+            if (boilerplate_b("-=", MATCHDECREASEDBY, MATCHDECREASED))  goto valid_number; // 4
+            if (boilerplate_b(">",  MATCHGREATERTHAN, MATCHINCREASED))  goto valid_number; // 5
+            if (boilerplate_b("<",  MATCHLESSTHAN,    MATCHDECREASED))  goto valid_number; // 6
             
-            sign = strstr(pattern, "..");
-            if (sign) {
-                /// Parse last number n..M
-                sign += 2;
-                if (!parse_uservalue_number(sign, &vals[1]))
+            
+            // todo MATCHNOTINRANGE "!= 0..1", MATCHNOTINRANGE / MATCHEXCLUDE
+            auto boilerplate_c = [&](const string &MASK, scan_match_type_t MATCH_TYPE) -> bool
+            {
+                size_t cursor = pattern.find(MASK);
+                if (cursor == string::npos)   // if mask not found
                     return false;
                 
-                /// Parse first number N..m
-                char *rev = pattern;
-                reverse(rev, rev+strlen(rev));
-                rev = strstr(pattern, "..") + 2;
-                reverse(rev, rev+strlen(rev));
-                if (!parse_uservalue_number(rev, &vals[0]))
-                    return false;
+                /// Parse first number N..M
+                ///                    ^
+                const string &possible_number = pattern.substr(0, cursor-0);  // slice [0:cursor]
+                clog<<"pattern.substr(0, cursor): \""<<pattern.substr(0, cursor)<<"\""<<endl;
+                clog<<"pattern.substr(0, cursor+1): \""<<pattern.substr(0, cursor+1)<<"\""<<endl;
+                size_t pos = parse_uservalue_number(possible_number, &uservalue[0]);
+                if (pos != possible_number.size())  // if parse_uservalue_number() not parsed whole possible_number
+                    throw bad_uservalue_cast(pattern, 0+pos);
+                cursor += MASK.size();
+                
+                /// Parse last number N..M
+                ///                      ^
+                const string &possible_number2 = pattern.substr(cursor);  // slice [cursor:-1]
+                size_t pos2 = parse_uservalue_number(possible_number2, &uservalue[1]);
+                if (pos2 != possible_number2.size())
+                    throw bad_uservalue_cast(pattern, cursor+pos2);
                 
                 /// Check that the range is nonempty
-                if (vals[0].float64_value > vals[1].float64_value) {
+                if (uservalue[0].float64_value > uservalue[1].float64_value) {
                     clog<<"Empty range"<<endl;
-                    return false;
+                    throw bad_uservalue_cast(pattern, cursor);
                 }
-                
                 /// Store the bitwise AND of both flags in the first value
-                vals[0].flags &= vals[1].flags;
-                *match_type = MATCHRANGE;
-                goto valid_number;
-            }
+                uservalue[0].flags &= uservalue[1].flags;
+                *match_type = MATCH_TYPE;
+                return true;
+            };
+            if (boilerplate_c("..",  MATCHRANGE)) goto valid_number;
             
-            if (!parse_uservalue_number(pattern, &vals[0])) {
-                return false;
+            // ==
+            {
+                size_t pos = parse_uservalue_number(pattern, &uservalue[0]);
+                if (pos != pattern.size()) { // if parse_uservalue_number() not parsed whole possible_number
+                    throw bad_uservalue_cast(pattern, pos);
+                }
+                *match_type = MATCHEQUALTO;
             }
-            *match_type = MATCHEQUALTO;
-            goto valid_number;
     }
     
 valid_number:;
-    vals[0].flags &= scan_data_type_to_flags[data_type];
-    vals[1].flags &= scan_data_type_to_flags[data_type];
-    return true;
+    uservalue[0].flags &= scan_data_type_to_flags[data_type];
+    uservalue[1].flags &= scan_data_type_to_flags[data_type];
+    return;
 }
 
 #define FLAG_ADD_IF_COMPARED_BY(FLAGS, MEM64, VS, VALUE1)                                                                    \
@@ -361,12 +324,16 @@ valid_number:;
     if ((FLAGS & flag_f64b ) && !isnan(MEM64->float64_value) && !((VALUE1.float64_value <= MEM64->float64_value ) && (MEM64->float64_value >= VALUE2.float64_value))) FLAGS &= ~(flag_f64b);
 
 bool
-Scanner::first_scan(scan_data_type_t data_type, const char *ustr)
+Scanner::first_scan(scan_data_type_t data_type, const string &text)
 {
     uservalue_t vals[2];
     scan_match_type_t match_type;
-    if (!parse(data_type, ustr, &match_type, vals)) {
+    try {
+        string_to_uservalue(data_type, text, &match_type, vals);
+    } catch (bad_uservalue_cast &e) {
+        clog<<e.what()<<endl;
         return false;
+        //todo в first_scan() вообще не должно быть string параметра. Всё делается на стороне фронт енда.
     }
     
     if (!handle->isRunning()) {
@@ -512,12 +479,14 @@ Scanner::first_scan(scan_data_type_t data_type, const char *ustr)
 
 
 bool
-Scanner::next_scan(scan_data_type_t data_type, const char *ustr)
+Scanner::next_scan(scan_data_type_t data_type, const string &text)
 {
     uservalue_t vals[2];
     scan_match_type_t match_type = MATCHEQUALTO;
-    if (!parse(data_type, ustr, &match_type, vals)) {
-        return false;
+    try {
+        string_to_uservalue(data_type, text, &match_type, vals);
+    } catch (bad_uservalue_cast &e) {
+        clog<<e.what()<<endl;
     }
 
     if (!handle->isRunning()) {
