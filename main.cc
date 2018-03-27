@@ -27,7 +27,8 @@ const string target = "HackMe";
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
 int
 main() {
-    
+    // Todo http://panthema.net/2007/0328-ZLibString.html
+    // Todo performance match_flags or uint16_t
     /*
      * -funswitch-loops:
     Method A: done 333301 matches, in: 0.0136228 seconds, overall: 1.39055 seconds.

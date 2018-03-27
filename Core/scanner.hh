@@ -25,6 +25,7 @@ public:
     mem64_t val_old;
     match_flags flags;
     
+    //todo должен сам проверять флаги
     explicit match(const region_t *region, uintptr_t offset, mem64_t memory_ptr, match_flags userflag, mem64_t *val_old = nullptr) {
         this->region = region;
         this->offset = offset;
