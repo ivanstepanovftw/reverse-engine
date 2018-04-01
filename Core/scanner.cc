@@ -9,7 +9,7 @@
 #include "value.hh"
 
 #undef	MAX
-#define MAX(a, b)  (((a) > (b)) ? (a) : (b))
+#define MAX(a, b)  (((a) >= (b)) ? (a) : (b))
 
 #undef	MIN
 #define MIN(a, b)  (((a) < (b)) ? (a) : (b))
@@ -314,7 +314,7 @@ Scanner::snapshot() {
     fsnapshot.open("MEMORY.TMP", ios::in | ios::out | ios::binary | ios::trunc);
     
     const size_t chunksize = 0x4'00'00/match::size();
-    char buffer[chunksize];
+    char *buffer = new char[chunksize];
     uintptr_t totalsize;
     uintptr_t readsize;
     uintptr_t readaddr;
@@ -341,6 +341,7 @@ Scanner::snapshot() {
             chunknum++;
         }
     }
+    delete [] buffer;
     
     clog<<"Done "<<total_scan_bytes<<" bytes, in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
@@ -363,7 +364,7 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
         clog<<"good..."<<endl;
     
     region_t region;  // For capability
-    const size_t chunksize = 0x40'00'00;  // (128 mb)
+    const size_t chunksize = 0x40'00'00ull;  // (128 mb)
     clog<<"chunksize+sizeof(mem64_t): "<<(chunksize+sizeof(mem64_t))<<endl;
     char buffer[chunksize + sizeof(mem64_t)];
     uintptr_t totalsize;
@@ -450,10 +451,16 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     matches.flush();
 //end PART1
     
+// Это всё под CMake Optimized
 //    Done 333112 matches, in: 0.0350032 seconds. с буфером
 //    Done 333112 matches, in: 0.366467 seconds. без буфера, с инлайном
 //    Done 333110 matches, in: 0.0190443 seconds. свой буфер, с инлайном
 //    Done 333208 matches, in: 0.0213902 seconds. всё в буферах
+//    Done 356352 bytes, in: 0.000642586 seconds. буфера+диск
+//    Done 333154 matches, in: 0.0526076 seconds.
+//    Done 1352589312 bytes, in: 4.51307 seconds. ищем едичикку int 64 в доте
+//    Done 738743 matches, in: 11.3695 seconds.
+    
     high_resolution_clock::time_point timestamp = high_resolution_clock::now();
     if (data_type == BYTEARRAY) {
         clog<<"not supported"<<endl;
@@ -560,9 +567,9 @@ Scanner::next_scan(scan_data_type_t data_type, const string &text)
     
     this->scan_progress = 0.0;
     this->stop_flag = false;
-    auto time_point = high_resolution_clock::now();
+//    auto time_point = high_resolution_clock::now();
     
-    mem64_t i_memory;
+//    mem64_t i_memory;
     
     if (data_type == BYTEARRAY) {
         clog<<"not supported"<<endl;
@@ -570,9 +577,9 @@ Scanner::next_scan(scan_data_type_t data_type, const string &text)
     else if (data_type == STRING) {
         clog<<"not supported"<<endl;
     } else {
-        match_flags flags;
-        
-        /// MATCHUPDATE
+//        match_flags flags;
+//        
+//        /// MATCHUPDATE
 //        for(int i=0; i<matches.size(); i++) {
 //            /// read into memory_ptr
 //            if (!handle->read(&i_memory,
@@ -630,6 +637,7 @@ Scanner::next_scan(scan_data_type_t data_type, const string &text)
 //    clog<<"Done: "<<this->matches.size()<<" matches, in: "<<(duration_cast<duration<double>>(high_resolution_clock::now() - time_point)).count()<<" second."<<endl;
     
     this->scan_progress = 1.0;
+    return true;
 }
 
 

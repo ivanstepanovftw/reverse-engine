@@ -2,8 +2,6 @@
 // Структуры, флаги и прочее
 //
 
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "OCUnusedGlobalDeclarationInspection"
 #ifndef RE_VALUE_HH
 #define RE_VALUE_HH
 
@@ -230,5 +228,3 @@ size_t parse_uservalue_bytearray(const std::string &text, uservalue_t *uservalue
 size_t parse_uservalue_string(const std::string &text, uservalue_t *uservalue);
 
 #endif //RE_VALUE_HH
-
-#pragma clang diagnostic pop

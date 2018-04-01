@@ -35,7 +35,7 @@ public:
         return reinterpret_cast<const char *>(this);
     }
     
-    static const size_t size() {
+    static size_t size() {
         return sizeof(match);
     }
 };
@@ -213,7 +213,8 @@ public:
     const std::string text() _GLIBCXX_USE_NOEXCEPT {
         return _text;
     };
-    const std::size_t at() const _GLIBCXX_USE_NOEXCEPT {
+    
+    std::size_t at() const _GLIBCXX_USE_NOEXCEPT {
         return _at;
     };
 };

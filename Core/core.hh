@@ -103,9 +103,9 @@ public:
     bool isRunning();
 
     // Read_from/write_to this handle
-    bool read(void *out, uintptr_t address, size_t size);
+    bool read(void *out, uintptr_t address, ssize_t size);
 
-    bool write(uintptr_t address, void *buffer, size_t size);
+    bool write(uintptr_t address, void *buffer, ssize_t size);
 
     // Modules
     void updateRegions();
@@ -115,11 +115,6 @@ public:
     region_t *getRegionOfAddress(uintptr_t address);
 
     bool getCallAddress(uintptr_t *out, uintptr_t address);
-    
-    static bool dumpMemory(const std::string &path) {
-        //todo
-        return false;
-    }
     
     //    bool findPointer(void *out, uintptr_t address, vector<uintptr_t> offsets, size_t size, 
 //                     size_t point_size = sizeof(uintptr_t), ostream *ss = nullptr);

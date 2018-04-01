@@ -50,7 +50,7 @@ Handle::Handle(const std::string &title)
                 continue;
             
             size_t namePos = procPath.find_last_of('/');
-            if (namePos == -1)
+            if (namePos == string::npos)
                 continue;
             
             string exeName = procPath.substr(namePos + 1);
@@ -110,7 +110,7 @@ Handle::isRunning()
 }
 
 bool
-Handle::read(void *out, uintptr_t address, size_t size) 
+Handle::read(void *out, uintptr_t address, ssize_t size) 
 {
     struct iovec local[1];
     struct iovec remote[1];
@@ -124,7 +124,7 @@ Handle::read(void *out, uintptr_t address, size_t size)
 }
 
 bool
-Handle::write(uintptr_t address, void *buffer, size_t size) 
+Handle::write(uintptr_t address, void *buffer, ssize_t size) 
 {
     struct iovec local[1];
     struct iovec remote[1];
@@ -157,7 +157,7 @@ Handle::updateRegions()
                     if (ls == 5) {
                         size_t begin = line.substr(i, line.size()).find_first_not_of(' ');
                         
-                        if (begin != -1)
+                        if (begin != string::npos)
                             pathname = line.substr(begin + i, line.size());
                         else
                             pathname.clear();
@@ -172,7 +172,7 @@ Handle::updateRegions()
             
             stringstream ss;
             
-            if (memorySplit != -1) {
+            if (memorySplit != string::npos) {
                 ss<<hex<<memorySpace.substr(0, memorySplit);
                 ss>>region.start;
                 ss.clear();
@@ -181,7 +181,7 @@ Handle::updateRegions()
                 ss.clear();
             }
             
-            if (deviceSplit != -1) {
+            if (deviceSplit != string::npos) {
                 ss<<hex<<device.substr(0, deviceSplit);
                 ss>>region.deviceMajor;
                 ss.clear();
@@ -206,7 +206,7 @@ Handle::updateRegions()
                 
                 size_t fileNameSplit = pathname.find_last_of('/');
                 
-                if (fileNameSplit != -1) {
+                if (fileNameSplit != string::npos) {
                     region.filename = pathname.substr(fileNameSplit + 1, pathname.size());
                 }
             }
