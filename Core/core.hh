@@ -81,6 +81,7 @@ public:
     pid_t pid;
     std::string pidStr;
     std::string title;
+    std::vector<region_t> regions_all;
     std::vector<region_t> regions;
 
 /// Costructors / Destrictors

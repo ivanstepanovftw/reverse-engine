@@ -77,7 +77,7 @@ SelectWindow::on_button_attach()
                    "Start",
                    "End",
                    "r","w","x","-");
-            for(auto &region : parent->handle->regions) {
+            for(auto &region : parent->handle->regions_all) {
                 printf("%-32s0x%016lx 0x%016lx %i%i%i%i\n",
                        region.filename.empty()?"misc":region.filename.c_str(),
                        region.start,

@@ -140,6 +140,7 @@ Handle::write(uintptr_t address, void *buffer, size_t size)
 void
 Handle::updateRegions() 
 {
+    regions_all.clear();
     regions.clear();
     ifstream maps("/proc/" + pidStr + "/maps");
     string line;
@@ -210,7 +211,10 @@ Handle::updateRegions()
                 }
             }
             
-            regions.push_back(region);
+            regions_all.push_back(region);
+            if (region.writable && region.readable)
+                if (region.start < region.end)
+                    regions.push_back(region);
         }
     }
 }
@@ -231,17 +235,9 @@ Handle::getRegion(const std::string &region_name) {
 region_t *
 Handle::getRegionOfAddress(uintptr_t address) 
 {
-//    for(size_t i = 0; i < regions.size(); i++) {
-//        if (regions[i].start > (unsigned long) address && (regions[i].start + regions[i].end) <= (unsigned long) address) {
-//            return &regions[i];
-//        }
-//    }
-    for(region_t &region : this->regions) {
-        if (region.start <= address && address < region.end) {
+    for(region_t &region : regions)
+        if (region.start <= address && address < region.end)
             return &region;
-        }
-    }
-    
     return nullptr;
 }
 

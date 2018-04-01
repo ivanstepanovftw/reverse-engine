@@ -105,7 +105,7 @@ typedef enum {
  * valid for both endians, as the flags are ordered from smaller to bigger.
  * NAMING: Primitive, single-bit flags are called `flag_*`, while aggregates,
  * defined for convenience, are called `flags_*`*/
-typedef enum __attribute__((__packed__)) {
+enum match_flags : uint16_t { // не работает, тогда используем целочисленное значение вместо enum'ов
     flags_empty = 0,
     
     flag_u8b  = 1 << 0,  /* could be an unsigned  8-bit variable (e.g. unsigned char)      */
@@ -135,7 +135,7 @@ typedef enum __attribute__((__packed__)) {
     flags_64b  = flags_i64b | flag_f64b,
     
     flags_max = 0xffffU /* ensures we're using an uint16_t */
-} match_flags;
+};
 
 
 /* Possible flags per scan data type: if an incoming uservalue has none of the
