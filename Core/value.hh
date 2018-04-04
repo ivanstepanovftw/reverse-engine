@@ -132,7 +132,7 @@ enum match_flags : uint16_t { // не работает, тогда исполь�
     flags_32b  = flags_i32b | flag_f32b,
     flags_64b  = flags_i64b | flag_f64b,
     
-    flags_max = 0xffffU /* ensures we're using an uint16_t */
+    flags_max = 0xffffu
 };
 
 

@@ -106,35 +106,31 @@ Handle::isRunning()
         return false;
     
     struct stat sts{};
-    return !(stat(("/proc/" + pidStr).c_str(), &sts) == -1&&errno == ENOENT);
+    
+    errno = 0;
+    return !(stat(("/proc/" + pidStr).c_str(), &sts) == -1 && errno == ENOENT);
 }
 
 bool
-Handle::read(void *out, uintptr_t address, ssize_t size) 
+Handle::read(void *out, uintptr_t address, size_t size) 
 {
-    struct iovec local[1];
-    struct iovec remote[1];
-    
     local[0].iov_base = out;
     local[0].iov_len = size;
     remote[0].iov_base = reinterpret_cast<void *>(address);
     remote[0].iov_len = size;
     
-    return (process_vm_readv(pid, local, 1, remote, 1, 0) == size);
+    return static_cast<size_t>(process_vm_readv(pid, local, 1, remote, 1, 0)) == size;
 }
 
 bool
-Handle::write(uintptr_t address, void *buffer, ssize_t size) 
+Handle::write(uintptr_t address, void *buffer, size_t size) 
 {
-    struct iovec local[1];
-    struct iovec remote[1];
-    
     local[0].iov_base = buffer;
     local[0].iov_len = size;
     remote[0].iov_base = reinterpret_cast<void *>(address);
     remote[0].iov_len = size;
     
-    return (process_vm_writev(pid, local, 1, remote, 1, 0) == size);
+    return static_cast<size_t>(process_vm_writev(pid, local, 1, remote, 1, 0)) == size;
 }
 
 void

@@ -16,6 +16,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(Core)      # Reverse Engine library
 add_subdirectory(HackMe)    # Tutorial
+add_subdirectory(FakeMem)   # Tests
 add_subdirectory(GUI)       # Front-end
 
 # ┌──────────────────────────────────────────────────────────────────┐

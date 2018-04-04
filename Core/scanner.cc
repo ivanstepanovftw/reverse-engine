@@ -20,6 +20,8 @@
 #undef	CLAMP
 #define CLAMP(x, low, high)  (((x) > (high)) ? (high) : (((x) < (low)) ? (low) : (x)))
 
+#define HEX(s) hex<<showbase<<(s)<<dec
+
 using namespace std;
 using namespace std::chrono;
 
@@ -312,8 +314,7 @@ Scanner::snapshot() {
     }
     
     fsnapshot.open("MEMORY.TMP", ios::in | ios::out | ios::binary | ios::trunc);
-    
-    const size_t chunksize = 0x4'00'00/match::size();
+    const size_t chunksize = 0x0F'00'00'00/match::size();  // 240 MiB
     char *buffer = new char[chunksize];
     uintptr_t totalsize;
     uintptr_t readsize;
@@ -325,23 +326,23 @@ Scanner::snapshot() {
     fsnapshot.seekp(0, ios::end);
     for(region_t &region : handle->regions) {
         totalsize = region.end - region.start;
-        fsnapshot.write(reinterpret_cast<const char *>(&region.start), sizeof(region.start));
-        fsnapshot.write(reinterpret_cast<const char *>(&region.end), sizeof(region.end));
+        fsnapshot.write(reinterpret_cast<const char *>(&region.start), 2*sizeof(region.start));
         chunknum = 0;
         while(totalsize > 0) {
-            readsize = (totalsize < chunksize) ? totalsize : chunksize;
+            readsize = MIN(totalsize, chunksize);
             readaddr = region.start + (chunksize * chunknum);
             bzero(buffer, chunksize);
-            if (!handle->read(buffer, readaddr, readsize) && !handle->isRunning()) {
-                clog<<"error: process not running"<<endl;
-                return false;
-            }
+            if (!handle->read(buffer, readaddr, readsize))
+                if (!handle->isRunning()) {
+                    clog<<"error: process not running"<<endl;
+                    return false;
+                }
             fsnapshot.write(buffer, readsize);
             totalsize -= readsize;
             chunknum++;
         }
     }
-    delete [] buffer;
+    delete[] buffer;
     
     clog<<"Done "<<total_scan_bytes<<" bytes, in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
@@ -363,18 +364,65 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     if (fsnapshot.good())
         clog<<"good..."<<endl;
     
-    region_t region;  // For capability
-    const size_t chunksize = 0x40'00'00ull;  // (128 mb)
-    clog<<"chunksize+sizeof(mem64_t): "<<(chunksize+sizeof(mem64_t))<<endl;
-    char buffer[chunksize + sizeof(mem64_t)];
-    uintptr_t totalsize;
-    uintptr_t readsize;
-    uintptr_t rbufsize;  // mem64_t isn't 1 byte length, using this we don't lose matches at end of buffer
-    uintptr_t readaddr;
-    uintptr_t chunknum;
-    streamoff length_to_compare;
-    streamoff cursor;  // We'll use cursor instead of fstream's .tellg()
-                       // because we read "readsize+8" bytes instead of "rbufsize" bytes.
+    
+    
+// 
+// Плюсы данного метода: +++++++++++++++++++++++++++++
+// Минусы: 
+// Вывод: круто
+//
+// У нас есть файл размером 61 байт
+// [ .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. ]
+// 
+// Пусть первые два байта говорят о начале и конце региона, следовательно, говорят о размере этого региона
+// Давай разобьём наш файл на регионы
+// [ 04 0F[.. .. .. .. .. .. .. .. .. .. ..]20 4E[.. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. ..]]
+//   ^~~~~ размер региона 11 байт           ^~~~~ размер региона 46 байт     10                            20                            30                            40                46             
+// 
+// У нас размер буфера 20 байт
+// Рассмотриваем первый регион
+// Его размер не больше размера чанка (11 <= 20), следовательно, СКАНИРУЕМ наш буфер, соблюдая флаги в конце региона
+// 
+// Терерь рассматриваем второй регион, его размер больше размеру одного чанка
+// Размер чанка 20 байт
+// [01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14][15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28][29 30 31 32 33 34]
+// 
+// 
+// 
+// Читаем в буффер ПЕРВЫЙ чанк
+// [00 00 00 00 00 00 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14]
+//                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// 
+//     Теперь СКАНИРУЕМ наш буфер, пропуская первые 7 и последние 7, что бы не добавлял лишнего
+//     [00 00 00 00 00 00 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14]
+//                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//     
+//         Пропущеные байты переносим в начало
+//         [0E 0F 10 11 12 13 14 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14]
+//          ^~~~~~~~~~~~~~~~~~~~
+//
+// Читаем в буфер ВТОРОЙ чанк
+// [0E 0F 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28]
+//                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// 
+//     Теперь СКАНИРУЕМ наш буфер, пропуская последние 7, что бы не добавлял лишнего
+//     [0E 0F 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28]
+//      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//     
+//         Пропущеные байты переносим в начало
+//         [22 23 24 25 26 27 28 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28]
+//          ^~~~~~~~~~~~~~~~~~~~
+// 
+// Читаем в буфер ТРЕТИЙ чанк, неполноценный
+// [22 23 24 25 26 27 28 29 30 31 32 33 34 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28]
+//                       ^~~~~~~~~~~~~~~~~
+//     
+//     Теперь СКАНИРУЕМ наш буфер, соблюдая флаги в конце региона
+//     [22 23 24 25 26 27 28 29 30 31 32 33 34 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28]
+//      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//     
+//
+    
     
     /// You can remove comment below if you want to debug PART1 macro. Use CLion middle-mouse button to remove all "\".
 #define FLAGS_CHECK_CODE\
@@ -385,69 +433,120 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);\
     if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);\
     if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
-#ifndef FLAGS_CHECK_CODE
-#define FLAGS_CHECK_CODE
-#endif
     
-#define PART1(FLAGS_CHECK_CODE)\
-    fsnapshot.seekg(0, ios::end);\
-    length_to_compare = fsnapshot.tellg();\
-    length_to_compare = MAX(0, length_to_compare-sizeof(region.start)-sizeof(region.end));\
-    fsnapshot.seekg(0, ios::beg);\
-    cursor = 0;\
-    while(cursor < length_to_compare) {  /* not end of file */\
-        fsnapshot.seekg(cursor, ios::beg);\
-        fsnapshot.read(reinterpret_cast<char *>(&region.start), sizeof(region.start));\
-        cursor += sizeof(region.start);\
-        fsnapshot.seekg(cursor, ios::beg);\
-        fsnapshot.read(reinterpret_cast<char *>(&region.end), sizeof(region.end));\
-        cursor += sizeof(region.end);\
-        totalsize = region.end - region.start;\
-        chunknum = 0;\
-        while(totalsize > 0) {  /* iterate each chunk */\
-            readaddr = region.start + (chunksize * chunknum);\
-            bzero(buffer, chunksize + sizeof(mem64_t));\
-            readsize = MIN(totalsize, chunksize);\
-            rbufsize = MIN(totalsize, chunksize + sizeof(mem64_t));\
-            fsnapshot.seekg(cursor, ios::beg);\
-            fsnapshot.read(buffer, rbufsize);\
-            cursor += readsize;\
-            for(size_t b = 0; b < readsize; b++) {\
-                if      (totalsize-b >= 8) {\
-                    match m(readaddr + b, *reinterpret_cast<mem64_t *>(&buffer[b]));\
-                    FLAGS_CHECK_CODE\
-                    if (m.flags)\
-                        matches.append(m);\
-                }\
-                else if (totalsize-b >= 4) {\
-                    match m(readaddr + b, *reinterpret_cast<mem64_t *>(&buffer[b]));\
-                    FLAGS_CHECK_CODE\
-                    m.flags &= ~(flags_64b);\
-                    if (m.flags)\
-                        matches.append(m);\
-                }\
-                else if (totalsize-b >= 2) {\
-                    match m(readaddr + b, *reinterpret_cast<mem64_t *>(&buffer[b]));\
-                    FLAGS_CHECK_CODE\
-                    m.flags &= ~(flags_64b | flags_32b);\
-                    if (m.flags)\
-                        matches.append(m);\
-                }\
-                else if (totalsize-b == 1) {\
-                    match m(readaddr + b, *reinterpret_cast<mem64_t *>(&buffer[b]));\
-                    FLAGS_CHECK_CODE\
-                    m.flags &= ~(flags_64b | flags_32b | flags_16b);\
-                    if (m.flags)\
-                        matches.append(m);\
-                    break;\
-                }\
-                /*if (totalsize - b - 1 >= totalsize - 1)\
-                    break;*/\
-            }\
-            totalsize -= readsize;\
-            chunknum++;\
-        }\
-    }\
+    
+    streamoff total_size;
+    region_t region;
+    const size_t CHUNK_SIZE = 0x0F'00'00'00/match::size();  // 240 MiB
+    const size_t RESERVED = sizeof(mem64_t) - 1;            // 7 elements reserved from start
+    const size_t BUFFER_SIZE = CHUNK_SIZE + RESERVED;
+    
+    char *buffer = new char[BUFFER_SIZE];
+    char *chunk = buffer + RESERVED;
+    bzero(buffer, BUFFER_SIZE);
+    
+    uintptr_t region_remain_size;
+    uintptr_t offset;
+    uintptr_t off;
+    uintptr_t chunk_count;
+    uintptr_t lshift;
+    uintptr_t rshift;
+    uintptr_t read_address;
+    uintptr_t matches_count = 0;
+    
+    
+#define PART1(FLAGS_CHECK_CODE)
+    /* определяем размер файла */
+    fsnapshot.seekg(0, ios::end);
+    total_size = fsnapshot.tellg();
+    fsnapshot.seekg(0, ios::beg);
+    
+    /* для каждого региона */
+    while(fsnapshot.tellg() < total_size) {
+        /* читаем его размер */
+        fsnapshot.read(reinterpret_cast<char *>(&region.start), 2*sizeof(region.start));
+        region_remain_size = region.end - region.start;
+        clog<<"reading region: "<<region<<'\n';
+        
+        chunk_count = 0;
+        offset = RESERVED;
+        
+        /* если придётся читать по чанкам */
+        if (region_remain_size > CHUNK_SIZE) {
+            clog<<"reading chunk-by-chunk. chunk_size: "<<CHUNK_SIZE<<'\n';
+            while(region_remain_size > CHUNK_SIZE) {
+                /* Читаем в буффер один чанк */
+                fsnapshot.read(chunk, CHUNK_SIZE);
+                
+                /* Теперь сканируем буффер */
+                read_address = region.start + CHUNK_SIZE * chunk_count;
+                for(off = 0; offset < CHUNK_SIZE - RESERVED; off++, offset++) {
+                    match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
+                    FLAGS_CHECK_CODE
+                    if (m.flags) {
+                        matches_count += 1;
+                        matches.append(m);
+                    }
+                }
+                /* todo я спать 
+                for(off = 0;  region_remain_size >= 8;  off += step, offset += step, region_remain_size -= step) {
+                    match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
+                    FLAGS_CHECK_CODE
+                    if (m.flags) {
+                        matches_count += 1;
+                        matches.append(m);
+                    }
+                }*/
+                
+                /* Пропущеные байты переносим в начало */
+                for(lshift = 0, rshift = CHUNK_SIZE; lshift < RESERVED; lshift++, rshift++)
+                    buffer[lshift] = buffer[rshift];
+                
+                offset = 0;
+                region_remain_size -= CHUNK_SIZE;
+                chunk_count++;
+            }
+            clog<<"done "<<chunk_count<<" chunks amd "<<matches_count<<" matches added"<<'\n';
+        }
+        offset = RESERVED;
+        
+        /* ниже уже либо маленький регион для буфера, либо последний чанк */
+        /* Читаем в буффер один чанк */
+        bzero(chunk+region_remain_size, 7);
+        fsnapshot.read(chunk, region_remain_size);
+        clog<<"reading "<<region_remain_size<<" bytes"<<'\n';
+        
+        /* Теперь сканируем буффер */
+        read_address = region.start + CHUNK_SIZE * chunk_count;
+        
+        for(off = 0;  region_remain_size >= 8;  off += step, offset += step, region_remain_size -= step) {
+            match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
+            FLAGS_CHECK_CODE
+            if (m.flags)
+                matches.append(m);
+        }
+        for(       ;  region_remain_size >= 4;  off += step, offset += step, region_remain_size -= step) {
+            match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
+            FLAGS_CHECK_CODE
+            m.flags &= ~(flags_64b);
+            if (m.flags)
+                matches.append(m);
+        }
+        for(       ;  region_remain_size >= 2;  off += step, offset += step, region_remain_size -= step) {
+            match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
+            FLAGS_CHECK_CODE
+            m.flags &= ~(flags_64b | flags_32b);
+            if (m.flags)
+                matches.append(m);
+        }
+        for(       ;  region_remain_size >= 1;  off += step, offset += step, region_remain_size -= step) {
+            match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
+            FLAGS_CHECK_CODE
+            m.flags &= ~(flags_64b | flags_32b | flags_16b);
+            if (m.flags)
+                matches.append(m);
+        }
+    }
     matches.flush();
 //end PART1
     
@@ -460,6 +559,13 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
 //    Done 333154 matches, in: 0.0526076 seconds.
 //    Done 1352589312 bytes, in: 4.51307 seconds. ищем едичикку int 64 в доте
 //    Done 738743 matches, in: 11.3695 seconds.
+//    ss CHUNK_SIZE                : 93b13b
+//    ss CHUNK_SIZE+sizeof(mem64_t): 93b143
+//    Done 1366437888 bytes, in: 6.96247 seconds.
+//            good...
+//CHUNK_SIZE                : 93b13b
+//    CHUNK_SIZE+sizeof(mem64_t): 93b143
+//    Done 930064926 matches, in: 179.071 seconds.
     
     high_resolution_clock::time_point timestamp = high_resolution_clock::now();
     if (data_type == BYTEARRAY) {
@@ -533,10 +639,98 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
                     clog<<"error: only first_scan supported"<<endl;
             }
     }
+    delete[] buffer;
     
     clog<<"Done "<<matches.size()<<" matches, in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
     
+    /// Проверка
+    /*
+    uintptr_t b;
+    vector<match> mm;
+    
+    
+    timestamp = high_resolution_clock::now();
+    for(region_t &region : handle->regions) {
+        region_remain_size = region.end - region.start;
+        char buffer[region_remain_size];
+        if (!handle->read(buffer, region.start, region_remain_size)) {
+            clog<<"error: invalid region: cant read memory: "<<region<<endl;
+            return false;
+        }
+        
+        for(b = 0;         region_remain_size  >= 8;  b += step, region_remain_size  -= step) {
+            match m(region.start + b, *reinterpret_cast<mem64_t *>(&buffer[b]));
+            m.flags = flags_empty;
+            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);
+            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
+            if (m.flags) mm.push_back(m);
+        }
+        for(            ;  region_remain_size  >= 4;  b += step, region_remain_size  -= step) {
+            match m(region.start + b, *reinterpret_cast<mem64_t *>(&buffer[b]));
+            m.flags = flags_empty;
+            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);
+            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
+            m.flags &= ~(flags_64b);\
+            if (m.flags) mm.push_back(m);
+        }
+        for(            ;  region_remain_size  >= 2;  b += step, region_remain_size  -= step) {
+            match m(region.start + b, *reinterpret_cast<mem64_t *>(&buffer[b]));
+            m.flags = flags_empty;
+            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);
+            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
+            m.flags &= ~(flags_64b | flags_32b);
+            if (m.flags) mm.push_back(m);
+        }
+        for(            ;  region_remain_size  >= 1;  b += step, region_remain_size  -= step) {
+            match m(region.start + b, *reinterpret_cast<mem64_t *>(&buffer[b]));
+            m.flags = flags_empty;
+            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);
+            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
+            m.flags &= ~(flags_64b | flags_32b | flags_16b);
+            if (m.flags) mm.push_back(m);
+        }
+    }
+    
+    clog<<"Done "<<mm.size()<<" matches, in: "
+        <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
+    
+    vector<match> notfound;
+    bool found;
+    
+    size_t i1, i2;
+    
+    for(i1 = 0, i2 = 0; i1 < mm.size(); i1++) {
+        match m1 = mm[i1];
+        match m2 = matches.get(i2);
+        
+        if (m1.address != m2.address) {
+            region_t *r1 = handle->getRegionOfAddress(m1.address);
+            region_t *r2 = handle->getRegionOfAddress(m2.address);
+            clog<<"i1: "<<i1<<", .start: "<<HEX(r1->start)<<", .end: "<<HEX(r1->end)<<", address: "<<HEX(m1.address)<<'\n';
+            clog<<"i2: "<<i2<<", .start: "<<HEX(r2->start)<<", .end: "<<HEX(r2->end)<<", address: "<<HEX(m2.address)<<'\n';
+        } else
+            i2++;
+    }
+    */
+    
+    clog<<"Done."<<endl;
     this->scan_progress = 1.0;
 
     return true;

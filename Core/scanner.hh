@@ -121,7 +121,7 @@ public:
     file_matches() {
         buffer = new char[match::size()];
         open();
-        mm.reserve(0x40'00'00/match::size());  // (128 mb)
+        mm.reserve(0x0F'00'00'00/match::size());  // 240 MiB
     }
     
     ~file_matches() {
@@ -223,6 +223,7 @@ class Scanner
 {
 public:
     fstream fsnapshot;
+//    istream isnapshot;
     file_matches matches;
     
     Handle *handle;

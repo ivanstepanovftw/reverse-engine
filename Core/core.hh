@@ -103,9 +103,9 @@ public:
     bool isRunning();
 
     // Read_from/write_to this handle
-    bool read(void *out, uintptr_t address, ssize_t size);
+    bool read(void *out, uintptr_t address, size_t size);
 
-    bool write(uintptr_t address, void *buffer, ssize_t size);
+    bool write(uintptr_t address, void *buffer, size_t size);
 
     // Modules
     void updateRegions();
@@ -128,6 +128,9 @@ public:
 //                      const region_t *region,
 //                      vector<Entry> entries,  //attempt to implement Number scanner
 //                      size_t increment = 1);  //attempt to implement "Fast scan" (он же так работает?)
+protected:
+    struct iovec local[1];
+    struct iovec remote[1];
 };
 
 #endif //RE_CORE_HH
