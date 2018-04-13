@@ -5,8 +5,11 @@
 #include <bitset>
 #include <chrono>
 #include <cmath>
+#include <fcntl.h>
 #include "scanner.hh"
 #include "value.hh"
+#include <fcntl.h>
+#include <sys/mman.h>
 
 #undef	MAX
 #define MAX(a, b)  (((a) >= (b)) ? (a) : (b))
@@ -25,143 +28,11 @@
 using namespace std;
 using namespace std::chrono;
 
-//bool
-//Scanner::sm_checkmatches(scan_match_type_t match_type,
-//                         const uservalue_t *uservalue)
-//{
-//    matches_and_old_values_swath *reading_swath_index = vars->matches->swaths;
-//    matches_and_old_values_swath reading_swath = *reading_swath_index;
-//    
-//    unsigned long bytes_scanned = 0;
-//    unsigned long total_scan_bytes = 0;
-//    matches_and_old_values_swath *tmp_swath_index = reading_swath_index;
-//    unsigned int samples_remaining = NUM_SAMPLES;
-//    unsigned int samples_to_dot = SAMPLES_PER_DOT;
-//    size_t bytes_at_next_sample;
-//    size_t bytes_per_sample;
-//    
-//    if (sm_choose_scanroutine(vars->options.scan_data_type, match_type, uservalue,
-//                              vars->options.reverse_endianness) == false) {
-//        printf("unsupported scan for current data type.\n");
-//        return false;
-//    }
-//    
-//    while (tmp_swath_index->number_of_bytes) {
-//        total_scan_bytes += tmp_swath_index->number_of_bytes;
-//        tmp_swath_index = (matches_and_old_values_swath * )(
-//                &tmp_swath_index->data[tmp_swath_index->number_of_bytes]);
-//    }
-//    bytes_per_sample = total_scan_bytes / NUM_SAMPLES;
-//    bytes_at_next_sample = bytes_per_sample;
-//    /* for user, just print the first dot */
-//    print_a_dot();
-//    
-//    size_t reading_iterator = 0;
-//    matches_and_old_values_swath *writing_swath_index = vars->matches->swaths;
-//    writing_swath_index->first_byte_in_child = NULL;
-//    writing_swath_index->number_of_bytes = 0;
-//    
-//    int required_extra_bytes_to_record = 0;
-//    vars->num_matches = 0;
-//    vars->scan_progress = 0.0;
-//    vars->stop_flag = false;
-//    
-//    /* stop and attach to the target */
-//    if (sm_attach(vars->target) == false)
-//        return false;
-//    
-//    INTERRUPTABLESCAN();
-//    
-//    while (reading_swath.first_byte_in_child) {
-//        unsigned int match_length = 0;
-//        const mem64_t *memory_ptr;
-//        size_t memlength;
-//        match_flags checkflags;
-//        
-//        match_flags old_flags = reading_swath_index->data[reading_iterator].match_info;
-//        unsigned int old_length = flags_to_memlength(vars->options.scan_data_type, old_flags);
-//        void *address = reading_swath.first_byte_in_child + reading_iterator;
-//        
-//        /* read value from this address */
-//        if (UNLIKELY(sm_peekdata(address, old_length, &memory_ptr, &memlength) == false)) {
-//            /* If we can't look at the data here, just abort the whole recording, something bad happened */
-//            required_extra_bytes_to_record = 0;
-//        } else if (old_flags != flags_empty) /* Test only valid old matches */
-//        {
-//            value_t old_val = data_to_val_aux(reading_swath_index, reading_iterator, reading_swath.number_of_bytes);
-//            memlength = old_length < memlength ? old_length : memlength;
-//            
-//            checkflags = flags_empty;
-//            
-//            match_length = (*sm_scan_routine)(memory_ptr, memlength, &old_val, uservalue, &checkflags);
-//        }
-//        
-//        if (match_length > 0) {
-//            assert(match_length <= memlength);
-//            
-//            /* Still a candidate. Write data.
-//               - We can get away with overwriting in the same array because it is guaranteed to take up the same number of bytes or fewer,
-//                 and because we copied out the reading swath metadata already.
-//               - We can get away with assuming that the pointers will stay valid,
-//                 because as we never add more data to the array than there was before, it will not reallocate. */
-//            
-//            writing_swath_index = add_element(&(vars->matches), writing_swath_index, address,
-//                                              get_u8b(memory_ptr), checkflags);
-//            
-//            ++vars->num_matches;
-//            
-//            required_extra_bytes_to_record = match_length - 1;
-//        } else if (required_extra_bytes_to_record) {
-//            writing_swath_index = add_element(&(vars->matches), writing_swath_index, address,
-//                                              get_u8b(memory_ptr), flags_empty);
-//            --required_extra_bytes_to_record;
-//        }
-//        
-//        if (UNLIKELY(bytes_scanned >= bytes_at_next_sample)) {
-//            bytes_at_next_sample += bytes_per_sample;
-//            /* handle rounding */
-//            if (LIKELY(--samples_remaining > 0)) {
-//                /* for front-end, update percentage */
-//                vars->scan_progress += PROGRESS_PER_SAMPLE;
-//                if (UNLIKELY(--samples_to_dot == 0)) {
-//                    samples_to_dot = SAMPLES_PER_DOT;
-//                    /* for user, just print a dot */
-//                    print_a_dot();
-//                }
-//                /* stop scanning if asked to */
-//                if (vars->stop_flag) {
-//                    printf("\n");
-//                    break;
-//                }
-//            }
-//        }
-//        ++bytes_scanned;
-//        
-//        /* go on to the next one... */
-//        ++reading_iterator;
-//        if (reading_iterator >= reading_swath.number_of_bytes) {
-//            reading_swath_index = (matches_and_old_values_swath * )
-//                    (&reading_swath_index->data[reading_swath.number_of_bytes]);
-//            reading_swath = *reading_swath_index;
-//            reading_iterator = 0;
-//            required_extra_bytes_to_record = 0; /* just in case */
-//        }
-//    }
-//    
-//    if (!(vars->matches = null_terminate(vars->matches, writing_swath_index))) {
-//        printf("memory allocation error while reducing matches-array size\n");
-//        return false;
-//    }
-//    
-//    this->scan_progress = 1.;
-//    printf("we currently have %ld matches.\n", vars->num_matches);
-//    return true;
-//}
-
 
 void
 Scanner::string_to_uservalue(const scan_data_type_t &data_type, const string &text,
-                             scan_match_type_t *match_type, uservalue_t *uservalue) {
+                             scan_match_type_t *match_type, uservalue_t *uservalue)
+{
     if (text.empty())
         throw bad_uservalue_cast(text,0);
     
@@ -294,13 +165,9 @@ valid_number:;
 }
 
 
-bool
-Scanner::snapshot() {
-    if (!handle->isRunning()) {
-        clog<<"error: process not running"<<endl;
-        return false;
-    }
-    
+char *
+Scanner::snapshot(int fdin) {
+    /// Allocate space
     uintptr_t total_scan_bytes = 0;
     for(const region_t &region : handle->regions)
         total_scan_bytes += region.end - region.start;
@@ -310,122 +177,128 @@ Scanner::snapshot() {
             clog<<"error: no regions defined, perhaps you deleted them all?"<<endl;
         else
             clog<<"error: "<<handle->regions_all.size()<<" regions defined, but each have 0 bytes"<<endl;
-        return false;
+        return nullptr;
     }
     
-    fsnapshot.open("MEMORY.TMP", ios::in | ios::out | ios::binary | ios::trunc);
-    const size_t chunksize = 0x0F'00'00'00/match::size();  // 240 MiB
-    char *buffer = new char[chunksize];
-    uintptr_t totalsize;
-    uintptr_t readsize;
-    uintptr_t readaddr;
-    uintptr_t chunknum;
+    if (lseek(fdin, total_scan_bytes, SEEK_SET) == -1)
+        perror("error: cant increase fdin size");
+    if (write(fdin, "", 1) != 1)
+        perror("error: cant increase fdin size 2");
+    if (lseek(fdin, 0, SEEK_SET) == -1)
+        perror("error: lseek: fdin");
+    
+    
+    /// Create mmap
+    char *dst = static_cast<char *>(mmap(nullptr, total_scan_bytes, PROT_WRITE|PROT_READ, MAP_SHARED|MAP_POPULATE, fdin, 0));
+    if (dst == MAP_FAILED) {
+        perror("error: mmap fdin");
+        return nullptr;
+    }
+    
+    
+    /// Snapshot goes here
+    uintptr_t region_size = 0;
+    uintptr_t cursor_dst = 0;
     
     high_resolution_clock::time_point timestamp = high_resolution_clock::now();
     
-    fsnapshot.seekp(0, ios::end);
     for(region_t &region : handle->regions) {
-        totalsize = region.end - region.start;
-        fsnapshot.write(reinterpret_cast<const char *>(&region.start), 2*sizeof(region.start));
-        chunknum = 0;
-        while(totalsize > 0) {
-            readsize = MIN(totalsize, chunksize);
-            readaddr = region.start + (chunksize * chunknum);
-            bzero(buffer, chunksize);
-            if (!handle->read(buffer, readaddr, readsize))
-                if (!handle->isRunning()) {
-                    clog<<"error: process not running"<<endl;
-                    return false;
-                }
-            fsnapshot.write(buffer, readsize);
-            totalsize -= readsize;
-            chunknum++;
-        }
+        region_size = region.end - region.start;
+        
+        memcpy(dst+cursor_dst, &region.start, sizeof(region.start)+sizeof(region.end));
+        cursor_dst += sizeof(region.start)+sizeof(region.end);
+        
+        if (!handle->read(dst+cursor_dst, region.start, region_size)) {
+            clog<<"warning: region not copied: region: "<<region<<endl;
+            cursor_dst -= sizeof(region.start)+sizeof(region.end);
+            total_scan_bytes -= region_size;
+            
+            if (!handle->isRunning()) {
+                clog<<"error: process not running"<<endl;
+                return nullptr;
+            }
+        } else
+            cursor_dst += region_size;
     }
-    delete[] buffer;
     
     clog<<"Done "<<total_scan_bytes<<" bytes, in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
-    return true;
+    
+    clog<<"Snapshot size: "<<cursor_dst<<" bytes."<<endl;
+    if (ftruncate(fdin, cursor_dst) != 0)
+        perror("warning: can't ftruncate fdin");
+    
+    return dst;
 }
 
 bool
 Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, const scan_match_type_t match_type)
 {
-    matches.clear();
+    if (!handle->isRunning()) {
+        clog<<"error: process not running"<<endl;
+        return false;
+    }
+    
     scan_progress = 0.0;
     stop_flag = false;
     
-    if (!snapshot())
+    
+    // todo refresh size of stored regions using handle->refreshRegions() method
+    handle->updateRegions();
+    
+    /// Shapshot process memory
+    int fdin = open("MEMORY.TMP", O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR);
+    if (fdin < 0) {
+        perror("error: can't open 'MEMORY.TMP'");
+        return false;
+    }
+    
+    char *src = snapshot(fdin);
+    if (!src)
         return false;
     
-    if (!fsnapshot)
-        clog<<"error: fsnapshot"<<endl;
-    if (fsnapshot.good())
-        clog<<"good..."<<endl;
+    struct stat statbuf;
+    if (fstat(fdin, &statbuf) < 0) {
+        perror("error: can't fstat fdin");
+        return false;
+    }
+    clog<<"Snapshot size with fstat: "<<statbuf.st_size<<" bytes."<<endl;
     
     
-    
-// 
-// Плюсы данного метода: +++++++++++++++++++++++++++++
-// Минусы: 
-// Вывод: круто
-//
-// У нас есть файл размером 61 байт
-// [ .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. ]
-// 
-// Пусть первые два байта говорят о начале и конце региона, следовательно, говорят о размере этого региона
-// Давай разобьём наш файл на регионы
-// [ 04 0F[.. .. .. .. .. .. .. .. .. .. ..]20 4E[.. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. ..]]
-//   ^~~~~ размер региона 11 байт           ^~~~~ размер региона 46 байт     10                            20                            30                            40                46             
-// 
-// У нас размер буфера 20 байт
-// Рассмотриваем первый регион
-// Его размер не больше размера чанка (11 <= 20), следовательно, СКАНИРУЕМ наш буфер, соблюдая флаги в конце региона
-// 
-// Терерь рассматриваем второй регион, его размер больше размеру одного чанка
-// Размер чанка 20 байт
-// [01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14][15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28][29 30 31 32 33 34]
-// 
-// 
-// 
-// Читаем в буффер ПЕРВЫЙ чанк
-// [00 00 00 00 00 00 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14]
-//                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// 
-//     Теперь СКАНИРУЕМ наш буфер, пропуская первые 7 и последние 7, что бы не добавлял лишнего
-//     [00 00 00 00 00 00 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14]
-//                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//     
-//         Пропущеные байты переносим в начало
-//         [0E 0F 10 11 12 13 14 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14]
-//          ^~~~~~~~~~~~~~~~~~~~
-//
-// Читаем в буфер ВТОРОЙ чанк
-// [0E 0F 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28]
-//                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// 
-//     Теперь СКАНИРУЕМ наш буфер, пропуская последние 7, что бы не добавлял лишнего
-//     [0E 0F 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28]
-//      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//     
-//         Пропущеные байты переносим в начало
-//         [22 23 24 25 26 27 28 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28]
-//          ^~~~~~~~~~~~~~~~~~~~
-// 
-// Читаем в буфер ТРЕТИЙ чанк, неполноценный
-// [22 23 24 25 26 27 28 29 30 31 32 33 34 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28]
-//                       ^~~~~~~~~~~~~~~~~
-//     
-//     Теперь СКАНИРУЕМ наш буфер, соблюдая флаги в конце региона
-//     [22 23 24 25 26 27 28 29 30 31 32 33 34 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28]
-//      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//     
-//
+    /// Create file for storing matches
+    int fdout = open("ADDRESSES.FIRST", O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR);
+    if (fdout < 0) {
+        perror("error: can't open 'ADDRESSES.FIRST' for writing");
+        return false;
+    }
     
     
-    /// You can remove comment below if you want to debug PART1 macro. Use CLion middle-mouse button to remove all "\".
-#define FLAGS_CHECK_CODE\
+    /// Allocate space to mmap fdout once
+    if (lseek(fdout, statbuf.st_size*sizeof(match) - 1, SEEK_SET) == -1)
+        perror("error: cant increase fdout size");
+    if (write(fdout, "", 1) != 1)
+        perror("error: cant increase fdout size 2");
+    
+    match *dst = static_cast<match *>(mmap(nullptr, statbuf.st_size*sizeof(match), PROT_WRITE|PROT_READ, MAP_SHARED|MAP_POPULATE, fdout, 0));
+    if (dst == MAP_FAILED) {
+        perror("error: dst == MAP_FAILED");
+        close(fdin);
+        close(fdout);
+        return false;
+    }
+    
+    
+    /// Scanning routines begins here
+    region_t region;
+    mem64_t mem;
+    match m;
+    uintptr_t cursor_src = 0;
+    uintptr_t cursor_dst = 0;
+    
+    high_resolution_clock::time_point timestamp = high_resolution_clock::now();
+    
+    /// Okay, we are scanning only for uint64_t, step: 1
+//#define FLAGS_CHECK_CODE\
     m.flags = flags_empty;\
     if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);\
     if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);\
@@ -434,140 +307,77 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);\
     if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
     
+    //* <uglycode> */
+#define PART1(FLAGS_CHECK_CODE)\
+    cursor_src = 0;\
+    cursor_dst = 0;\
+    while(cursor_src < statbuf.st_size) {\
+        memcpy(&region.start, src+cursor_src, sizeof(region.start)+sizeof(region.end));\
+        cursor_src += sizeof(region.start) + sizeof(region.end);\
+        /*clog<<"reading region: "<<region<<'\n';*/\
+        m.address = region.start;\
+        for( ; m.address + 8 <= region.end; cursor_src += step, m.address += step) {\
+            m.memory = *reinterpret_cast<mem64_t *>(src+cursor_src);\
+            FLAGS_CHECK_CODE\
+            if (m.flags)\
+                dst[cursor_dst++] = m;\
+        }\
+        for( ; m.address + 4 <= region.end; cursor_src += step, m.address += step) {\
+            m.memory = *reinterpret_cast<mem64_t *>(src+cursor_src);\
+            FLAGS_CHECK_CODE\
+            m.flags &= ~(flags_64b);\
+            if (m.flags)\
+                dst[cursor_dst++] = m;\
+        }\
+        for( ; m.address + 2 <= region.end; cursor_src += step, m.address += step) {\
+            m.memory = *reinterpret_cast<mem64_t *>(src+cursor_src);\
+            FLAGS_CHECK_CODE\
+            m.flags &= ~(flags_64b | flags_32b);\
+            if (m.flags)\
+                dst[cursor_dst++] = m;\
+        }\
+        for( ; m.address + 1 <= region.end; cursor_src += step, m.address += step) {\
+            m.memory = *reinterpret_cast<mem64_t *>(src+cursor_src);\
+            FLAGS_CHECK_CODE\
+            m.flags &= ~(flags_64b | flags_32b | flags_16b);\
+            if (m.flags)\
+                dst[cursor_dst++] = m;\
+        }\
+    }\
+    //* </uglycode> */
     
-    streamoff total_size;
-    region_t region;
-    const size_t CHUNK_SIZE = 0x0F'00'00'00/match::size();  // 240 MiB
-    const size_t RESERVED = sizeof(mem64_t) - 1;            // 7 elements reserved from start
-    const size_t BUFFER_SIZE = CHUNK_SIZE + RESERVED;
+/* -Ofast
+Old:
+Done 333112 matches, in: 0.0350032 seconds.     с буфером
+Done 333112 matches, in: 0.366467 seconds.      без буфера, с инлайном
+Done 333110 matches, in: 0.0190443 seconds.     свой буфер, с инлайном
+Done 333208 matches, in: 0.0213902 seconds.     всё в буферах
+Done 356352 bytes, in: 0.000642586 seconds.     буфера+диск
+Done 333154 matches, in: 0.0526076 seconds.
+Done 1352589312 bytes, in: 4.51307 seconds.     ищем едичикку int 64 в доте
+Done 738743 matches, in: 11.3695 seconds.
+
+Using buffered reader & writer (fakemem 428 MiB):
+Done 449150976 bytes, in: 2.07514 seconds.
+Done 449128277 matches, in: 81.3764 seconds.
+Done 449128277 matches, in: 69.7533 seconds.
+Done 449128277 matches, in: 75.5361 seconds.
+
+v~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ !! YOU ARE HERE !!
+Using mmap
+ (fakemem 111 MiB):
+Done 116752384 bytes, in: 0.125883 seconds.
+Done 116716123 matches, in: 13.3575 seconds.
+Done 116598353 matches, in: 16.7437 seconds.    CPU.throttling.enable()
+Done 116598353 matches, in: 15.5291 seconds.
+Done 116598353 matches, in: 13.012 seconds.     CPU.throttling.disable()
+Done 116598353 matches, in: 13.2313 seconds.    yeah that was throttling
+
+ (fakemem 33 MiB):
+Done 34797174 matches, in: 2.35997 seconds. (debug)
+Done 34797174 matches, in: 2.19174 seconds.
+*/
     
-    char *buffer = new char[BUFFER_SIZE];
-    char *chunk = buffer + RESERVED;
-    bzero(buffer, BUFFER_SIZE);
-    
-    uintptr_t region_remain_size;
-    uintptr_t offset;
-    uintptr_t off;
-    uintptr_t chunk_count;
-    uintptr_t lshift;
-    uintptr_t rshift;
-    uintptr_t read_address;
-    uintptr_t matches_count = 0;
-    
-    
-#define PART1(FLAGS_CHECK_CODE)
-    /* определяем размер файла */
-    fsnapshot.seekg(0, ios::end);
-    total_size = fsnapshot.tellg();
-    fsnapshot.seekg(0, ios::beg);
-    
-    /* для каждого региона */
-    while(fsnapshot.tellg() < total_size) {
-        /* читаем его размер */
-        fsnapshot.read(reinterpret_cast<char *>(&region.start), 2*sizeof(region.start));
-        region_remain_size = region.end - region.start;
-        clog<<"reading region: "<<region<<'\n';
-        
-        chunk_count = 0;
-        offset = RESERVED;
-        
-        /* если придётся читать по чанкам */
-        if (region_remain_size > CHUNK_SIZE) {
-            clog<<"reading chunk-by-chunk. chunk_size: "<<CHUNK_SIZE<<'\n';
-            while(region_remain_size > CHUNK_SIZE) {
-                /* Читаем в буффер один чанк */
-                fsnapshot.read(chunk, CHUNK_SIZE);
-                
-                /* Теперь сканируем буффер */
-                read_address = region.start + CHUNK_SIZE * chunk_count;
-                for(off = 0; offset < CHUNK_SIZE - RESERVED; off++, offset++) {
-                    match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
-                    FLAGS_CHECK_CODE
-                    if (m.flags) {
-                        matches_count += 1;
-                        matches.append(m);
-                    }
-                }
-                /* todo я спать 
-                for(off = 0;  region_remain_size >= 8;  off += step, offset += step, region_remain_size -= step) {
-                    match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
-                    FLAGS_CHECK_CODE
-                    if (m.flags) {
-                        matches_count += 1;
-                        matches.append(m);
-                    }
-                }*/
-                
-                /* Пропущеные байты переносим в начало */
-                for(lshift = 0, rshift = CHUNK_SIZE; lshift < RESERVED; lshift++, rshift++)
-                    buffer[lshift] = buffer[rshift];
-                
-                offset = 0;
-                region_remain_size -= CHUNK_SIZE;
-                chunk_count++;
-            }
-            clog<<"done "<<chunk_count<<" chunks amd "<<matches_count<<" matches added"<<'\n';
-        }
-        offset = RESERVED;
-        
-        /* ниже уже либо маленький регион для буфера, либо последний чанк */
-        /* Читаем в буффер один чанк */
-        bzero(chunk+region_remain_size, 7);
-        fsnapshot.read(chunk, region_remain_size);
-        clog<<"reading "<<region_remain_size<<" bytes"<<'\n';
-        
-        /* Теперь сканируем буффер */
-        read_address = region.start + CHUNK_SIZE * chunk_count;
-        
-        for(off = 0;  region_remain_size >= 8;  off += step, offset += step, region_remain_size -= step) {
-            match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
-            FLAGS_CHECK_CODE
-            if (m.flags)
-                matches.append(m);
-        }
-        for(       ;  region_remain_size >= 4;  off += step, offset += step, region_remain_size -= step) {
-            match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
-            FLAGS_CHECK_CODE
-            m.flags &= ~(flags_64b);
-            if (m.flags)
-                matches.append(m);
-        }
-        for(       ;  region_remain_size >= 2;  off += step, offset += step, region_remain_size -= step) {
-            match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
-            FLAGS_CHECK_CODE
-            m.flags &= ~(flags_64b | flags_32b);
-            if (m.flags)
-                matches.append(m);
-        }
-        for(       ;  region_remain_size >= 1;  off += step, offset += step, region_remain_size -= step) {
-            match m(read_address + off, *reinterpret_cast<mem64_t *>(&buffer[offset]));
-            FLAGS_CHECK_CODE
-            m.flags &= ~(flags_64b | flags_32b | flags_16b);
-            if (m.flags)
-                matches.append(m);
-        }
-    }
-    matches.flush();
-//end PART1
-    
-// Это всё под CMake Optimized
-//    Done 333112 matches, in: 0.0350032 seconds. с буфером
-//    Done 333112 matches, in: 0.366467 seconds. без буфера, с инлайном
-//    Done 333110 matches, in: 0.0190443 seconds. свой буфер, с инлайном
-//    Done 333208 matches, in: 0.0213902 seconds. всё в буферах
-//    Done 356352 bytes, in: 0.000642586 seconds. буфера+диск
-//    Done 333154 matches, in: 0.0526076 seconds.
-//    Done 1352589312 bytes, in: 4.51307 seconds. ищем едичикку int 64 в доте
-//    Done 738743 matches, in: 11.3695 seconds.
-//    ss CHUNK_SIZE                : 93b13b
-//    ss CHUNK_SIZE+sizeof(mem64_t): 93b143
-//    Done 1366437888 bytes, in: 6.96247 seconds.
-//            good...
-//CHUNK_SIZE                : 93b13b
-//    CHUNK_SIZE+sizeof(mem64_t): 93b143
-//    Done 930064926 matches, in: 179.071 seconds.
-    
-    high_resolution_clock::time_point timestamp = high_resolution_clock::now();
     if (data_type == BYTEARRAY) {
         clog<<"not supported"<<endl;
     }
@@ -639,12 +449,27 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
                     clog<<"error: only first_scan supported"<<endl;
             }
     }
-    delete[] buffer;
     
-    clog<<"Done "<<matches.size()<<" matches, in: "
+    clog<<"Done "<<cursor_dst<<" matches, in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
     
-    /// Проверка
+    // free the mmapped memory
+    if (munmap(src, static_cast<size_t>(statbuf.st_size)) == -1) {
+        perror("error: munmap src");
+        close(fdin);
+        close(fdout);
+        return false;
+    }
+    close(fdin);
+    if (munmap(dst, cursor_dst+1) == -1) {
+        perror("error: munmap dst");
+        close(fdout);
+        return false;
+    }
+    close(fdout);
+    
+    
+    /// В планах оставить сканирование без mmaping'а для самых счастливых
     /*
     uintptr_t b;
     vector<match> mm;
@@ -652,14 +477,14 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     
     timestamp = high_resolution_clock::now();
     for(region_t &region : handle->regions) {
-        region_remain_size = region.end - region.start;
-        char buffer[region_remain_size];
-        if (!handle->read(buffer, region.start, region_remain_size)) {
+        region_size = region.end - region.start;
+        char buffer[region_size];
+        if (!handle->read(buffer, region.start, region_size)) {
             clog<<"error: invalid region: cant read memory: "<<region<<endl;
             return false;
         }
         
-        for(b = 0;         region_remain_size  >= 8;  b += step, region_remain_size  -= step) {
+        for(b = 0;         region_size  >= 8;  b += step, region_size  -= step) {
             match m(region.start + b, *reinterpret_cast<mem64_t *>(&buffer[b]));
             m.flags = flags_empty;
             if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
@@ -670,7 +495,7 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
             if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
             if (m.flags) mm.push_back(m);
         }
-        for(            ;  region_remain_size  >= 4;  b += step, region_remain_size  -= step) {
+        for(            ;  region_size  >= 4;  b += step, region_size  -= step) {
             match m(region.start + b, *reinterpret_cast<mem64_t *>(&buffer[b]));
             m.flags = flags_empty;
             if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
@@ -682,7 +507,7 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
             m.flags &= ~(flags_64b);\
             if (m.flags) mm.push_back(m);
         }
-        for(            ;  region_remain_size  >= 2;  b += step, region_remain_size  -= step) {
+        for(            ;  region_size  >= 2;  b += step, region_size  -= step) {
             match m(region.start + b, *reinterpret_cast<mem64_t *>(&buffer[b]));
             m.flags = flags_empty;
             if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
@@ -694,7 +519,7 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
             m.flags &= ~(flags_64b | flags_32b);
             if (m.flags) mm.push_back(m);
         }
-        for(            ;  region_remain_size  >= 1;  b += step, region_remain_size  -= step) {
+        for(            ;  region_size  >= 1;  b += step, region_size  -= step) {
             match m(region.start + b, *reinterpret_cast<mem64_t *>(&buffer[b]));
             m.flags = flags_empty;
             if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);

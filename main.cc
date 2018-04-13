@@ -20,15 +20,18 @@ using namespace std::literals;
 
 const string target = "HackMe";
 
-#define HEX(s) hex<<(s)<<dec
+#define HEX(s) hex<<showbase<<(s)<<dec
+
+#define handle_error(msg) \
+    do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
 int
 main() {
-    // Todo http://panthema.net/2007/0328-ZLibString.html
     // Todo performance match_flags or uint16_t
+    // Todo докажи, что reinterpret_cast<mem64_t *>(&buffer[r_off]) при buffer[1] = {0}; будет представлять ui64 как 0
     /*
      * -funswitch-loops:
     Method A: done 333301 matches, in: 0.0136228 seconds, overall: 1.39055 seconds.
@@ -155,174 +158,108 @@ stage_rescanning:;
     
     uint8_t *buffer = nullptr;
     uintptr_t r_off = 0;
-    uintptr_t total = 0;
-    mem64_t *memory;
+    uintptr_t totalsize = 0;
     size_t step = 1;
-    match_flags flags;
+    
+#define PART1 \
+    for(region_t &r : h->regions) {                                                                                         \
+        if (!r.writable || !r.readable) continue;                                                                           \
+        totalsize = r.end - r.start; /* calculate size of region */                                                         \
+        delete [] buffer; buffer = new uint8_t[totalsize];  /* reallocate buffer */                                         \
+        if (!h->read(buffer, r.start, totalsize)) { clog<<"error: invalid region: cant read memory: "<<r<<endl; continue; } \
+        for(r_off = 0; ;  r_off += step, totalsize -= step) {                                                               \
+            match m (r.start + r_off, *reinterpret_cast<mem64_t *>(&buffer[r_off]));
+#define PART2 \
+            if (totalsize >= 8) {                                                                                           \
+                if (m.flags)                                                                                                \
+                    matches.push_back(m);                                                                                   \
+            }                                                                                                               \
+            else if (totalsize >= 4) {                                                                                      \
+                m.flags &= ~(flags_64b);                                                                                    \
+                if (m.flags)                                                                                                \
+                    matches.push_back(m);                                                                                   \
+            }                                                                                                               \
+            else if (totalsize >= 2) {                                                                                      \
+                m.flags &= ~(flags_64b | flags_32b);                                                                        \
+                if (m.flags)                                                                                                \
+                    matches.push_back(m);                                                                                   \
+            }                                                                                                               \
+            else {                                                                                                          \
+                m.flags &= ~(flags_64b | flags_32b | flags_16b);                                                            \
+                if (m.flags)                                                                                                \
+                    matches.push_back(m);                                                                                   \
+            }                                                                                                               \
+            if (totalsize - step >= totalsize)                                                                              \
+                break;                                                                                                      \
+        }                                                                                                                   \
+    }
     
     t1 = high_resolution_clock::now();
-    for(const region_t &r : h->regions) {
-        if (!r.writable || !r.readable) continue;
-        total = r.end - r.start; // calculate size of region
-        delete [] buffer; buffer = new uint8_t[total];  // reallocate buffer
-        if (!h->read(buffer, r.start, total)) { clog<<"error: invalid region: cant read memory: "<<r<<endl; continue; }
-        for(r_off = 0;  total > 0;  r_off += step, total -= step) {
-            memory = reinterpret_cast<mem64_t *>(&buffer[r_off]);
-            
-            switch (data_type) {
-                case BYTEARRAY: clog<<"not supported"<<endl; break;
-                case STRING: clog<<"not supported"<<endl; break;
-                default:
-                    switch(match_type) {
-                        case MATCHANY:
-                            flags = flags_all;
-                            break;
-                        case MATCHEQUALTO:
-                            flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   == uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  == uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  == uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  == uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value == uservalue[0].float32_value)) flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value == uservalue[0].float64_value)) flags |= (flag_f64b);
-                            break;
-                        case MATCHNOTEQUALTO:
-                            flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   != uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  != uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  != uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  != uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value != uservalue[0].float32_value)) flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value != uservalue[0].float64_value)) flags |= (flag_f64b);
-                            break;
-                        case MATCHGREATERTHAN:
-                            flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   >  uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  >  uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  >  uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  >  uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value >  uservalue[0].float32_value)) flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value >  uservalue[0].float64_value)) flags |= (flag_f64b);
-                            break;
-                        case MATCHLESSTHAN:
-                            flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   <  uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  <  uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  <  uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  <  uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value <  uservalue[0].float32_value)) flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value <  uservalue[0].float64_value)) flags |= (flag_f64b);
-                            break;
-                        case MATCHRANGE:
-                            flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (uservalue[0].uint8_value   <= memory->uint8_value   ) && (memory->uint8_value   >= uservalue[1].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (uservalue[0].uint16_value  <= memory->uint16_value  ) && (memory->uint16_value  >= uservalue[1].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (uservalue[0].uint32_value  <= memory->uint32_value  ) && (memory->uint32_value  >= uservalue[1].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (uservalue[0].uint64_value  <= memory->uint64_value  ) && (memory->uint64_value  >= uservalue[1].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (uservalue[0].float32_value <= memory->float32_value ) && (memory->float32_value >= uservalue[1].float32_value)) flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (uservalue[0].float64_value <= memory->float64_value ) && (memory->float64_value >= uservalue[1].float64_value)) flags |= (flag_f64b);
-                            break;
-                        default:
-                            clog<<"error: only first_scan supported"<<endl;
-                            goto stage_scanning;
-                    }
-                    if (flags) matches.push_back(match(&r, r_off, *memory, flags));
-            }
-        }
+    if (data_type == BYTEARRAY) {
+        clog<<"not supported"<<endl;
     }
-    t2 = high_resolution_clock::now();
-    time_span = duration_cast<duration<double>>(t2 - t1);
-    counterA += time_span;
-    cout<<"Method A: done "<<matches.size()<<" matches, in: "<<time_span.count()<<" seconds, overall: "<<counterA.count()<<" seconds."<<endl;
-    
-    if (matches.capacity() > RESERVED) {
-        cout<<"warning: matches.capacity() > RESERVED: matches.capacity(): "<<matches.capacity()<<endl;
-    }
-    
-    // Method B - fastest, but with crappy macros
-    matches.clear();
-    matches.shrink_to_fit();
-    matches.reserve(RESERVED);
-    
-#define PART1                                                                                                           \
-    for(const region_t &r : h->regions) {                                                                               \
-        if (!r.writable || !r.readable) continue;                                                                       \
-        total = r.end - r.start; /* calculate size of region */                                                         \
-        delete [] buffer; buffer = new uint8_t[total];  /* reallocate buffer */                                         \
-        if (!h->read(buffer, r.start, total)) { clog<<"error: invalid region: cant read memory: "<<r<<endl; continue; } \
-        for(r_off = 0;  total > 0;  r_off += step, total -= step) {                                                     \
-            memory = reinterpret_cast<mem64_t *>(&buffer[r_off]);
-//define PART1
-#define PART2                                                                                                           \
-            if (flags) matches.emplace_back(&r, r_off, *memory, flags);                                                 \
-        }                                                                                                               \
-    }
-//define PART2
-    
-    t1 = high_resolution_clock::now();
-    switch (data_type) {
-        case BYTEARRAY: clog<<"not supported"<<endl; break;
-        case STRING: clog<<"not supported"<<endl; break;
-        default:
-            switch(match_type) {
+    else if (data_type == STRING) {
+        clog<<"not supported"<<endl;
+    } else {
+        switch(match_type) {
                 case MATCHANY:
-                    PART1 
-                            flags = flags_all;
+                    PART1
+                            m.flags = flags_all;
                     PART2
                     break;
                 case MATCHEQUALTO:
                     PART1
-                            flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   == uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  == uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  == uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  == uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value == uservalue[0].float32_value)) flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value == uservalue[0].float64_value)) flags |= (flag_f64b);
+                            m.flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
                     PART2
                     break;
                 case MATCHNOTEQUALTO:
                     PART1
-                            flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   != uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  != uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  != uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  != uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value != uservalue[0].float32_value)) flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value != uservalue[0].float64_value)) flags |= (flag_f64b);
+                            m.flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   != uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  != uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  != uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  != uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value != uservalue[0].float32_value)) m.flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value != uservalue[0].float64_value)) m.flags |= (flag_f64b);
                     PART2
                     break;
                 case MATCHGREATERTHAN:
                     PART1
-                            flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   >  uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  >  uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  >  uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  >  uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value >  uservalue[0].float32_value)) flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value >  uservalue[0].float64_value)) flags |= (flag_f64b);
+                            m.flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   >  uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  >  uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  >  uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  >  uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value >  uservalue[0].float32_value)) m.flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value >  uservalue[0].float64_value)) m.flags |= (flag_f64b);
                     PART2
                     break;
                 case MATCHLESSTHAN:
                     PART1
-                            flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (memory->uint8_value   <  uservalue[0].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (memory->uint16_value  <  uservalue[0].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (memory->uint32_value  <  uservalue[0].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (memory->uint64_value  <  uservalue[0].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (memory->float32_value <  uservalue[0].float32_value)) flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (memory->float64_value <  uservalue[0].float64_value)) flags |= (flag_f64b);
+                            m.flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   <  uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  <  uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  <  uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  <  uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value <  uservalue[0].float32_value)) m.flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value <  uservalue[0].float64_value)) m.flags |= (flag_f64b);
                     PART2
                     break;
                 case MATCHRANGE:
                     PART1
-                            flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (uservalue[0].uint8_value   <= memory->uint8_value   ) && (memory->uint8_value   >= uservalue[1].uint8_value  )) flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (uservalue[0].uint16_value  <= memory->uint16_value  ) && (memory->uint16_value  >= uservalue[1].uint16_value )) flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (uservalue[0].uint32_value  <= memory->uint32_value  ) && (memory->uint32_value  >= uservalue[1].uint32_value )) flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (uservalue[0].uint64_value  <= memory->uint64_value  ) && (memory->uint64_value  >= uservalue[1].uint64_value )) flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (uservalue[0].float32_value <= memory->float32_value ) && (memory->float32_value >= uservalue[1].float32_value)) flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (uservalue[0].float64_value <= memory->float64_value ) && (memory->float64_value >= uservalue[1].float64_value)) flags |= (flag_f64b);
+                            m.flags = flags_empty;
+                            if ((uservalue[0].flags & flags_i8b ) && (uservalue[0].uint8_value   <= m.memory.uint8_value   ) && (m.memory.uint8_value   >= uservalue[1].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+                            if ((uservalue[0].flags & flags_i16b) && (uservalue[0].uint16_value  <= m.memory.uint16_value  ) && (m.memory.uint16_value  >= uservalue[1].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+                            if ((uservalue[0].flags & flags_i32b) && (uservalue[0].uint32_value  <= m.memory.uint32_value  ) && (m.memory.uint32_value  >= uservalue[1].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+                            if ((uservalue[0].flags & flags_i64b) && (uservalue[0].uint64_value  <= m.memory.uint64_value  ) && (m.memory.uint64_value  >= uservalue[1].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+                            if ((uservalue[0].flags & flag_f32b ) && (uservalue[0].float32_value <= m.memory.float32_value ) && (m.memory.float32_value >= uservalue[1].float32_value)) m.flags |= (flag_f32b);
+                            if ((uservalue[0].flags & flag_f64b ) && (uservalue[0].float64_value <= m.memory.float64_value ) && (m.memory.float64_value >= uservalue[1].float64_value)) m.flags |= (flag_f64b);
                     PART2
                     break;
                 default:

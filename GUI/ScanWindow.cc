@@ -16,7 +16,8 @@ ScanWindow::ScanWindow(MainWindow *parent)
         , paned_2(Gtk::ORIENTATION_VERTICAL)
 {
     delete parent->handle;
-    parent->handle = new Handle("HackMe");
+    parent->handle = new Handle("FakeMem");
+//    parent->handle = new Handle("HackMe");
 //    parent->handle = new Handle("7DaysToDie.x86_64");
     parent->handle->updateRegions();
     parent->hs = new Scanner(parent->handle);
@@ -66,7 +67,7 @@ ScanWindow::create_scanner_output()
     scrolledwindow->add(*Gtk::manage(tree_output));
     scrolledwindow->set_policy(Gtk::POLICY_ALWAYS, Gtk::POLICY_ALWAYS);
     scrolledwindow->set_resize_mode(Gtk::ResizeMode::RESIZE_IMMEDIATE);
-//    scrolledwindow->set_shadow_type(Gtk::SHADOW_ETCHED_IN); // todo nahuy eto nado?
+//    scrolledwindow->set_shadow_type(Gtk::SHADOW_ETCHED_IN); // DONT GOOGLE 'SHADOW_ETCHED_IN'
     
     box->add(*Gtk::manage(label_found));
     box->add(*Gtk::manage(scrolledwindow));
@@ -268,6 +269,7 @@ ScanWindow::on_button_first_scan()
     }
     parent->hs->first_scan(data_type, uservalue, match_type);
     
+/*
     ref_tree_output->clear();
     ssize_t output_count = parent->hs->matches.size();
     char *label_count_text;
@@ -300,6 +302,7 @@ ScanWindow::on_button_first_scan()
     // Continue refresh values inside Scanner output
     conn = Glib::signal_timeout().connect
             (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
+*/
 }
 
 //todo next scan impl
@@ -328,57 +331,57 @@ ScanWindow::on_button_next_scan()
     parent->hs->next_scan(row[columns_scan_type.m_col_scan_type], entry_value->get_text().c_str());
     
     ref_tree_output->clear();
-    size_t output_count = parent->hs->matches.size();
-    char *label_count_text;
-    asprintf(&label_count_text, "Found: %li", output_count);
-    label_found->set_text(label_count_text);
-    if (output_count > 10'000) {
-        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
-        return;
-    } else {
-        clog<<"SHOWING"<<endl;
-    }
-    
-    // For each address, that scanner found, add row to tree_output
-    for(int i = 0; i < parent->hs->matches.size(); i++) {
-        match val = parent->hs->matches.get(i);
-        if      (val.flags & flag_s64b) add_row<int64_t> (&val, "int64");
-        else if (val.flags & flag_s32b) add_row<int32_t> (&val, "int32");
-        else if (val.flags & flag_s16b) add_row<int16_t> (&val, "int16");
-        else if (val.flags & flag_s8b)  add_row<int8_t>  (&val, "int8");
-        else if (val.flags & flag_u64b) add_row<uint64_t>(&val, "uint64");
-        else if (val.flags & flag_u32b) add_row<uint32_t>(&val, "uint32");
-        else if (val.flags & flag_u16b) add_row<uint16_t>(&val, "uint16");
-        else if (val.flags & flag_u8b)  add_row<uint8_t> (&val, "uint8");
-        else if (val.flags & flag_f64b) add_row<double>  (&val, "double");
-        else if (val.flags & flag_f32b) add_row<float>   (&val, "float");
-    }
-    
+//    size_t output_count = parent->hs->matches.size();
+//    char *label_count_text;
+//    asprintf(&label_count_text, "Found: %li", output_count);
+//    label_found->set_text(label_count_text);
+//    if (output_count > 10'000) {
+//        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
+//        return;
+//    } else {
+//        clog<<"SHOWING"<<endl;
+//    }
+//    
+//    // For each address, that scanner found, add row to tree_output
+//    for(int i = 0; i < parent->hs->matches.size(); i++) {
+//        match val = parent->hs->matches.get(i);
+//        if      (val.flags & flag_s64b) add_row<int64_t> (&val, "int64");
+//        else if (val.flags & flag_s32b) add_row<int32_t> (&val, "int32");
+//        else if (val.flags & flag_s16b) add_row<int16_t> (&val, "int16");
+//        else if (val.flags & flag_s8b)  add_row<int8_t>  (&val, "int8");
+//        else if (val.flags & flag_u64b) add_row<uint64_t>(&val, "uint64");
+//        else if (val.flags & flag_u32b) add_row<uint32_t>(&val, "uint32");
+//        else if (val.flags & flag_u16b) add_row<uint16_t>(&val, "uint16");
+//        else if (val.flags & flag_u8b)  add_row<uint8_t> (&val, "uint8");
+//        else if (val.flags & flag_f64b) add_row<double>  (&val, "double");
+//        else if (val.flags & flag_f32b) add_row<float>   (&val, "float");
+//    }
+//    
     
     // Continue refresh values inside Scanner output
-    conn = Glib::signal_timeout().connect
-            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
+//    conn = Glib::signal_timeout().connect
+//            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
 }
 
 bool
 ScanWindow::on_timer_refresh()
 {
-    auto ref_child = ref_tree_output->children();
-    for(int i = 0; i < parent->hs->matches.size(); i++) {
-        match val = parent->hs->matches.get(i);
-        Gtk::TreeModel::Row row = *ref_child[i];
-        
-        if      (val.flags & flag_s64b) refresh_row<int64_t> (&val, "int64",  row);
-        else if (val.flags & flag_s32b) refresh_row<int32_t> (&val, "int32",  row);
-        else if (val.flags & flag_s16b) refresh_row<int16_t> (&val, "int16",  row);
-        else if (val.flags & flag_s8b)  refresh_row<int8_t>  (&val, "int8",   row);
-        else if (val.flags & flag_u64b) refresh_row<uint64_t>(&val, "uint64", row);
-        else if (val.flags & flag_u32b) refresh_row<uint32_t>(&val, "uint32", row);
-        else if (val.flags & flag_u16b) refresh_row<uint16_t>(&val, "uint16", row);
-        else if (val.flags & flag_u8b)  refresh_row<uint8_t> (&val, "uint8",  row);
-        else if (val.flags & flag_f64b) refresh_row<double>  (&val, "double", row);
-        else if (val.flags & flag_f32b) refresh_row<float>   (&val, "float",  row);
-    }
+//    auto ref_child = ref_tree_output->children();
+//    for(int i = 0; i < parent->hs->matches.size(); i++) {
+//        match val = parent->hs->matches.get(i);
+//        Gtk::TreeModel::Row row = *ref_child[i];
+//        
+//        if      (val.flags & flag_s64b) refresh_row<int64_t> (&val, "int64",  row);
+//        else if (val.flags & flag_s32b) refresh_row<int32_t> (&val, "int32",  row);
+//        else if (val.flags & flag_s16b) refresh_row<int16_t> (&val, "int16",  row);
+//        else if (val.flags & flag_s8b)  refresh_row<int8_t>  (&val, "int8",   row);
+//        else if (val.flags & flag_u64b) refresh_row<uint64_t>(&val, "uint64", row);
+//        else if (val.flags & flag_u32b) refresh_row<uint32_t>(&val, "uint32", row);
+//        else if (val.flags & flag_u16b) refresh_row<uint16_t>(&val, "uint16", row);
+//        else if (val.flags & flag_u8b)  refresh_row<uint8_t> (&val, "uint8",  row);
+//        else if (val.flags & flag_f64b) refresh_row<double>  (&val, "double", row);
+//        else if (val.flags & flag_f32b) refresh_row<float>   (&val, "float",  row);
+//    }
     return true;
 }
 

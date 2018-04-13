@@ -22,8 +22,14 @@ class match {
 public:
     uintptr_t address;      //+8=8
     mem64_t memory;         //+8=16
-    mem64_t memory_old;     //+8=24
-    uint16_t flags;         //+2=26
+//    mem64_t memory_old;     //+8=24
+    uint16_t flags;         //+2=26 or 18 w/o memory_old
+    
+    explicit match() {
+        this->address = 0;
+        this->memory.uint64_value = 0;
+        this->flags = 0;
+    }
     
     explicit match(uintptr_t address, mem64_t memory, match_flags userflag = flags_empty) {
         this->address = address;
@@ -111,83 +117,6 @@ public:
  * ADDRESSES.FIRST - самый первый
  * ADDRESSES.TMP - создаётся после next_scan
  * */
-class file_matches {
-public:
-    inline
-    void open() {
-        f.open("ADDRESSES.FIRST", ios::in | ios::out | ios::binary | ios::trunc);
-    }
-    
-    file_matches() {
-        buffer = new char[match::size()];
-        open();
-        mm.reserve(0x0F'00'00'00/match::size());  // 240 MiB
-    }
-    
-    ~file_matches() {
-        clear();
-        f.close();
-        delete buffer;
-    }
-    
-    // accessor
-    inline
-    match get(fstream::off_type index) {
-        f.seekg(index*match::size(), ios::beg);
-        f.read(buffer, match::size());
-        return *reinterpret_cast<match *>(buffer);
-    }
-    
-    inline
-    void flush() {
-        char *b = reinterpret_cast<char *>(&mm[0]);
-        f.seekp(0, ios::end);
-        f.write(b, match::size()*mm.size());
-        mm.clear();
-    }
-    
-    // mutator
-    inline
-    void set(fstream::off_type index, match m) {
-        f.seekp(index * match::size(), ios::beg);
-        f.write(m.data(), match::size());
-    }
-    
-    inline
-    void append(match &m) {
-        if (mm.size() >= mm.capacity())
-            flush();
-        mm.push_back(m);
-    }
-    
-    inline
-    void append(vector<match> &ms) {
-        flush();
-        for(size_t i = 0; i<ms.size(); i++) {
-            append(ms);
-        }
-//        char *b = reinterpret_cast<char *>(&mm[0]);
-//        f.seekp(0, ios::end);
-//        f.write(b, match::size()*mm.size());
-    }
-    
-    inline
-    fstream::pos_type size() {
-        return f.seekg(0, ios::end).tellg()/match::size();
-    }
-    
-    inline
-    void clear() {
-        mm.clear();
-        f.close();
-        open();
-    }
-    
-private:
-    vector<match> mm;
-    fstream f;
-    char *buffer;
-};
 
 
 class bad_uservalue_cast
@@ -222,10 +151,6 @@ public:
 class Scanner
 {
 public:
-    fstream fsnapshot;
-//    istream isnapshot;
-    file_matches matches;
-    
     Handle *handle;
     bool stop_flag = false;
     double scan_progress = 0;
@@ -239,7 +164,7 @@ public:
      * @throws 
      * @return 
      */
-    bool snapshot();
+    char *snapshot(int fdin);
     
     void string_to_uservalue(const scan_data_type_t &data_type, const std::string &text,
                              scan_match_type_t *match_type, uservalue_t *vals);

@@ -15,7 +15,7 @@
 
 using namespace std;
 
-size_t mib;
+ssize_t mib;
 char *array = nullptr;
 bool is_random;
 
@@ -24,15 +24,19 @@ print_help() {
     cout<<"---------------------------------"<<endl;
     cout<<" Command  | Description          "<<endl;
     cout<<"----------+----------------------"<<endl;
-    cout<<" > N      | allocate N mebibytes "<<endl;
+    cout<<" > N      | allocate N bytes     "<<endl;
+    cout<<" > -N     | allocate N mebibytes "<<endl;
     cout<<" > del    | delete an array      "<<endl;
     cout<<" > info   | prints info          "<<endl;
     cout<<" > rand   | turn on/off random   "<<endl;
     cout<<"---------------------------------"<<endl;
 }
 
-size_t m2b (size_t m) {
-    return m * 1024 * 1024 / sizeof(char);
+ssize_t m2b (ssize_t m) {
+    if (m < 0) 
+        return - m * 1024 * 1024 / sizeof(char);
+    else
+        return m;
 }
 
 void
@@ -46,14 +50,15 @@ print_info() {
 
 void
 reallocate() {
+//fixme govnocod
     if (array)
         delete [] array;
-    size_t to_allocate = m2b(mib);
+    ssize_t to_allocate = m2b(mib);
     cout<<"to_allocate: "<<to_allocate<<" bytes"<<endl;
     array = new char[to_allocate];
     
     if (is_random) {
-        for(size_t i = 0; i < m2b(mib); i++)
+        for(ssize_t i = 0; i < m2b(mib); i++)
             array[i] = static_cast<char>(rand());
     } else
         bzero(array, m2b(mib));
