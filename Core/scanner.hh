@@ -161,8 +161,8 @@ public:
     }
     
     /** 
-     * @throws 
-     * @return 
+     * Make snapshot of 'handle' written to fdin.
+     * @return mmap of fdin.
      */
     char *snapshot(int fdin);
     

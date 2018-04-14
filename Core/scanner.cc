@@ -247,58 +247,57 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     handle->updateRegions();
     
     /// Shapshot process memory
-    int fdin = open("MEMORY.TMP", O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR);
-    if (fdin < 0) {
+    int fd_snapshot = open("MEMORY.TMP", O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR);
+    if (fd_snapshot < 0) {
         perror("error: can't open 'MEMORY.TMP'");
         return false;
     }
     
-    char *src = snapshot(fdin);
-    if (!src)
+    char *mm_snapshot = snapshot(fd_snapshot);
+    if (!mm_snapshot)
         return false;
     
-    struct stat statbuf;
-    if (fstat(fdin, &statbuf) < 0) {
-        perror("error: can't fstat fdin");
+    struct stat stat_snapshot;
+    if (fstat(fd_snapshot, &stat_snapshot) < 0) {
+        perror("error: can't fstat fd_snapshot");
         return false;
     }
-    clog<<"Snapshot size with fstat: "<<statbuf.st_size<<" bytes."<<endl;
     
     
     /// Create file for storing matches
-    int fdout = open("ADDRESSES.FIRST", O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR);
-    if (fdout < 0) {
+    int fd_matches = open("ADDRESSES.TMP", O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR);
+    if (fd_matches < 0) {
         perror("error: can't open 'ADDRESSES.FIRST' for writing");
         return false;
     }
     
     
-    /// Allocate space to mmap fdout once
-    if (lseek(fdout, statbuf.st_size*sizeof(match) - 1, SEEK_SET) == -1)
-        perror("error: cant increase fdout size");
-    if (write(fdout, "", 1) != 1)
-        perror("error: cant increase fdout size 2");
+    /// Allocate space to mmap fd_addresses once fixme eban
+    if (lseek(fd_matches, stat_snapshot.st_size*sizeof(match) - 1, SEEK_SET) == -1)
+        perror("error: cant increase fd_matches size");
+    if (write(fd_matches, "", 1) != 1)
+        perror("error: cant increase fd_matches size 2");
     
-    match *dst = static_cast<match *>(mmap(nullptr, statbuf.st_size*sizeof(match), PROT_WRITE|PROT_READ, MAP_SHARED|MAP_POPULATE, fdout, 0));
-    if (dst == MAP_FAILED) {
-        perror("error: dst == MAP_FAILED");
-        close(fdin);
-        close(fdout);
+    match *mm_matches = static_cast<match *>(mmap(nullptr, stat_snapshot.st_size*sizeof(match), PROT_WRITE|PROT_READ, MAP_SHARED|MAP_POPULATE, fd_matches, 0));
+    if (mm_matches == MAP_FAILED) {
+        perror("error: mm_matches == MAP_FAILED");
+        close(fd_snapshot);
+        close(fd_matches);
         return false;
     }
     
     
     /// Scanning routines begins here
     region_t region;
-    mem64_t mem;
     match m;
-    uintptr_t cursor_src = 0;
-    uintptr_t cursor_dst = 0;
+    
+    char *snapshot = mm_snapshot;
+    match *matches = mm_matches;
     
     high_resolution_clock::time_point timestamp = high_resolution_clock::now();
     
     /// Okay, we are scanning only for uint64_t, step: 1
-//#define FLAGS_CHECK_CODE\
+#define FLAGS_CHECK_CODE\
     m.flags = flags_empty;\
     if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);\
     if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);\
@@ -307,44 +306,53 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);\
     if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
     
-    //* <uglycode> */
-#define PART1(FLAGS_CHECK_CODE)\
-    cursor_src = 0;\
-    cursor_dst = 0;\
-    while(cursor_src < statbuf.st_size) {\
-        memcpy(&region.start, src+cursor_src, sizeof(region.start)+sizeof(region.end));\
-        cursor_src += sizeof(region.start) + sizeof(region.end);\
-        /*clog<<"reading region: "<<region<<'\n';*/\
-        m.address = region.start;\
-        for( ; m.address + 8 <= region.end; cursor_src += step, m.address += step) {\
-            m.memory = *reinterpret_cast<mem64_t *>(src+cursor_src);\
-            FLAGS_CHECK_CODE\
-            if (m.flags)\
-                dst[cursor_dst++] = m;\
-        }\
-        for( ; m.address + 4 <= region.end; cursor_src += step, m.address += step) {\
-            m.memory = *reinterpret_cast<mem64_t *>(src+cursor_src);\
-            FLAGS_CHECK_CODE\
-            m.flags &= ~(flags_64b);\
-            if (m.flags)\
-                dst[cursor_dst++] = m;\
-        }\
-        for( ; m.address + 2 <= region.end; cursor_src += step, m.address += step) {\
-            m.memory = *reinterpret_cast<mem64_t *>(src+cursor_src);\
-            FLAGS_CHECK_CODE\
-            m.flags &= ~(flags_64b | flags_32b);\
-            if (m.flags)\
-                dst[cursor_dst++] = m;\
-        }\
-        for( ; m.address + 1 <= region.end; cursor_src += step, m.address += step) {\
-            m.memory = *reinterpret_cast<mem64_t *>(src+cursor_src);\
-            FLAGS_CHECK_CODE\
-            m.flags &= ~(flags_64b | flags_32b | flags_16b);\
-            if (m.flags)\
-                dst[cursor_dst++] = m;\
-        }\
-    }\
-    //* </uglycode> */
+    
+    /** <uglycode> */
+#define PART1(FLAGS_CHECK_CODE)
+    constexpr size_t region_shift = sizeof(region.start) + sizeof(region.end);
+    char *snapshot_end = snapshot + stat_snapshot.st_size - 1;
+    
+    while(snapshot < snapshot_end) {
+        memcpy(&region.start, snapshot, region_shift);
+        snapshot += region_shift;
+        /*clog<<"reading region: "<<region<<'\n';*/
+        
+        m.address = region.start;
+        
+        char *region_end = snapshot + (region.end - region.start) - 7;
+        while (snapshot < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(snapshot);
+            FLAGS_CHECK_CODE
+            if (m.flags)
+                *matches++ = m;
+            snapshot += step;
+        }
+        region_end += 4;
+        while (snapshot < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(snapshot);
+            FLAGS_CHECK_CODE
+            if (m.flags)
+                *matches++ = m;
+            snapshot += step;
+        }
+        region_end += 2;
+        while (snapshot < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(snapshot);
+            FLAGS_CHECK_CODE
+            if (m.flags)
+                *matches++ = m;
+            snapshot += step;
+        }
+        region_end += 1;
+        while (snapshot < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(snapshot);
+            FLAGS_CHECK_CODE
+            if (m.flags)
+                *matches++ = m;
+            snapshot += step;
+        }
+    }
+    /** </uglycode> */
     
 /* -Ofast
 Old:
@@ -372,6 +380,7 @@ Done 116598353 matches, in: 16.7437 seconds.    CPU.throttling.enable()
 Done 116598353 matches, in: 15.5291 seconds.
 Done 116598353 matches, in: 13.012 seconds.     CPU.throttling.disable()
 Done 116598353 matches, in: 13.2313 seconds.    yeah that was throttling
+Done 116729925 matches, in: 7.0059 seconds.
 
  (fakemem 33 MiB):
 Done 34797174 matches, in: 2.35997 seconds. (debug)
@@ -450,23 +459,23 @@ Done 34797174 matches, in: 2.19174 seconds.
             }
     }
     
-    clog<<"Done "<<cursor_dst<<" matches, in: "
+    clog<<"Done "<<matches-mm_matches<<" matches, in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
     
     // free the mmapped memory
-    if (munmap(src, static_cast<size_t>(statbuf.st_size)) == -1) {
-        perror("error: munmap src");
-        close(fdin);
-        close(fdout);
+    if (munmap(mm_snapshot, static_cast<size_t>(stat_snapshot.st_size)) == -1) {
+        perror("error: munmap mm_snapshot");
+        close(fd_snapshot);
+        close(fd_matches);
         return false;
     }
-    close(fdin);
-    if (munmap(dst, cursor_dst+1) == -1) {
-        perror("error: munmap dst");
-        close(fdout);
+    close(fd_snapshot);
+    if (munmap(mm_matches, matches-mm_matches+1) == -1) {
+        perror("error: munmap mm_matches");
+        close(fd_matches);
         return false;
     }
-    close(fdout);
+    close(fd_matches);
     
     
     /// В планах оставить сканирование без mmaping'а для самых счастливых
