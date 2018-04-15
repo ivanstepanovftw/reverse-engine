@@ -14,6 +14,14 @@
 #include <functional>
 #include <zlib.h>
 #include <cmath>
+#include <bitset>
+#include <chrono>
+#include <cmath>
+#include <fcntl.h>
+#include "value.hh"
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <boost/iostreams/device/mapped_file.hpp>
 
 using namespace std;
 
@@ -161,10 +169,15 @@ public:
     }
     
     /** 
-     * Make snapshot of 'handle' written to fdin.
-     * @return mmap of fdin.
+     * Make snapshot of 'handle' to the file.
+     * @return mapped_file.
+     * @throws yes:
+        throw invalid_argument("no regions defined, perhaps you deleted them all?");
+        throw invalid_argument("no bytes to snapshot");
+        throw invalid_argument("cant open snapshot_mf");
+        throw invalid_argument("process not running");
      */
-    char *snapshot(int fdin);
+    boost::iostreams::mapped_file snapshot(const string &path);
     
     void string_to_uservalue(const scan_data_type_t &data_type, const std::string &text,
                              scan_match_type_t *match_type, uservalue_t *vals);

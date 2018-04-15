@@ -3,7 +3,7 @@
 # └──────────────────────────────────────────────────────────────────┘
 project(RECore)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic -Wextra -Woverflow")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Woverflow")
 # ┌──────────────────────────────────────────────────────────────────┐
 # │  Build executable                                                │
 # └──────────────────────────────────────────────────────────────────┘

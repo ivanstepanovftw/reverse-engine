@@ -2,14 +2,7 @@
 // Created by root on 09.03.18.
 //
 
-#include <bitset>
-#include <chrono>
-#include <cmath>
-#include <fcntl.h>
 #include "scanner.hh"
-#include "value.hh"
-#include <fcntl.h>
-#include <sys/mman.h>
 
 #undef	MAX
 #define MAX(a, b)  (((a) >= (b)) ? (a) : (b))
@@ -27,6 +20,7 @@
 
 using namespace std;
 using namespace std::chrono;
+using namespace boost::iostreams;
 
 
 void
@@ -165,8 +159,8 @@ valid_number:;
 }
 
 
-char *
-Scanner::snapshot(int fdin) {
+mapped_file
+Scanner::snapshot(const string &path) {
     /// Allocate space
     uintptr_t total_scan_bytes = 0;
     for(const region_t &region : handle->regions)
@@ -174,27 +168,23 @@ Scanner::snapshot(int fdin) {
     
     if (total_scan_bytes == 0) {
         if (handle->regions.size() == 0)
-            clog<<"error: no regions defined, perhaps you deleted them all?"<<endl;
-        else
-            clog<<"error: "<<handle->regions_all.size()<<" regions defined, but each have 0 bytes"<<endl;
-        return nullptr;
+            throw invalid_argument("no regions defined, perhaps you deleted them all?");
+        throw invalid_argument("no bytes to snapshot");
     }
-    
-    if (lseek(fdin, total_scan_bytes, SEEK_SET) == -1)
-        perror("error: cant increase fdin size");
-    if (write(fdin, "", 1) != 1)
-        perror("error: cant increase fdin size 2");
-    if (lseek(fdin, 0, SEEK_SET) == -1)
-        perror("error: lseek: fdin");
-    
     
     /// Create mmap
-    char *dst = static_cast<char *>(mmap(nullptr, total_scan_bytes, PROT_WRITE|PROT_READ, MAP_SHARED|MAP_POPULATE, fdin, 0));
-    if (dst == MAP_FAILED) {
-        perror("error: mmap fdin");
-        return nullptr;
-    }
+    mapped_file_params snapshot_mf_;
+    snapshot_mf_.path          = path;
+    snapshot_mf_.flags         = mapped_file::mapmode::readwrite;
+    snapshot_mf_.offset        = 0;
+    snapshot_mf_.length        = total_scan_bytes;
+    snapshot_mf_.new_file_size = total_scan_bytes;
     
+    mapped_file snapshot_mf(snapshot_mf_);
+    if (!snapshot_mf.is_open())
+        throw invalid_argument("cant open snapshot_mf");
+    
+    char *data = snapshot_mf.data();
     
     /// Snapshot goes here
     uintptr_t region_size = 0;
@@ -205,17 +195,16 @@ Scanner::snapshot(int fdin) {
     for(region_t &region : handle->regions) {
         region_size = region.end - region.start;
         
-        memcpy(dst+cursor_dst, &region.start, sizeof(region.start)+sizeof(region.end));
+        memcpy(data+cursor_dst, &region.start, sizeof(region.start)+sizeof(region.end));
         cursor_dst += sizeof(region.start)+sizeof(region.end);
         
-        if (!handle->read(dst+cursor_dst, region.start, region_size)) {
+        if (!handle->read(data+cursor_dst, region.start, region_size)) {
             clog<<"warning: region not copied: region: "<<region<<endl;
             cursor_dst -= sizeof(region.start)+sizeof(region.end);
             total_scan_bytes -= region_size;
             
             if (!handle->isRunning()) {
-                clog<<"error: process not running"<<endl;
-                return nullptr;
+                throw invalid_argument("process not running");
             }
         } else
             cursor_dst += region_size;
@@ -224,11 +213,10 @@ Scanner::snapshot(int fdin) {
     clog<<"Done "<<total_scan_bytes<<" bytes, in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
     
-    clog<<"Snapshot size: "<<cursor_dst<<" bytes."<<endl;
-    if (ftruncate(fdin, cursor_dst) != 0)
-        perror("warning: can't ftruncate fdin");
+    snapshot_mf.resize(cursor_dst);
+    clog<<"Snapshot size: "<<snapshot_mf.size()<<" bytes."<<endl;
     
-    return dst;
+    return snapshot_mf;
 }
 
 bool
@@ -246,53 +234,39 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     // todo refresh size of stored regions using handle->refreshRegions() method
     handle->updateRegions();
     
+    
     /// Shapshot process memory
-    int fd_snapshot = open("MEMORY.TMP", O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR);
-    if (fd_snapshot < 0) {
-        perror("error: can't open 'MEMORY.TMP'");
-        return false;
-    }
-    
-    char *mm_snapshot = snapshot(fd_snapshot);
-    if (!mm_snapshot)
-        return false;
-    
-    struct stat stat_snapshot;
-    if (fstat(fd_snapshot, &stat_snapshot) < 0) {
-        perror("error: can't fstat fd_snapshot");
+    string snapshot_mf_path = "MEMORY.TMP";
+    mapped_file snapshot_mf;
+    try {
+        snapshot_mf = snapshot(snapshot_mf_path);
+    } catch (exception &e) {
+        clog<<"what(): "<<e.what()<<endl;
         return false;
     }
     
     
     /// Create file for storing matches
-    int fd_matches = open("ADDRESSES.TMP", O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR);
-    if (fd_matches < 0) {
-        perror("error: can't open 'ADDRESSES.FIRST' for writing");
+    string mathces_mf_path = "ADDRESSES.TMP";
+    mapped_file_params matches_mf_;
+    matches_mf_.path          = mathces_mf_path;
+    matches_mf_.flags         = mapped_file::mapmode::readwrite;
+    matches_mf_.offset        = 0;
+    matches_mf_.length        = snapshot_mf.size()*sizeof(match);
+    matches_mf_.new_file_size = snapshot_mf.size()*sizeof(match);
+    
+    mapped_file matches_mf(matches_mf_);
+    if (!matches_mf.is_open()) {
+        clog<<"could not map the '"<<mathces_mf_path<<"'"<<endl;
         return false;
     }
-    
-    
-    /// Allocate space to mmap fd_addresses once fixme eban
-    if (lseek(fd_matches, stat_snapshot.st_size*sizeof(match) - 1, SEEK_SET) == -1)
-        perror("error: cant increase fd_matches size");
-    if (write(fd_matches, "", 1) != 1)
-        perror("error: cant increase fd_matches size 2");
-    
-    match *mm_matches = static_cast<match *>(mmap(nullptr, stat_snapshot.st_size*sizeof(match), PROT_WRITE|PROT_READ, MAP_SHARED|MAP_POPULATE, fd_matches, 0));
-    if (mm_matches == MAP_FAILED) {
-        perror("error: mm_matches == MAP_FAILED");
-        close(fd_snapshot);
-        close(fd_matches);
-        return false;
-    }
-    
     
     /// Scanning routines begins here
+    char *snapsot_map = snapshot_mf.data();
+    match *matches_map = reinterpret_cast<match *>(matches_mf.data());
+    
     region_t region;
     match m;
-    
-    char *snapshot = mm_snapshot;
-    match *matches = mm_matches;
     
     high_resolution_clock::time_point timestamp = high_resolution_clock::now();
     
@@ -310,46 +284,46 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     /** <uglycode> */
 #define PART1(FLAGS_CHECK_CODE)
     constexpr size_t region_shift = sizeof(region.start) + sizeof(region.end);
-    char *snapshot_end = snapshot + stat_snapshot.st_size - 1;
+    char *data_snapshot_end = snapsot_map + snapshot_mf.size() - 1;
     
-    while(snapshot < snapshot_end) {
-        memcpy(&region.start, snapshot, region_shift);
-        snapshot += region_shift;
+    while(snapsot_map < data_snapshot_end) {
+        memcpy(&region.start, snapsot_map, region_shift);
+        snapsot_map += region_shift;
         /*clog<<"reading region: "<<region<<'\n';*/
         
         m.address = region.start;
         
-        char *region_end = snapshot + (region.end - region.start) - 7;
-        while (snapshot < region_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(snapshot);
+        char *region_end = snapsot_map + (region.end - region.start) - 7;
+        while (snapsot_map < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(snapsot_map);
             FLAGS_CHECK_CODE
             if (m.flags)
-                *matches++ = m;
-            snapshot += step;
+                *matches_map++ = m;
+            snapsot_map += step;
         }
         region_end += 4;
-        while (snapshot < region_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(snapshot);
+        while (snapsot_map < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(snapsot_map);
             FLAGS_CHECK_CODE
             if (m.flags)
-                *matches++ = m;
-            snapshot += step;
+                *matches_map++ = m;
+            snapsot_map += step;
         }
         region_end += 2;
-        while (snapshot < region_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(snapshot);
+        while (snapsot_map < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(snapsot_map);
             FLAGS_CHECK_CODE
             if (m.flags)
-                *matches++ = m;
-            snapshot += step;
+                *matches_map++ = m;
+            snapsot_map += step;
         }
         region_end += 1;
-        while (snapshot < region_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(snapshot);
+        while (snapsot_map < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(snapsot_map);
             FLAGS_CHECK_CODE
             if (m.flags)
-                *matches++ = m;
-            snapshot += step;
+                *matches_map++ = m;
+            snapsot_map += step;
         }
     }
     /** </uglycode> */
@@ -365,14 +339,20 @@ Done 333154 matches, in: 0.0526076 seconds.
 Done 1352589312 bytes, in: 4.51307 seconds.     ищем едичикку int 64 в доте
 Done 738743 matches, in: 11.3695 seconds.
 
-Using buffered reader & writer (fakemem 428 MiB):
+Using buffered reader & writer
+ (fakemem 428 MiB):
 Done 449150976 bytes, in: 2.07514 seconds.
 Done 449128277 matches, in: 81.3764 seconds.
 Done 449128277 matches, in: 69.7533 seconds.
 Done 449128277 matches, in: 75.5361 seconds.
-
-v~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ !! YOU ARE HERE !!
+ 
 Using mmap
+ (fakemem 428 MiB):
+Done 449114593 matches, in: 56.0347 seconds.
+Done 448996950 matches, in: 55.885 seconds.
+todo добавить мультипоточность и ещё как мультипоточность добавить при компиляции? я слышал что-то типа такого
+ 
+ 
  (fakemem 111 MiB):
 Done 116752384 bytes, in: 0.125883 seconds.
 Done 116716123 matches, in: 13.3575 seconds.
@@ -385,6 +365,19 @@ Done 116729925 matches, in: 7.0059 seconds.
  (fakemem 33 MiB):
 Done 34797174 matches, in: 2.35997 seconds. (debug)
 Done 34797174 matches, in: 2.19174 seconds.
+ 
+Using boost
+ (fakemem 111 MiB)
+Done 116617216 bytes, in: 0.168937 seconds.
+Done 116617216 bytes, in: 0.158683 seconds.
+Done 116600875 matches, in: 9.76095 seconds.
+Done 116600875 matches, in: 8.54763 seconds.
+Done 116600875 matches, in: 9.40879 seconds.
+ 
+ (fakemem 428 MiB):
+Done 448999467 matches, in: 58.3596 seconds.
+Done 448999467 matches, in: 67.3868 seconds.
+ 
 */
     
     if (data_type == BYTEARRAY) {
@@ -459,23 +452,8 @@ Done 34797174 matches, in: 2.19174 seconds.
             }
     }
     
-    clog<<"Done "<<matches-mm_matches<<" matches, in: "
+    clog<<"Done "<<matches_map-reinterpret_cast<match *>(matches_mf.data())<<" matches, in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
-    
-    // free the mmapped memory
-    if (munmap(mm_snapshot, static_cast<size_t>(stat_snapshot.st_size)) == -1) {
-        perror("error: munmap mm_snapshot");
-        close(fd_snapshot);
-        close(fd_matches);
-        return false;
-    }
-    close(fd_snapshot);
-    if (munmap(mm_matches, matches-mm_matches+1) == -1) {
-        perror("error: munmap mm_matches");
-        close(fd_matches);
-        return false;
-    }
-    close(fd_matches);
     
     
     /// В планах оставить сканирование без mmaping'а для самых счастливых
