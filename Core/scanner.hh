@@ -16,12 +16,28 @@
 #include <cmath>
 #include <bitset>
 #include <chrono>
-#include <cmath>
-#include <fcntl.h>
-#include "value.hh"
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <boost/iostreams/device/mapped_file.hpp>
+#include <chrono>
+#include <boost/chrono.hpp>
+#include <boost/thread.hpp>
+#include <boost/asio.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/scoped_ptr.hpp>
+
+#undef	MAX
+#define MAX(a, b)  (((a) > (b)) ? (a) : (b))
+
+#undef	MIN
+#define MIN(a, b)  (((a) < (b)) ? (a) : (b))
+
+#undef	ABS
+#define ABS(a)	   (((a) < 0) ? -(a) : (a))
+
+#undef	CLAMP
+#define CLAMP(x, low, high)  (((x) > (high)) ? (high) : (((x) < (low)) ? (low) : (x)))
+
 
 using namespace std;
 
@@ -54,8 +70,6 @@ public:
     }
 };
 #pragma pack(pop)
-
-using namespace std;
 
 /*
 class ram_compressed_matches : public matches {

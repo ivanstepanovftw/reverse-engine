@@ -4,22 +4,9 @@
 
 #include "scanner.hh"
 
-#undef	MAX
-#define MAX(a, b)  (((a) >= (b)) ? (a) : (b))
-
-#undef	MIN
-#define MIN(a, b)  (((a) < (b)) ? (a) : (b))
-
-#undef	ABS
-#define ABS(a)	   (((a) < 0) ? -(a) : (a))
-
-#undef	CLAMP
-#define CLAMP(x, low, high)  (((x) > (high)) ? (high) : (((x) < (low)) ? (low) : (x)))
-
 #define HEX(s) hex<<showbase<<(s)<<dec
 
 using namespace std;
-using namespace std::chrono;
 using namespace boost::iostreams;
 
 
@@ -160,7 +147,8 @@ valid_number:;
 
 
 mapped_file
-Scanner::snapshot(const string &path) {
+Scanner::snapshot(const string &path)
+{
     /// Allocate space
     uintptr_t total_scan_bytes = 0;
     for(const region_t &region : handle->regions)
@@ -190,7 +178,7 @@ Scanner::snapshot(const string &path) {
     uintptr_t region_size = 0;
     uintptr_t cursor_dst = 0;
     
-    high_resolution_clock::time_point timestamp = high_resolution_clock::now();
+    chrono::high_resolution_clock::time_point timestamp = chrono::high_resolution_clock::now();
     
     for(region_t &region : handle->regions) {
         region_size = region.end - region.start;
@@ -211,7 +199,7 @@ Scanner::snapshot(const string &path) {
     }
     
     clog<<"Done "<<total_scan_bytes<<" bytes, in: "
-        <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
+        <<chrono::duration_cast<chrono::duration<double>>(chrono::high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
     
     snapshot_mf.resize(cursor_dst);
     clog<<"Snapshot size: "<<snapshot_mf.size()<<" bytes."<<endl;
@@ -246,8 +234,20 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     }
     
     
+#define FLAGS_CHECK_CODE\
+    m.flags = flags_empty;\
+    if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);\
+    if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);\
+    if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);\
+    if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);\
+    if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);\
+    if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
+    
+    
+    
     /// Create file for storing matches
     string mathces_mf_path = "ADDRESSES.TMP";
+    
     mapped_file_params matches_mf_;
     matches_mf_.path          = mathces_mf_path;
     matches_mf_.flags         = mapped_file::mapmode::readwrite;
@@ -262,71 +262,111 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     }
     
     /// Scanning routines begins here
-    char *snapsot_map = snapshot_mf.data();
+    
+    char *snapshot_map = snapshot_mf.data();
+    char *snapshot_map_end = snapshot_map + snapshot_mf.size() - 1;
     match *matches_map = reinterpret_cast<match *>(matches_mf.data());
     
+    uintptr_t cursor = 0;
+    uintptr_t total_bytes = snapshot_mf.size();
+    size_t region_size;
     region_t region;
     match m;
     
-    high_resolution_clock::time_point timestamp = high_resolution_clock::now();
+    constexpr size_t region_shift = 2*sizeof(region_t::start);
+    constexpr size_t buffer_size = 4*1024*1024;
     
-    /// Okay, we are scanning only for uint64_t, step: 1
-#define FLAGS_CHECK_CODE\
-    m.flags = flags_empty;\
-    if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);\
-    if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);\
-    if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);\
-    if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);\
-    if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);\
-    if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
+    boost::mutex getter_mutex;
+    boost::mutex putter_mutex;
     
-    
-    /** <uglycode> */
+    chrono::high_resolution_clock::time_point timestamp = chrono::high_resolution_clock::now();
+    /// todo возвращаемся к версии нормальной, эту оставляем.
+    /// а это означает, что создаётся 8 потоков, каждый имеет свой оффсет. 
+    /** create thread pool */
 #define PART1(FLAGS_CHECK_CODE)
-    constexpr size_t region_shift = sizeof(region.start) + sizeof(region.end);
-    char *data_snapshot_end = snapsot_map + snapshot_mf.size() - 1;
+    {
+        boost::asio::io_service io_service;
+        boost::thread_group threads;
+        {
+            boost::scoped_ptr<boost::asio::io_service::work> work(new boost::asio::io_service::work(io_service));
+            for(size_t t = 0; t < boost::thread::hardware_concurrency(); t++) {
+                threads.create_thread(boost::bind(&boost::asio::io_service::run, &io_service));
+            }
+            
+            function call = [&](size_t cursor, size_t size) -> void {
+                char *bytes_beg = new char[size];
+                {
+                    boost::mutex::scoped_lock getter_lock(getter_mutex);
+                    memcpy(bytes_beg, snapshot_map+cursor, size);
+                }
     
-    while(snapsot_map < data_snapshot_end) {
-        memcpy(&region.start, snapsot_map, region_shift);
-        snapsot_map += region_shift;
-        /*clog<<"reading region: "<<region<<'\n';*/
-        
-        m.address = region.start;
-        
-        char *region_end = snapsot_map + (region.end - region.start) - 7;
-        while (snapsot_map < region_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(snapsot_map);
-            FLAGS_CHECK_CODE
-            if (m.flags)
-                *matches_map++ = m;
-            snapsot_map += step;
+                char *bytes_cur = bytes_beg;
+                char *bytes_end = bytes_cur + size;
+                
+                while (bytes_cur < bytes_end) {
+                    m.memory = *reinterpret_cast<mem64_t *>(bytes_cur);
+                    FLAGS_CHECK_CODE
+                    if (m.flags)
+                    {
+                        boost::mutex::scoped_lock putter_lock(putter_mutex);
+                        *matches_map++ = m;
+                    }
+                    bytes_cur += step;
+                }
+                bytes_end += 4;
+                while (bytes_cur < bytes_end) {
+                    m.memory = *reinterpret_cast<mem64_t *>(bytes_cur);
+                    FLAGS_CHECK_CODE
+                    m.flags &= ~(flags_64b);
+                    if (m.flags)
+                    {
+                        boost::mutex::scoped_lock putter_lock(putter_mutex);
+                        *matches_map++ = m;
+                    }
+                    bytes_cur += step;
+                }
+                bytes_end += 2;
+                while (bytes_cur < bytes_end) {
+                    m.memory = *reinterpret_cast<mem64_t *>(bytes_cur);
+                    FLAGS_CHECK_CODE
+                    m.flags &= ~(flags_64b | flags_32b);
+                    if (m.flags)
+                    {
+                        boost::mutex::scoped_lock putter_lock(putter_mutex);
+                        *matches_map++ = m;
+                    }
+                    bytes_cur += step;
+                }
+                bytes_end += 1;
+                while (bytes_cur < bytes_end) {
+                    m.memory = *reinterpret_cast<mem64_t *>(bytes_cur);
+                    FLAGS_CHECK_CODE
+                    m.flags &= ~(flags_64b | flags_32b | flags_16b);
+                    if (m.flags)
+                    {
+                        boost::mutex::scoped_lock putter_lock(putter_mutex);
+                        *matches_map++ = m;
+                    }
+                    bytes_cur += step;
+                }
+                delete [] bytes_beg;
+            };
+            
+            /** tasks queue */
+            {
+                boost::mutex::scoped_lock getter_lock(getter_mutex);
+                while(cursor < total_bytes) {
+                    memcpy(&region.start, snapshot_map+cursor, region_shift);
+                    cursor += region_shift;
+                    region_size = region.end - region.start;
+                    io_service.post(boost::bind(call, cursor, MIN(region_size, buffer_size+7)));
+                    cursor += MIN(region_size, buffer_size);
+                }
+            }
         }
-        region_end += 4;
-        while (snapsot_map < region_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(snapsot_map);
-            FLAGS_CHECK_CODE
-            if (m.flags)
-                *matches_map++ = m;
-            snapsot_map += step;
-        }
-        region_end += 2;
-        while (snapsot_map < region_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(snapsot_map);
-            FLAGS_CHECK_CODE
-            if (m.flags)
-                *matches_map++ = m;
-            snapsot_map += step;
-        }
-        region_end += 1;
-        while (snapsot_map < region_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(snapsot_map);
-            FLAGS_CHECK_CODE
-            if (m.flags)
-                *matches_map++ = m;
-            snapsot_map += step;
-        }
+        threads.join_all();
     }
-    /** </uglycode> */
+    
     
 /* -Ofast
 Old:
@@ -453,7 +493,7 @@ Done 448999467 matches, in: 67.3868 seconds.
     }
     
     clog<<"Done "<<matches_map-reinterpret_cast<match *>(matches_mf.data())<<" matches, in: "
-        <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
+        <<chrono::duration_cast<chrono::duration<double>>(chrono::high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
     
     
     /// В планах оставить сканирование без mmaping'а для самых счастливых
@@ -462,7 +502,7 @@ Done 448999467 matches, in: 67.3868 seconds.
     vector<match> mm;
     
     
-    timestamp = high_resolution_clock::now();
+    timestamp = chrono::high_resolution_clock::now();
     for(region_t &region : handle->regions) {
         region_size = region.end - region.start;
         char buffer[region_size];
@@ -521,7 +561,7 @@ Done 448999467 matches, in: 67.3868 seconds.
     }
     
     clog<<"Done "<<mm.size()<<" matches, in: "
-        <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
+        <<chrono::duration_cast<chrono::duration<double>>(chrono::high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
     
     vector<match> notfound;
     bool found;
@@ -553,7 +593,7 @@ Done 448999467 matches, in: 67.3868 seconds.
 bool
 Scanner::next_scan(scan_data_type_t data_type, const string &text)
 {
-    uservalue_t vals[2];
+/*    uservalue_t vals[2];
     scan_match_type_t match_type = MATCHEQUALTO;
     try {
         string_to_uservalue(data_type, text, &match_type, vals);
@@ -642,7 +682,7 @@ Scanner::next_scan(scan_data_type_t data_type, const string &text)
     
 //    clog<<"Done: "<<this->matches.size()<<" matches, in: "<<(duration_cast<duration<double>>(high_resolution_clock::now() - time_point)).count()<<" second."<<endl;
     
-    this->scan_progress = 1.0;
+    this->scan_progress = 1.0;*/
     return true;
 }
 

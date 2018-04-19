@@ -39,6 +39,10 @@ add_executable(GUI
 target_link_libraries(GUI
         ${GTKMM_LIBRARIES}
         ${GDLMM_LIBRARIES}
+        -lpthread
         -lboost_iostreams
+        -lboost_chrono
+        -lboost_thread
+        -lboost_system
         RECore
         )
