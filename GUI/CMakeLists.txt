@@ -41,8 +41,5 @@ target_link_libraries(GUI
         ${GDLMM_LIBRARIES}
         -lpthread
         -lboost_iostreams
-        -lboost_chrono
-        -lboost_thread
-        -lboost_system
         RECore
         )

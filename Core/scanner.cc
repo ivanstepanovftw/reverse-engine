@@ -51,7 +51,7 @@ Scanner::string_to_uservalue(const scan_data_type_t &data_type, const string &te
                               text.end(),
                               pattern.begin(),
                               [](int i) { return (!isspace(i) && i != '_' && i != '\''); });
-            pattern.resize(static_cast<size_t>(std::distance(pattern.begin(), it)));
+            pattern.resize(static_cast<size_t>(distance(pattern.begin(), it)));
             
             auto boilerplate_a = [&](const string &MASK, scan_match_type_t MATCH_TYPE_NO_VALUE) -> bool
             {
@@ -183,10 +183,10 @@ Scanner::snapshot(const string &path)
     for(region_t &region : handle->regions) {
         region_size = region.end - region.start;
         
-        memcpy(data+cursor_dst, &region.start, sizeof(region.start)+sizeof(region.end));
+        memcpy(reinterpret_cast<void *>(data+cursor_dst), &region.start, sizeof(region.start)+sizeof(region.end));
         cursor_dst += sizeof(region.start)+sizeof(region.end);
         
-        if (!handle->read(data+cursor_dst, region.start, region_size)) {
+        if (!handle->read(reinterpret_cast<void *>(data+cursor_dst), region.start, region_size)) {
             clog<<"warning: region not copied: region: "<<region<<endl;
             cursor_dst -= sizeof(region.start)+sizeof(region.end);
             total_scan_bytes -= region_size;
@@ -206,6 +206,18 @@ Scanner::snapshot(const string &path)
     
     return snapshot_mf;
 }
+
+
+
+#define FLAGS_CHECK_CODE\
+    m.flags = flags_empty;\
+    if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);\
+    if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);\
+    if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);\
+    if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);\
+    if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);\
+    if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
+
 
 bool
 Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, const scan_match_type_t match_type)
@@ -234,138 +246,107 @@ Scanner::first_scan(const scan_data_type_t data_type, uservalue_t *uservalue, co
     }
     
     
-#define FLAGS_CHECK_CODE\
-    m.flags = flags_empty;\
-    if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);\
-    if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);\
-    if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);\
-    if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);\
-    if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);\
-    if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
-    
-    
-    
     /// Create file for storing matches
-    string mathces_mf_path = "ADDRESSES.TMP";
-    
-    mapped_file_params matches_mf_;
-    matches_mf_.path          = mathces_mf_path;
-    matches_mf_.flags         = mapped_file::mapmode::readwrite;
-    matches_mf_.offset        = 0;
-    matches_mf_.length        = snapshot_mf.size()*sizeof(match);
-    matches_mf_.new_file_size = snapshot_mf.size()*sizeof(match);
-    
-    mapped_file matches_mf(matches_mf_);
-    if (!matches_mf.is_open()) {
-        clog<<"could not map the '"<<mathces_mf_path<<"'"<<endl;
-        return false;
-    }
+    file_matches matches;
     
     /// Scanning routines begins here
+    char *snapshot_map_begin = snapshot_mf.data();
+    char *snapshot_map_end = snapshot_map_begin + snapshot_mf.size() - 1;
+    char *snapshot_map = snapshot_map_begin;
     
-    char *snapshot_map = snapshot_mf.data();
-    char *snapshot_map_end = snapshot_map + snapshot_mf.size() - 1;
-    match *matches_map = reinterpret_cast<match *>(matches_mf.data());
-    
-    uintptr_t cursor = 0;
-    uintptr_t total_bytes = snapshot_mf.size();
-    size_t region_size;
-    region_t region;
-    match m;
-    
-    constexpr size_t region_shift = 2*sizeof(region_t::start);
     constexpr size_t buffer_size = 4*1024*1024;
+    match m;
+    mutex getter_mutex;
+    mutex putter_mutex;
     
-    boost::mutex getter_mutex;
-    boost::mutex putter_mutex;
     
     chrono::high_resolution_clock::time_point timestamp = chrono::high_resolution_clock::now();
-    /// todo возвращаемся к версии нормальной, эту оставляем.
-    /// а это означает, что создаётся 8 потоков, каждый имеет свой оффсет. 
     /** create thread pool */
 #define PART1(FLAGS_CHECK_CODE)
-    {
-        boost::asio::io_service io_service;
-        boost::thread_group threads;
-        {
-            boost::scoped_ptr<boost::asio::io_service::work> work(new boost::asio::io_service::work(io_service));
-            for(size_t t = 0; t < boost::thread::hardware_concurrency(); t++) {
-                threads.create_thread(boost::bind(&boost::asio::io_service::run, &io_service));
-            }
-            
-            function call = [&](size_t cursor, size_t size) -> void {
-                char *bytes_beg = new char[size];
-                {
-                    boost::mutex::scoped_lock getter_lock(getter_mutex);
-                    memcpy(bytes_beg, snapshot_map+cursor, size);
-                }
+    task_queue_t pool(buffer_size+7);
     
-                char *bytes_cur = bytes_beg;
-                char *bytes_end = bytes_cur + size;
-                
-                while (bytes_cur < bytes_end) {
-                    m.memory = *reinterpret_cast<mem64_t *>(bytes_cur);
-                    FLAGS_CHECK_CODE
-                    if (m.flags)
-                    {
-                        boost::mutex::scoped_lock putter_lock(putter_mutex);
-                        *matches_map++ = m;
-                    }
-                    bytes_cur += step;
-                }
-                bytes_end += 4;
-                while (bytes_cur < bytes_end) {
-                    m.memory = *reinterpret_cast<mem64_t *>(bytes_cur);
-                    FLAGS_CHECK_CODE
-                    m.flags &= ~(flags_64b);
-                    if (m.flags)
-                    {
-                        boost::mutex::scoped_lock putter_lock(putter_mutex);
-                        *matches_map++ = m;
-                    }
-                    bytes_cur += step;
-                }
-                bytes_end += 2;
-                while (bytes_cur < bytes_end) {
-                    m.memory = *reinterpret_cast<mem64_t *>(bytes_cur);
-                    FLAGS_CHECK_CODE
-                    m.flags &= ~(flags_64b | flags_32b);
-                    if (m.flags)
-                    {
-                        boost::mutex::scoped_lock putter_lock(putter_mutex);
-                        *matches_map++ = m;
-                    }
-                    bytes_cur += step;
-                }
-                bytes_end += 1;
-                while (bytes_cur < bytes_end) {
-                    m.memory = *reinterpret_cast<mem64_t *>(bytes_cur);
-                    FLAGS_CHECK_CODE
-                    m.flags &= ~(flags_64b | flags_32b | flags_16b);
-                    if (m.flags)
-                    {
-                        boost::mutex::scoped_lock putter_lock(putter_mutex);
-                        *matches_map++ = m;
-                    }
-                    bytes_cur += step;
-                }
-                delete [] bytes_beg;
-            };
-            
-            /** tasks queue */
-            {
-                boost::mutex::scoped_lock getter_lock(getter_mutex);
-                while(cursor < total_bytes) {
-                    memcpy(&region.start, snapshot_map+cursor, region_shift);
-                    cursor += region_shift;
-                    region_size = region.end - region.start;
-                    io_service.post(boost::bind(call, cursor, MIN(region_size, buffer_size+7)));
-                    cursor += MIN(region_size, buffer_size);
-                }
-            }
+    function<void(char *, char *, size_t)> call = [&](char *buffer, char *map, size_t size) -> void {
+        {
+            scoped_lock<mutex> lock{getter_mutex};
+            clog<<"memcpy("<<HEX(reinterpret_cast<void *>(buffer))
+                <<", "<<HEX(reinterpret_cast<void *>(map))
+                <<", "<<HEX(size)<<"): "<<endl;
+            memcpy(buffer, map, size);
         }
-        threads.join_all();
+        
+        char *buffer_end = buffer + size - 7;
+        
+        while (buffer < buffer_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+            FLAGS_CHECK_CODE
+            if (m.flags) {
+                scoped_lock<mutex> lock{putter_mutex};
+                matches.append(m);
+            }
+            buffer += step;
+        }
+        buffer_end += 4;
+        while (buffer < buffer_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+            FLAGS_CHECK_CODE
+            m.flags &= ~(flags_64b);
+            if (m.flags) {
+                scoped_lock<mutex> lock{putter_mutex};
+                matches.append(m);
+            }
+            buffer += step;
+        }
+        buffer_end += 2;
+        while (buffer < buffer_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+            FLAGS_CHECK_CODE
+            m.flags &= ~(flags_64b | flags_32b);
+            if (m.flags) {
+                scoped_lock<mutex> lock{putter_mutex};
+                matches.append(m);
+            }
+            buffer += step;
+        }
+        buffer_end += 1;
+        while (buffer < buffer_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+            FLAGS_CHECK_CODE
+            m.flags &= ~(flags_64b | flags_32b | flags_16b);
+            if (m.flags) {
+                scoped_lock<mutex> lock{putter_mutex};
+                matches.append(m);
+            }
+            buffer += step;
+        }
+    };
+    
+    size_t calls = 0;
+    uintptr_t region_start = 0;
+    uintptr_t region_end = 0;
+    uintptr_t region_size;
+    
+    while(snapshot_map < snapshot_map_end) {
+        memcpy(reinterpret_cast<void *>(&region_start), snapshot_map, sizeof(uintptr_t));
+        snapshot_map += sizeof(uintptr_t);
+        memcpy(reinterpret_cast<void *>(&region_end), snapshot_map, sizeof(uintptr_t));
+        snapshot_map += sizeof(uintptr_t);
+        
+        region_size = region_end - region_start;
+        while (region_size > buffer_size) {
+            pool.push(bind(call, placeholders::_1, snapshot_map, buffer_size+7));
+            snapshot_map += buffer_size;
+            region_size -= buffer_size;
+            calls++;
+        }
+        pool.push(bind(call, placeholders::_1, snapshot_map, region_size));
+        snapshot_map += region_size;
+        calls++;
     }
+    clog<<"we made "<<calls<<" calls."<<endl;
+    pool.join_all();
+    
+    clog<<"force flushing"<<endl;
+    matches.flush();
     
     
 /* -Ofast
@@ -405,6 +386,12 @@ Done 116729925 matches, in: 7.0059 seconds.
  (fakemem 33 MiB):
 Done 34797174 matches, in: 2.35997 seconds. (debug)
 Done 34797174 matches, in: 2.19174 seconds.
+Done 34809272 matches, in: 16.2118 seconds. with mutex everywhere
+Done 85630613 matches, in: 9.46635 seconds. w/o mutex on write
+Done 112527952 matches, in: 13.3659 seconds.w/o mutex on write
+Done 34778336 matches, in: 22.9511 seconds. w/o mutex on read
+Done 34809483 matches, in: 20.2475 seconds. with mutex everywhere
+Done 34778880 matches, in: 19.037 seconds. pure map
  
 Using boost
  (fakemem 111 MiB)
@@ -492,7 +479,7 @@ Done 448999467 matches, in: 67.3868 seconds.
             }
     }
     
-    clog<<"Done "<<matches_map-reinterpret_cast<match *>(matches_mf.data())<<" matches, in: "
+    clog<<"Done "<<matches.size()<<" matches, in: "
         <<chrono::duration_cast<chrono::duration<double>>(chrono::high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
     
     

@@ -12,6 +12,8 @@ set(CMAKE_CXX_STANDARD 17)
 # ┌──────────────────────────────────────────────────────────────────┐
 # │  Load libraries                                                  │
 # └──────────────────────────────────────────────────────────────────┘
+find_package(Boost) # see https://stackoverflow.com/questions/6646405/how-do-you-add-boost-libraries-in-cmakelists-txt
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(Core)      # Reverse Engine library
@@ -23,5 +25,12 @@ add_subdirectory(GUI)       # Front-end
 # │  Build executable                                                │
 # └──────────────────────────────────────────────────────────────────┘
 # Show how use Reverse Engine library
-add_executable(RE main.cc)
-target_link_libraries(RE RECore)
+add_executable(RE
+        main.cc
+#        trainer.cc
+        )
+target_link_libraries(RE
+        RECore
+        -lpthread
+        -lboost_iostreams
+        )

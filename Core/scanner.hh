@@ -20,11 +20,11 @@
 #include <sys/mman.h>
 #include <boost/iostreams/device/mapped_file.hpp>
 #include <chrono>
-#include <boost/chrono.hpp>
-#include <boost/thread.hpp>
-#include <boost/asio.hpp>
-#include <boost/lexical_cast.hpp>
-#include <boost/scoped_ptr.hpp>
+#include <mutex>
+#include <deque>
+#include <string>
+#include <thread>
+#include <condition_variable>
 
 #undef	MAX
 #define MAX(a, b)  (((a) > (b)) ? (a) : (b))
@@ -133,6 +133,86 @@ public:
 */
 
 
+
+class file_matches {
+public:
+    inline
+    void open() {
+        f.open("ADDRESSES.FIRST", ios::in | ios::out | ios::binary | ios::trunc);
+    }
+    
+    file_matches() {
+        buffer = new char[match::size()];
+        open();
+        mm.reserve(0x0F'00'00'00/match::size());  // 240 MiB
+    }
+    
+    ~file_matches() {
+        clear();
+        f.close();
+        delete buffer;
+    }
+    
+    // accessor
+    inline
+    match get(fstream::off_type index) {
+        f.seekg(index*match::size(), ios::beg);
+        f.read(buffer, match::size());
+        return *reinterpret_cast<match *>(buffer);
+    }
+    
+    inline
+    void flush() {
+        char *b = reinterpret_cast<char *>(&mm[0]);
+        f.seekp(0, ios::end);
+        f.write(b, match::size()*mm.size());
+        mm.clear();
+    }
+    
+    // mutator
+    inline
+    void set(fstream::off_type index, match m) {
+        f.seekp(index * match::size(), ios::beg);
+        f.write(m.data(), match::size());
+    }
+    
+    inline
+    void append(match &m) {
+        if (mm.size() >= mm.capacity())
+            flush();
+        mm.push_back(m);
+    }
+    
+    inline
+    void append(vector<match> &ms) {
+        flush();
+        for(size_t i = 0; i<ms.size(); i++) {
+            append(ms);
+        }
+//        char *b = reinterpret_cast<char *>(&mm[0]);
+//        f.seekp(0, ios::end);
+//        f.write(b, match::size()*mm.size());
+    }
+    
+    inline
+    fstream::pos_type size() {
+        return f.seekg(0, ios::end).tellg()/match::size();
+    }
+    
+    inline
+    void clear() {
+        mm.clear();
+        f.close();
+        open();
+    }
+
+private:
+    vector<match> mm;
+    fstream f;
+    char *buffer;
+};
+
+
 /**
  * В CE создаётся три файла:
  * MEMORY.TMP - это снепшот
@@ -170,9 +250,87 @@ public:
     };
 };
 
+
+
+//[1] : https://medium.com/@fosterbrereton/starfighter-in-c-the-task-queue-a074d132e78
+//[2] : http://ru.cppreference.com/w/cpp/utility/functional/bind
+
+/** Это обычный Thread Pool, украденый из [1] */
+class task_queue_t
+{
+public:
+    typedef function<void(char *)> task_t;
+    vector<thread> pool_m;
+    deque<task_t> deque_m;
+    condition_variable condition_m;
+    mutex mutex_m;
+    atomic<bool> done_m{false};
+    
+    task_queue_t(size_t region_length, size_t pool_size = thread::hardware_concurrency())
+    {
+        pool_m.reserve(pool_size);
+        for(size_t i = 0; i < pool_size; i++)
+            pool_m.emplace_back(bind(&task_queue_t::worker, this, region_length, i));
+    }
+    
+    ~task_queue_t()
+    {
+        join_all();
+    }
+    
+    void join_all()
+    {
+        if (done_m.exchange(true))
+            return;
+        condition_m.notify_all();
+        
+        for(auto& thread : pool_m)
+            thread.join();
+    }
+    
+    template<typename F>
+    void push(F&& function)
+    {
+        deque_m.emplace_back(forward<F>(function));
+    }
+
+private:
+    void worker(size_t region_length, size_t i)
+    {
+        task_t task;
+        char buffer[region_length];
+        
+        {
+            unique_lock<mutex> lock{mutex_m};
+            condition_m.wait(lock, [=]() { return !!done_m; });
+            clog<<"started "<<i<<endl;
+        }
+        
+        while (true) {
+            unique_lock<mutex> lock{mutex_m};
+            condition_m.wait(lock, [=]() { return !deque_m.empty(); });
+            if (deque_m.empty())
+                break;
+            task = deque_m.front();
+            deque_m.pop_front();
+            lock.unlock();
+            
+            task(buffer);
+        }
+    }
+    
+    task_queue_t(const task_queue_t &) = delete;
+    task_queue_t(task_queue_t &&) = delete;
+    task_queue_t &operator=(const task_queue_t &) = delete;
+    task_queue_t &operator=(task_queue_t &&) = delete;
+};
+
 class Scanner
 {
 public:
+    /// Create file for storing matches
+    file_matches matches;
+    
     Handle *handle;
     bool stop_flag = false;
     double scan_progress = 0;

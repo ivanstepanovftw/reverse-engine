@@ -8,339 +8,382 @@
 #include <type_traits>
 #include <zconf.h>
 #include <functional>
-#include <Core/core.hh>
-#include <Core/value.hh>
-#include <Core/scanner.hh>
 #include <cmath>
 #include <cassert>
+#include <thread>
+#include <mutex>
+#include <deque>
+#include <condition_variable>
+#include <sys/param.h> //MIN, MAX
+
+#include <boost/iostreams/device/mapped_file.hpp>
+
+#include <Core/core.hh>
+#include <Core/value.hh>
+
+
+#define HEX(s) hex<<showbase<<(s)<<dec
+
+#define CHECK(x) { if(!(x)) { \
+fprintf(stderr, "%s:%i: failure at: %s\n", __FILE__, __LINE__, #x); \
+_exit(1); } }
+
 
 using namespace std;
 using namespace std::chrono;
 using namespace std::literals;
-
-const string target = "HackMe";
-
-#define HEX(s) hex<<showbase<<(s)<<dec
-
-#define handle_error(msg) \
-    do { perror(msg); exit(EXIT_FAILURE); } while (0)
+namespace bio = boost::iostreams;
 
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-noreturn"
+const char *target = "FakeMem";
+const char *to_find = "0";
+const char *snapshot_path = "MEMORY.TMP";
+//scan_data_type_t data_type = INTEGER64;
+scan_data_type_t data_type = INTEGER8;
+//scan_data_type_t data_type = ANYNUMBER;
+constexpr size_t step = 1;
+
+class task_queue_t
+{
+public:
+    typedef function<void(char *)> task_t;
+    vector<thread> pool_m;
+    deque<task_t> deque_m;
+    condition_variable condition_m;
+    mutex mutex_m;
+    atomic<bool> done_m{false};
+    
+    task_queue_t(size_t region_length, size_t pool_size = thread::hardware_concurrency())
+    {
+        pool_m.reserve(pool_size);
+        for(size_t i = 0; i < pool_size; i++)
+            pool_m.emplace_back(bind(&task_queue_t::worker, this, region_length, i));
+    }
+    
+    ~task_queue_t()
+    {
+        join_all();
+    }
+    
+    void join_all()
+    {
+        unique_lock<mutex> lock{mutex_m};
+        if (done_m.exchange(true))
+            return;
+        condition_m.notify_all();
+        lock.unlock();
+        for(auto& thread : pool_m)
+            thread.join();
+    }
+    
+    template<typename F>
+    void push(F&& function)
+    {
+        deque_m.emplace_back(forward<F>(function));
+    }
+
+private:
+    void worker(size_t region_length, size_t i)
+    {
+        task_t task;
+        char buffer[region_length];
+        
+        {
+            unique_lock<mutex> lock{mutex_m};
+            condition_m.wait(lock, [=]() { return !!done_m; });
+            clog<<"started "<<i<<endl;
+        }
+        
+        while (true) {
+            unique_lock<mutex> lock{mutex_m};
+            if (deque_m.empty())
+                break;
+            task = deque_m.front();
+            deque_m.pop_front();
+            lock.unlock();
+            
+            task(buffer);
+        }
+    }
+    
+    task_queue_t(const task_queue_t &) = delete;
+    task_queue_t(task_queue_t &&) = delete;
+    task_queue_t &operator=(const task_queue_t &) = delete;
+    task_queue_t &operator=(task_queue_t &&) = delete;
+};
+
+
+#pragma pack(push, 1)
+class match {
+public:
+    uintptr_t address;      //+8=8
+    mem64_t memory;         //+8=16
+//    mem64_t memory_old;     //+8=24
+    uint16_t flags;         //+2=26 or 18 w/o memory_old
+    
+    match() {
+        this->address = 0;
+        this->memory.uint64_value = 0;
+        this->flags = 0;
+    }
+    
+    explicit match(uintptr_t address, mem64_t memory, match_flags userflag = flags_empty) {
+        this->address = address;
+        this->memory = memory;
+        this->flags = userflag;
+    }
+};
+#pragma pack(pop)
+
+
+class file_matches {
+public:
+    inline
+    void open() {
+        f.open("ADDRESSES.FIRST", ios::in | ios::out | ios::binary | ios::trunc);
+    }
+    
+    file_matches() {
+        buffer = new char[sizeof(match)];
+        open();
+        mm.reserve(0x0F'00'00'00/sizeof(match));  // 240 MiB
+    }
+    
+    ~file_matches() {
+        clear();
+        f.close();
+        delete buffer;
+    }
+    
+    // accessor
+    inline
+    match get(fstream::off_type index) {
+        f.seekg(index*sizeof(match), ios::beg);
+        f.read(buffer, sizeof(match));
+        return *reinterpret_cast<match *>(buffer);
+    }
+    
+    inline
+    void flush() {
+        char *b = reinterpret_cast<char *>(&mm[0]);
+        f.seekp(0, ios::end);
+        f.write(b, sizeof(match)*mm.size());
+        mm.clear();
+    }
+    
+    // mutator
+    inline
+    void set(fstream::off_type index, match& m) {
+        f.seekp(index * sizeof(match), ios::beg);
+        f.write(reinterpret_cast<char *>(&m), sizeof(match));
+    }
+    
+    inline
+    void append(match& m) {
+        if (mm.size() >= mm.capacity())
+            flush();
+        mm.push_back(m);
+    }
+    
+    inline
+    fstream::pos_type size() {
+        return f.seekg(0, ios::end).tellg()/sizeof(match);
+    }
+    
+    inline
+    void clear() {
+        mm.clear();
+        f.close();
+        open();
+    }
+
+private:
+    vector<match> mm;
+    fstream f;
+    char *buffer;
+};
+
+
 int
 main() {
-    // Todo performance match_flags or uint16_t
-    // Todo докажи, что reinterpret_cast<mem64_t *>(&buffer[r_off]) при buffer[1] = {0}; будет представлять ui64 как 0
-    /*
-     * -funswitch-loops:
-    Method A: done 333301 matches, in: 0.0136228 seconds, overall: 1.39055 seconds.
-    Method B: done 333301 matches, in: 0.00767857 seconds, overall: 0.618613 seconds.
-     * -O0 -funswitch-loops:
-    Method A: done 333301 matches, in: 0.0161664 seconds, overall: 1.6087 seconds.
-    Method B: done 333301 matches, in: 0.0114342 seconds, overall: 0.975553 seconds.
-     * -O0 -fno-unswitch-loops:
-    Method A: done 333301 matches, in: 0.0155338 seconds, overall: 1.60998 seconds.
-    Method B: done 333301 matches, in: 0.0100367 seconds, overall: 0.958184 seconds.
-     * -O3 -funswitch-loops
-    Method A: done 333301 matches, in: 0.0326429 seconds, overall: 3.25194 seconds.
-    Method B: done 333301 matches, in: 0.0117518 seconds, overall: 1.28925 seconds.
-     * -O3 -fno-unswitch-loops
-    Method A: done 333301 matches, in: 0.0330074 seconds, overall: 2.85701 seconds.
-    Method B: done 333301 matches, in: 0.0126842 seconds, overall: 1.1504 seconds.
-     * -O3 -Os -funswitch-loops
-    Method A: done 333261 matches, in: 0.0329324 seconds, overall: 2.1788 seconds.
-    Method B: done 333261 matches, in: 0.0134741 seconds, overall: 1.10469 seconds.
-     *
-     * My PC are too slow, CLion takes a lot of processor time, so this shit overheats, drop MHz and results are various.
-     * Conclusion: -funswitch-loops doesn't work. Manual unswitching works well.
-     */
-    /// Trainer and scanner example
-    Handle *h = nullptr;
-    region_t *exe = nullptr;
-    region_t *libc = nullptr;
-    region_t *ld = nullptr;
+    Handle handle(target);
+    CHECK(handle.isRunning())
+    handle.updateRegions();
     
-stage_waiting:;
-    cout<<"Waiting for ["<<target<<"] process"<<endl;
-    for(;;) {
-        delete h;
-        h = new Handle(target);
-        if (h->isRunning())
-            break;
-        usleep(500'000);
-    }
-    cout<<"Found! PID is ["<<h->pid<<"]"<<endl;
-    
-stage_updating:;
-    for(;;) {
-        h->updateRegions();
-        exe = h->getRegion();
-        libc = h->getRegion("libc-2.26.so");
-        ld = h->getRegion("ld-2.26.so");
-        if (exe && libc && ld)
-            break;
-        usleep(500'000);
-    }
-    cout<<"Found ["<<exe->filename<<"] at ["<<HEX(exe->start)<<"]"<<endl;
-    cout<<"Found ["<<libc->filename<<"] at ["<<HEX(libc->start)<<"]"<<endl;
-    cout<<"Found ["<<ld->filename<<"] at ["<<HEX(ld->start)<<"]"<<endl;
-    
-    /// Find region of address (it's so slow)
-    region_t *roa = h->getRegionOfAddress(ld->start+8);
-    cout<<"Region of address is: "<<roa->filename.c_str()<<endl;
-    
-stage_scanning:;
-    size_t rescanned = 0;
-    Scanner sc(h);
-    
-    // Known variables
-    scan_data_type_t data_type;
-    string data_type_s;
-    
-    cout<<"Enter data type: (a(ii(c,s,i,l), ff(f,d)), b, s): ";
-    cin>>data_type_s;
-    if (cin.fail()) {
-        cout<<""<<endl;
-        cin.clear(); // clear error state
-        cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // discard 'bad' character(s)
-    }
-    if      (data_type_s == "ii")   data_type = ANYINTEGER;
-    else if (data_type_s == "ff")   data_type = ANYFLOAT;
-    else if (data_type_s == "c")    data_type = INTEGER8;
-    else if (data_type_s == "s")    data_type = INTEGER16;
-    else if (data_type_s == "i")    data_type = INTEGER32;
-    else if (data_type_s == "l")    data_type = INTEGER64;
-    else if (data_type_s == "f")    data_type = FLOAT32;
-    else if (data_type_s == "d")    data_type = FLOAT64;
-    else if (data_type_s == "b")    data_type = BYTEARRAY;
-    else if (data_type_s == "s")    data_type = STRING;
-    else                            data_type = ANYNUMBER;
-    
-    cout<<"Enter pattern: ";
-    string text;
-    cin>>text;
-    
-    
-    // Unknown variables
     uservalue_t uservalue[2];
     scan_match_type_t match_type;
-    try {
-        // Parse text as uservalue
-        sc.string_to_uservalue(data_type, text, &match_type, uservalue);
-    } catch (bad_uservalue_cast &e) {
-        clog<<e.what()<<endl;
-        goto stage_scanning;
+    parse_uservalue_number(to_find, &uservalue[0]);
+    uservalue[0].flags &= scan_data_type_to_flags[data_type];
+    uservalue[1].flags &= scan_data_type_to_flags[data_type];
+    
+    /// Make snapshot
+    /// Allocate space
+    uintptr_t total_scan_bytes = 0;
+    for(const region_t &region : handle.regions)
+        total_scan_bytes += region.end - region.start;
+    
+    CHECK(total_scan_bytes > 0);
+    
+    /// Create mmap
+    bio::mapped_file_params snapshot_mf_;
+    snapshot_mf_.path          = snapshot_path;
+    snapshot_mf_.flags         = bio::mapped_file::mapmode::readwrite;
+    snapshot_mf_.offset        = 0;
+    snapshot_mf_.length        = total_scan_bytes;
+    snapshot_mf_.new_file_size = total_scan_bytes;
+    bio::mapped_file snapshot_mf(snapshot_mf_);
+    CHECK(snapshot_mf.is_open());
+    
+    char *snapshot_begin = snapshot_mf.data();
+    char *snapshot_end;
+    char *snapshot;
+    
+    /// Snapshot goes here
+    uintptr_t region_size = 0;
+    uintptr_t cursor_dst = 0;
+    
+    chrono::high_resolution_clock::time_point timestamp = chrono::high_resolution_clock::now();
+    
+    for(region_t &region : handle.regions) {
+        region_size = region.end - region.start;
+        if (!region.writable || !region.readable || region_size <= 1)
+            continue;
+        
+        memcpy((void *)snapshot_begin+cursor_dst, &region.start, 2*sizeof(region.start));
+        cursor_dst += sizeof(region.start)+sizeof(region.end);
+        
+        if (!handle.read((void *)snapshot_begin+cursor_dst, region.start, region_size)) {
+            clog<<"warning: region not copied: region: "<<region<<endl;
+            cursor_dst -= sizeof(region.start)+sizeof(region.end);
+            total_scan_bytes -= region_size;
+            
+            CHECK(handle.isRunning());
+        } else
+            cursor_dst += region_size;
     }
     
-    // Clock for performance report
-    high_resolution_clock::time_point t1, t2;
-    duration<double> time_span;
+    clog<<"Done "<<total_scan_bytes<<" bytes, in: "
+        <<chrono::duration_cast<chrono::duration<double>>(chrono::high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
     
-    // Overall time counted for both methods
-    static duration<double> counterA = high_resolution_clock::duration::zero();
-    static duration<double> counterB = high_resolution_clock::duration::zero();
+    snapshot_mf.resize(cursor_dst);
+    clog<<"Snapshot size: "<<snapshot_mf.size()<<" bytes."<<endl;
     
-    /// Now, most interesting begin
-    // HackMe contains about 333274 (0x515DA) matches, so it will be 0x80000
-    const size_t RESERVED = static_cast<size_t>(pow(2, ceil(log2(333274))));
+    snapshot_begin = snapshot_mf.data();
+    snapshot_end = snapshot_begin + snapshot_mf.size();
+    snapshot = snapshot_begin;
     
     
-    // Method A - sexy, but slow.
-stage_rescanning:;
-    if (!h->isRunning())
-        goto stage_waiting;
+    /// Create file for storing matches
+    file_matches matches;
     
-    // Now create an array to store our matches
-    vector<match> matches;
-    matches.reserve(RESERVED);
+    /// Scanning routines
+    constexpr size_t region_shift = 2*sizeof(region_t::start);
+    constexpr size_t buffer_size = 4*1024*1024;  // 4 MiB
+    region_t region;
+    mutex getter_mutex;
+    mutex putter_mutex;
     
+
+#define FLAGS_CHECK_CODE\
+    m.flags = flags_empty;\
+    if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);\
+    if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);\
+    if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);\
+    if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);\
+    if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);\
+    if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
     
-    uint8_t *buffer = nullptr;
-    uintptr_t r_off = 0;
-    uintptr_t totalsize = 0;
-    size_t step = 1;
+    match m;
     
-#define PART1 \
-    for(region_t &r : h->regions) {                                                                                         \
-        if (!r.writable || !r.readable) continue;                                                                           \
-        totalsize = r.end - r.start; /* calculate size of region */                                                         \
-        delete [] buffer; buffer = new uint8_t[totalsize];  /* reallocate buffer */                                         \
-        if (!h->read(buffer, r.start, totalsize)) { clog<<"error: invalid region: cant read memory: "<<r<<endl; continue; } \
-        for(r_off = 0; ;  r_off += step, totalsize -= step) {                                                               \
-            match m (r.start + r_off, *reinterpret_cast<mem64_t *>(&buffer[r_off]));
-#define PART2 \
-            if (totalsize >= 8) {                                                                                           \
-                if (m.flags)                                                                                                \
-                    matches.push_back(m);                                                                                   \
-            }                                                                                                               \
-            else if (totalsize >= 4) {                                                                                      \
-                m.flags &= ~(flags_64b);                                                                                    \
-                if (m.flags)                                                                                                \
-                    matches.push_back(m);                                                                                   \
-            }                                                                                                               \
-            else if (totalsize >= 2) {                                                                                      \
-                m.flags &= ~(flags_64b | flags_32b);                                                                        \
-                if (m.flags)                                                                                                \
-                    matches.push_back(m);                                                                                   \
-            }                                                                                                               \
-            else {                                                                                                          \
-                m.flags &= ~(flags_64b | flags_32b | flags_16b);                                                            \
-                if (m.flags)                                                                                                \
-                    matches.push_back(m);                                                                                   \
-            }                                                                                                               \
-            if (totalsize - step >= totalsize)                                                                              \
-                break;                                                                                                      \
-        }                                                                                                                   \
-    }
-    
-    t1 = high_resolution_clock::now();
-    if (data_type == BYTEARRAY) {
-        clog<<"not supported"<<endl;
-    }
-    else if (data_type == STRING) {
-        clog<<"not supported"<<endl;
-    } else {
-        switch(match_type) {
-                case MATCHANY:
-                    PART1
-                            m.flags = flags_all;
-                    PART2
-                    break;
-                case MATCHEQUALTO:
-                    PART1
-                            m.flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                    PART2
-                    break;
-                case MATCHNOTEQUALTO:
-                    PART1
-                            m.flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   != uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  != uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  != uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  != uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value != uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value != uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                    PART2
-                    break;
-                case MATCHGREATERTHAN:
-                    PART1
-                            m.flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   >  uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  >  uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  >  uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  >  uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value >  uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value >  uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                    PART2
-                    break;
-                case MATCHLESSTHAN:
-                    PART1
-                            m.flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   <  uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  <  uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  <  uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  <  uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value <  uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value <  uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                    PART2
-                    break;
-                case MATCHRANGE:
-                    PART1
-                            m.flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (uservalue[0].uint8_value   <= m.memory.uint8_value   ) && (m.memory.uint8_value   >= uservalue[1].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (uservalue[0].uint16_value  <= m.memory.uint16_value  ) && (m.memory.uint16_value  >= uservalue[1].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (uservalue[0].uint32_value  <= m.memory.uint32_value  ) && (m.memory.uint32_value  >= uservalue[1].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (uservalue[0].uint64_value  <= m.memory.uint64_value  ) && (m.memory.uint64_value  >= uservalue[1].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (uservalue[0].float32_value <= m.memory.float32_value ) && (m.memory.float32_value >= uservalue[1].float32_value)) m.flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (uservalue[0].float64_value <= m.memory.float64_value ) && (m.memory.float64_value >= uservalue[1].float64_value)) m.flags |= (flag_f64b);
-                    PART2
-                    break;
-                default:
-                    clog<<"error: only first_scan supported"<<endl;
-                    goto stage_scanning;
+    auto call = [&](char *buffer, char *map, size_t size) -> void {
+        {
+            scoped_lock<mutex> lock{getter_mutex};
+            memcpy(reinterpret_cast<void *>(buffer), reinterpret_cast<void *>(map), size);
+            clog<<"memcpy("<<HEX(reinterpret_cast<void *>(buffer))
+                <<", "<<HEX(reinterpret_cast<void *>(map))
+                <<", "<<HEX(size)<<"): "<<endl;
+        }
+        
+        char *buffer_end = buffer + size - 7;
+        
+        while (buffer < buffer_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+            FLAGS_CHECK_CODE
+            if (m.flags) {
+                scoped_lock<mutex> lock{putter_mutex};
+                matches.append(m);
             }
+            buffer += step;
+        }
+        buffer_end += 4;
+        while (buffer < buffer_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+            FLAGS_CHECK_CODE
+            m.flags &= ~(flags_64b);
+            if (m.flags) {
+                scoped_lock<mutex> lock{putter_mutex};
+                matches.append(m);
+            }
+            buffer += step;
+        }
+        buffer_end += 2;
+        while (buffer < buffer_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+            FLAGS_CHECK_CODE
+            m.flags &= ~(flags_64b | flags_32b);
+            if (m.flags) {
+                scoped_lock<mutex> lock{putter_mutex};
+                matches.append(m);
+            }
+            buffer += step;
+        }
+        buffer_end += 1;
+        while (buffer < buffer_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+            FLAGS_CHECK_CODE
+            m.flags &= ~(flags_64b | flags_32b | flags_16b);
+            if (m.flags) {
+                scoped_lock<mutex> lock{putter_mutex};
+                matches.append(m);
+            }
+            buffer += step;
+        }
+    };
+    
+    clog<<"parsing"<<endl;
+    
+    timestamp = chrono::high_resolution_clock::now();
+    task_queue_t pool(buffer_size+7, 1);
+    size_t calls = 0;
+    
+    while(snapshot < snapshot_end) {
+        memcpy(reinterpret_cast<void*>(&region.start), snapshot, sizeof(region_t::start));
+        snapshot += sizeof(region_t::start);
+        memcpy(reinterpret_cast<void*>(&region.end), snapshot, sizeof(region_t::end));
+        snapshot += sizeof(region_t::end);
+        
+        region_size = region.end - region.start;
+        clog<<"region_size: "<<region_size<<endl;
+        
+        while (region_size > buffer_size) {
+            pool.push(bind(call, placeholders::_1, snapshot, buffer_size+7));
+            snapshot += buffer_size;
+            region_size -= buffer_size;
+            calls++;
+        }
+        pool.push(bind(call, placeholders::_1, snapshot, region_size));
+        snapshot += region_size;
+        calls++;
     }
-    t2 = high_resolution_clock::now();
-    time_span = duration_cast<duration<double>>(t2 - t1);
-    counterB += time_span;
-    cout<<"Method B: done "<<matches.size()<<" matches, in: "<<time_span.count()<<" seconds, overall: "<<counterB.count()<<" seconds."<<endl;
     
-    if (matches.capacity() > RESERVED) {
-        cout<<"warning: matches.capacity() > RESERVED: matches.capacity(): "<<matches.capacity()<<endl;
-    }
+    clog<<"we made "<<calls<<" calls."<<endl;
+    pool.join_all();
     
-    // Method B - fastest, but with crappy macros
-    matches.clear();
-    matches.shrink_to_fit();
-    matches.reserve(RESERVED);
-    if (rescanned++ < 100)
-        goto stage_rescanning;
-    else
-        goto stage_scanning;
+    clog<<"force flushing"<<endl;
+    matches.flush();
     
-/// other example
-//    vector<uintptr_t> sig;
-//    size_t found = h->findPattern(&sig, ld,
-//                   "\x48\x89\xC7\xE8\x00\x00\x00\x00",
-//                   "xxxx????");
-//    clog<<"found: "<<found<<endl;
-//    if (found > 0 && found < 20)
-//        for(uintptr_t a : sig) { 
-//            clog<<"\tat 0x"<<HEX(a)<<endl;
-//        }
-    
-/// idk what is it
-//    size_t len = 32;
-//    void *v = new char[len];
-//    clog<<"v in hex: "<<HEX(*(int *)(v))<<endl;
-//    string s((char *)v,len);
-//    clog<<"unconverted s: "<<HEX(*(int *)(v))<<endl;
-//
-//    static const char* const lut = "0123456789ABCDEF";
-//    string output;
-//    output.reserve(2 * len);
-//
-//    for(int i=0; i<len; i++) {
-//        const unsigned char c = s[i];
-//        output.push_back(lut[c >> 4]);
-//        output.push_back(lut[c & 15]);
-//    }
-//
-//    clog<<"output: "<<output<<endl;
+    clog<<"Done "<<matches.size()<<" matches, in: "
+        <<chrono::duration_cast<chrono::duration<double>>(chrono::high_resolution_clock::now() - timestamp).count()<<" seconds."<<endl;
     
     return 0;
 }
-#pragma clang diagnostic pop
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
