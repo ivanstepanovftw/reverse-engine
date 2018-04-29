@@ -19,7 +19,7 @@ ScanWindow::ScanWindow(MainWindow *parent)
     parent->handle = new Handle("FakeMem");
 //    parent->handle = new Handle("HackMe");
 //    parent->handle = new Handle("7DaysToDie.x86_64");
-    parent->handle->updateRegions();
+    parent->handle->update_regions();
     parent->hs = new Scanner(parent->handle);
     
     Gtk::Widget *scanner_output = create_scanner_output();
@@ -209,7 +209,7 @@ ScanWindow::create_saved_list()
 
 
 template<typename T>
-void ScanWindow::add_row(match *val, const char *type_string)
+void ScanWindow::add_row(match_t *val, const char *type_string)
 {
     char *address_string;
     const uint8_t *b = reinterpret_cast<const uint8_t *>(&val->address);
@@ -226,7 +226,7 @@ void ScanWindow::add_row(match *val, const char *type_string)
 }
 
 template<typename T>
-void ScanWindow::refresh_row(match *val, const char *type_string, Gtk::TreeModel::Row &row)
+void ScanWindow::refresh_row(match_t *val, const char *type_string, Gtk::TreeModel::Row &row)
 {
     char *address_string;
     const uint8_t *b = reinterpret_cast<const uint8_t *>(&val->address);
@@ -242,6 +242,9 @@ void ScanWindow::refresh_row(match *val, const char *type_string, Gtk::TreeModel
 void 
 ScanWindow::on_button_first_scan()
 {
+    using namespace std::chrono;
+    namespace bio = boost::iostreams;
+    
     conn.disconnect();
     
     if (entry_value->get_text().empty()) {
@@ -249,15 +252,22 @@ ScanWindow::on_button_first_scan()
         return;
     }
     
+    if (!parent->handle->is_running()) {
+        clog<<"error: process not running"<<endl;
+        return;
+    }
+    
+    parent->handle->update_regions();
+    
     Gtk::TreeModel::iterator iter = combo_stype->get_active();
     if(!iter) return;
     Gtk::TreeModel::Row row = *iter;
     if(!row) return;
     
-    delete parent->hs;
-    parent->hs = new Scanner(parent->handle);
     
     // todo[low] THREADS
+    high_resolution_clock::time_point timestamp;
+    
     scan_data_type_t data_type = row[columns_scan_type.m_col_scan_type];
     uservalue_t uservalue[2];
     scan_match_type_t match_type;
@@ -267,42 +277,84 @@ ScanWindow::on_button_first_scan()
         clog<<e.what()<<endl;
         return;
     }
-    parent->hs->first_scan(data_type, uservalue, match_type);
     
-/*
-    ref_tree_output->clear();
-    ssize_t output_count = parent->hs->matches.size();
-    char *label_count_text;
-    asprintf(&label_count_text, "Found: %li", output_count);
-    label_found->set_text(label_count_text);
-    if (output_count > 10'000) {
-        // todo[low] FIRST OF ALL - CALCULATE AND ALLOCATE, THEN - ADD TO TABLE!
-        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
+    uintptr_t max_region_size = 0;
+    for(const region_t& region : parent->handle->regions)
+        max_region_size = MAX(max_region_size, region.size);
+    
+    /// Снепшотим
+    timestamp = high_resolution_clock::now();
+    
+    clog<<"~~~~~~~~~~~~~~~~~ making snapshot ~~~~~~~~~~~~~~~~~"<<endl;
+    bio::mapped_file snapshot_mf;
+    try {
+        snapshot_mf = parent->hs->make_snapshot(snapshot_mf_path);
+    } catch (const exception& e) {
+        clog<<"what(): "<<e.what()<<endl;
         return;
-    } else {
-        clog<<"SHOWING"<<endl;
     }
+    if (!snapshot_mf.is_open())
+        clog<<"warning: !snapshot_mf.is_open()"<<endl;
+    clog<<"snapshot size: "<<snapshot_mf.size()
+        <<" bytes, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+        <<" seconds"<<endl;
+    clog<<"~~~~~~~~~~~~~~~~~ scanning snapshot ~~~~~~~~~~~~~~~~~"<<endl;
+
+    timestamp = high_resolution_clock::now();
+    parent->hs->scan(snapshot_mf, data_type, uservalue, match_type);
+    clog<<"Scan result: "<<parent->hs->matches.size()
+        <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+        <<" seconds"<<endl;
+
+    parent->hs->scan_reset();
+    
+    clog<<"~~~~~~~~~~~~~~~~~ scanning ~~~~~~~~~~~~~~~~~"<<endl;
+    timestamp = high_resolution_clock::now();
+    parent->hs->scan(data_type, uservalue, match_type);
+    clog<<"Scan result: "<<parent->hs->matches.size()
+        <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+        <<" seconds"<<endl;
+    clog<<"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"<<endl;
+    
+    parent->hs->scan_reset();
+/*
+34943708 cheat engine & scanmem
+34943708 snapshot:  ok!
+33890952 pure:      0x2101000, readed only 0x2000000 bytes
+*/
+    
+//    ref_tree_output->clear();
+//    ssize_t output_count = parent->hs->matches.size();
+//    char *label_count_text;
+//    asprintf(&label_count_text, "Found: %li", output_count);
+//    label_found->set_text(label_count_text);
+//    if (output_count > 10'000) {
+//        // todo[low] FIRST OF ALL - CALCULATE AND ALLOCATE, THEN - ADD TO TABLE!
+//        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
+//        return;
+//    } else {
+//        clog<<"SHOWING"<<endl;
+//    }
     
     // For each address, that scanner found, add row to tree_output
-    for(int i = 0; i < parent->hs->matches.size(); i++) {
-        match val = parent->hs->matches.get(i);
-        
-        if      (val.flags & flag_s64b) add_row<int64_t> (&val, "int64");
-        else if (val.flags & flag_s32b) add_row<int32_t> (&val, "int32");
-        else if (val.flags & flag_s16b) add_row<int16_t> (&val, "int16");
-        else if (val.flags & flag_s8b)  add_row<int8_t>  (&val, "int8");
-        else if (val.flags & flag_u64b) add_row<uint64_t>(&val, "uint64");
-        else if (val.flags & flag_u32b) add_row<uint32_t>(&val, "uint32");
-        else if (val.flags & flag_u16b) add_row<uint16_t>(&val, "uint16");
-        else if (val.flags & flag_u8b)  add_row<uint8_t> (&val, "uint8");
-        else if (val.flags & flag_f64b) add_row<double>  (&val, "double");
-        else if (val.flags & flag_f32b) add_row<float>   (&val, "float");
-    }
+//    for(int i = 0; i < parent->hs->matches.size(); i++) {
+//        match_t val = parent->hs->matches.get(i);
+//        
+//        if      (val.flags & flag_s64b) add_row<int64_t> (&val, "int64");
+//        else if (val.flags & flag_s32b) add_row<int32_t> (&val, "int32");
+//        else if (val.flags & flag_s16b) add_row<int16_t> (&val, "int16");
+//        else if (val.flags & flag_s8b)  add_row<int8_t>  (&val, "int8");
+//        else if (val.flags & flag_u64b) add_row<uint64_t>(&val, "uint64");
+//        else if (val.flags & flag_u32b) add_row<uint32_t>(&val, "uint32");
+//        else if (val.flags & flag_u16b) add_row<uint16_t>(&val, "uint16");
+//        else if (val.flags & flag_u8b)  add_row<uint8_t> (&val, "uint8");
+//        else if (val.flags & flag_f64b) add_row<double>  (&val, "double");
+//        else if (val.flags & flag_f32b) add_row<float>   (&val, "float");
+//    }
     
     // Continue refresh values inside Scanner output
-    conn = Glib::signal_timeout().connect
-            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
-*/
+//    conn = Glib::signal_timeout().connect
+//            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
 }
 
 //todo next scan impl
@@ -311,24 +363,7 @@ ScanWindow::on_button_next_scan()
 {
     conn.disconnect();
     
-    /// Parse string to calculator
-//    Parser parser;
-//    string in = this->entry_value->get_text();
-//    float sol = parser.ParseInput(const_cast<char *>(in.c_str()));
-//    cout << sol << endl;
-    ///
-    
-    if (entry_value->get_text().empty()) {
-        clog<<"Enter value first!"<<endl;
-        return;
-    }
-    
-    Gtk::TreeModel::iterator iter = combo_stype->get_active();
-    if(!iter) return;
-    Gtk::TreeModel::Row row = *iter;
-    if(!row) return;
-    
-    parent->hs->next_scan(row[columns_scan_type.m_col_scan_type], entry_value->get_text().c_str());
+    parent->hs->scan_reset();
     
     ref_tree_output->clear();
 //    size_t output_count = parent->hs->matches.size();
@@ -344,7 +379,7 @@ ScanWindow::on_button_next_scan()
 //    
 //    // For each address, that scanner found, add row to tree_output
 //    for(int i = 0; i < parent->hs->matches.size(); i++) {
-//        match val = parent->hs->matches.get(i);
+//        match_t val = parent->hs->matches.get(i);
 //        if      (val.flags & flag_s64b) add_row<int64_t> (&val, "int64");
 //        else if (val.flags & flag_s32b) add_row<int32_t> (&val, "int32");
 //        else if (val.flags & flag_s16b) add_row<int16_t> (&val, "int16");
@@ -368,7 +403,7 @@ ScanWindow::on_timer_refresh()
 {
 //    auto ref_child = ref_tree_output->children();
 //    for(int i = 0; i < parent->hs->matches.size(); i++) {
-//        match val = parent->hs->matches.get(i);
+//        match_t val = parent->hs->matches.get(i);
 //        Gtk::TreeModel::Row row = *ref_child[i];
 //        
 //        if      (val.flags & flag_s64b) refresh_row<int64_t> (&val, "int64",  row);

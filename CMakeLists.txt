@@ -1,13 +1,17 @@
 # ┌──────────────────────────────────────────────────────────────────┐
 # │  Project settings                                                │
 # └──────────────────────────────────────────────────────────────────┘
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
 project(RE)
 
 # ┌──────────────────────────────────────────────────────────────────┐
 # │  Compilation flags                                               │
 # └──────────────────────────────────────────────────────────────────┘
-set(CMAKE_CXX_STANDARD 17)
+set_target_properties(${TARGET} PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED YES
+        CXX_EXTENSIONS NO
+        )
 
 # ┌──────────────────────────────────────────────────────────────────┐
 # │  Load libraries                                                  │

@@ -15,53 +15,47 @@
 #include <string>
 #include <iostream>
 
-/// Enable enum operator overload.
-/// Use -O3 for better performance
-#define LIFT_ENUM_OP(OP, ASSIGNOP)                                              \
-    template <typename E, typename U = typename std::underlying_type<E>::type>  \
-    static inline E operator OP (E lhs, E rhs)                                  \
-    { return static_cast<E>(static_cast<U>(lhs) OP static_cast<U>(rhs)); }      \
-                                                                                \
-    template <typename E, typename U = typename std::underlying_type<E>::type>  \
-    static inline E& operator ASSIGNOP (E& lhs, E rhs)                          \
-    { lhs = lhs OP rhs; return lhs; }
+#undef	HEX
+#define HEX(s) std::hex<<std::showbase<<(s)<<std::dec
 
-template <typename E, typename U = typename std::underlying_type<E>::type>
-static inline E operator ~ (E lhs)
-{ return static_cast<E>(~static_cast<U>(lhs)); }
-LIFT_ENUM_OP(&, &=)
-LIFT_ENUM_OP(|, |=)
-LIFT_ENUM_OP(^, ^=)
-#undef LIFT_ENUM_OP
+typedef unsigned char byte;
+
+enum region_mode_t : byte {
+    readable   = 1 << 0,
+    writable   = 1 << 1,
+    executable = 1 << 2,
+    shared     = 1 << 3,
+};
 
 class region_t {
 public:
-    // Memory
-    uintptr_t start;
-    uintptr_t end;
+    uintptr_t address;
+    uintptr_t size;
     
-    // Permissions
-    bool readable;
-    bool writable;
-    bool executable;
-    bool shared;
+    byte flags;
     
-    // File data
+    /// File data
     uintptr_t offset;
-    unsigned char deviceMajor;
-    unsigned char deviceMinor;
+    byte deviceMajor;
+    byte deviceMinor;
     unsigned long inodeFileNumber;
     std::string pathname;
     std::string filename;
     
-    friend std::ostream &operator<<(std::ostream &outputStream, const region_t &p)
-    {
-        return outputStream<<"region: {"<<"filename: \""<<p.filename<<"\", start: "<<std::hex<<p.start<<", end: "<<p.end<<std::dec<<"}";
+    void serialize() { 
+        // TODO 334. Problem [high]: size dependent. Solution: [low] make serialization.
+    }
+    
+    friend std::ostream& operator<<(std::ostream& outputStream, const region_t& region) {
+        return outputStream<<"{"
+                           <<"filename: '"<<region.filename
+                           <<"', address: "<<HEX(region.address)
+                           <<", size: "<<HEX(region.size)
+                           <<"}";
     }
 };
 
-
-typedef enum {
+enum scan_data_type_t {
     ANYNUMBER,              /* ANYINTEGER or ANYFLOAT */
     ANYINTEGER,             /* INTEGER of whatever width */
     ANYFLOAT,               /* FLOAT of whatever width */
@@ -73,9 +67,9 @@ typedef enum {
     FLOAT64,
     BYTEARRAY,
     STRING
-} scan_data_type_t;
+};
 
-typedef enum {
+enum scan_match_type_t {
     MATCHANY,                /* for snapshot */
     /* following: compare with a given value */
     MATCHEQUALTO,
@@ -93,7 +87,7 @@ typedef enum {
     /* following: compare with both given value and old value */
     MATCHINCREASEDBY,
     MATCHDECREASEDBY
-} scan_match_type_t;
+};
 
 
 /* some routines for working with value_t structures */
@@ -139,7 +133,7 @@ enum match_flags : uint16_t { // не работает, тогда исполь�
 /* Possible flags per scan data type: if an incoming uservalue has none of the
  * listed flags we're sure it's not going to be matched by the scan,
  * so we reject it without even trying */
-static match_flags scan_data_type_to_flags[] = {
+static uint16_t scan_data_type_to_flags[] = {
         [ANYNUMBER]  = flags_all,
         [ANYINTEGER] = flags_integer,
         [ANYFLOAT]   = flags_float,
@@ -153,7 +147,7 @@ static match_flags scan_data_type_to_flags[] = {
         [STRING]     = flags_max
 };
 
-static inline size_t flags_to_memlength(scan_data_type_t scan_data_type, match_flags flags)
+static inline size_t flags_to_memlength(scan_data_type_t scan_data_type, uint16_t flags)
 {
     switch(scan_data_type) {
         case BYTEARRAY:
@@ -218,7 +212,7 @@ typedef struct {
     std::string string_value;
     std::wstring wstring_value;
     
-    match_flags flags;
+    uint16_t flags;
 } uservalue_t;
 
 size_t parse_uservalue_int(const std::string &text, uservalue_t *uservalue);

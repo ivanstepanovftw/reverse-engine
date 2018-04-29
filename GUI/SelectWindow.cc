@@ -71,18 +71,22 @@ SelectWindow::on_button_attach()
             delete parent->handle;
             parent->handle = new Handle(pid);
 //            printf("Title: %s\data", parent->handle->title.c_str()); todo print title of pid
-            parent->handle->updateRegions();
+            parent->handle->update_regions();
+            parent->hs = new Scanner(parent->handle);
             printf("%-32s%-18s %-18s %s%s%s%s\n",
                    "Region name",
                    "Start",
                    "End",
                    "r","w","x","-");
-            for(auto &region : parent->handle->regions_all) {
+            for(auto &region : parent->handle->regions_ignored) {
                 printf("%-32s0x%016lx 0x%016lx %i%i%i%i\n",
                        region.filename.empty()?"misc":region.filename.c_str(),
-                       region.start,
-                       region.end,
-                       region.readable,region.writable,region.executable,region.shared);
+                       region.address,
+                       region.address + region.size - 1,
+                       region.flags & readable,
+                       region.flags & writable,
+                       region.flags & executable,
+                       region.flags & shared);
             }
             cout<<"Regions enumeration is done!"<<endl;
             hide();
@@ -120,7 +124,7 @@ SelectWindow::tree_refresh()
     vector<vector<string>> processes = getProcesses();
     int r_counted=0;
     for(int i=0; i<processes.size(); i++) {
-        if (regex_match(processes[i][2], r) || regex_match(processes[i][0], r)) { //match by name or pid
+        if (regex_match(processes[i][2], r) || regex_match(processes[i][0], r)) { //match_t by name or pid
             Gtk::TreeModel::Row row = *(ref_tree_processes->append());
             row[m_Columns.m_col_pid] = stoi(processes[i][0]);
             row[m_Columns.m_col_name] = processes[i][1];

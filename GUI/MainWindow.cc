@@ -27,6 +27,7 @@ MainWindow::MainWindow()
     ///DEBUG
     m_window_scan = new ScanWindow(this);
     m_window_scan->show();
+    hs = new Scanner(handle);
     ///
 
     this->show_all_children();

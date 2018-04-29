@@ -65,3 +65,34 @@ getProcesses()
     }
     return processes;
 }
+
+size_t
+get_mem_total(size_t i) {
+    string ss;
+    switch (i) {
+        case 1: ss="MemFree:"; break;
+        case 2: ss="MemAvailable:"; break;
+        case 3: ss="Cached:"; break;
+        default:ss="MemTotal:";
+    }
+    string token;
+    ifstream file("/proc/meminfo");
+    while(file >> token) {
+        if(token == ss) {
+            unsigned long mem;
+            if(file >> mem) {
+                return mem*1024;
+            } else {
+                return 0;
+            }
+        }
+        // ignore rest of the line
+        file.ignore(numeric_limits<streamsize>::max(), '\n');
+    }
+    return 0; // nothing found
+}
+
+size_t
+get_mem_free() {
+    return get_mem_total(2)+get_mem_total(3);
+}

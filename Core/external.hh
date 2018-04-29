@@ -5,15 +5,25 @@
 #ifndef RE_EXTERNAL_HH
 #define RE_EXTERNAL_HH
 
+#include <iosfwd>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <stdexcept>
+#include <limits>
 
+using namespace std;
 
-std::vector<std::string> split(const std::string &text, const std::string &delims, uint64_t d = UINT64_MAX);
+vector<string> split(const string &text, const string &delims, uint64_t d = UINT64_MAX);
 
-std::string execute(std::string cmd);
+string execute(string cmd);
 
-std::vector<std::vector<std::string>> getProcesses();
+vector<vector<string>> getProcesses();
+
+size_t get_mem_total(size_t i = 0);
+
+// fixme ну и костыль...
+size_t get_mem_free();
+
 
 #endif //RE_EXTERNAL_HH

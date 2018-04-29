@@ -134,10 +134,10 @@ private:
     
     // Routine (fixme их ведь так называют?)
     template<typename T>
-    void add_row(match *val, const char *type_string);
+    void add_row(match_t *val, const char *type_string);
     
     template<typename T>
-    void refresh_row(match *val, const char *type_string, Gtk::TreeModel::Row &row);
+    void refresh_row(match_t *val, const char *type_string, Gtk::TreeModel::Row &row);
 };
 
 //class 

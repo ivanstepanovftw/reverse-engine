@@ -114,20 +114,20 @@ private:
 
 
 #pragma pack(push, 1)
-class match {
+class match_t {
 public:
     uintptr_t address;      //+8=8
     mem64_t memory;         //+8=16
 //    mem64_t memory_old;     //+8=24
     uint16_t flags;         //+2=26 or 18 w/o memory_old
     
-    match() {
+    match_t() {
         this->address = 0;
         this->memory.uint64_value = 0;
         this->flags = 0;
     }
     
-    explicit match(uintptr_t address, mem64_t memory, match_flags userflag = flags_empty) {
+    explicit match_t(uintptr_t address, mem64_t memory, uint16_t userflag = flags_empty) {
         this->address = address;
         this->memory = memory;
         this->flags = userflag;
@@ -136,20 +136,20 @@ public:
 #pragma pack(pop)
 
 
-class file_matches {
+class matches_t {
 public:
     inline
     void open() {
         f.open("ADDRESSES.FIRST", ios::in | ios::out | ios::binary | ios::trunc);
     }
     
-    file_matches() {
-        buffer = new char[sizeof(match)];
+    matches_t() {
+        buffer = new char[sizeof(match_t)];
         open();
-        mm.reserve(0x0F'00'00'00/sizeof(match));  // 240 MiB
+        mm.reserve(0x0F'00'00'00/sizeof(match_t));  // 240 MiB
     }
     
-    ~file_matches() {
+    ~matches_t() {
         clear();
         f.close();
         delete buffer;
@@ -157,29 +157,29 @@ public:
     
     // accessor
     inline
-    match get(fstream::off_type index) {
-        f.seekg(index*sizeof(match), ios::beg);
-        f.read(buffer, sizeof(match));
-        return *reinterpret_cast<match *>(buffer);
+    match_t get(fstream::off_type index) {
+        f.seekg(index*sizeof(match_t), ios::beg);
+        f.read(buffer, sizeof(match_t));
+        return *reinterpret_cast<match_t *>(buffer);
     }
     
     inline
     void flush() {
         char *b = reinterpret_cast<char *>(&mm[0]);
         f.seekp(0, ios::end);
-        f.write(b, sizeof(match)*mm.size());
+        f.write(b, sizeof(match_t)*mm.size());
         mm.clear();
     }
     
     // mutator
     inline
-    void set(fstream::off_type index, match& m) {
-        f.seekp(index * sizeof(match), ios::beg);
-        f.write(reinterpret_cast<char *>(&m), sizeof(match));
+    void set(fstream::off_type index, match_t& m) {
+        f.seekp(index * sizeof(match_t), ios::beg);
+        f.write(reinterpret_cast<char *>(&m), sizeof(match_t));
     }
     
     inline
-    void append(match& m) {
+    void append(match_t& m) {
         if (mm.size() >= mm.capacity())
             flush();
         mm.push_back(m);
@@ -187,7 +187,7 @@ public:
     
     inline
     fstream::pos_type size() {
-        return f.seekg(0, ios::end).tellg()/sizeof(match);
+        return f.seekg(0, ios::end).tellg()/sizeof(match_t);
     }
     
     inline
@@ -198,7 +198,7 @@ public:
     }
 
 private:
-    vector<match> mm;
+    vector<match_t> mm;
     fstream f;
     char *buffer;
 };
@@ -207,8 +207,8 @@ private:
 int
 main() {
     Handle handle(target);
-    CHECK(handle.isRunning())
-    handle.updateRegions();
+    CHECK(handle.is_running())
+    handle.update_regions();
     
     uservalue_t uservalue[2];
     scan_match_type_t match_type;
@@ -220,7 +220,7 @@ main() {
     /// Allocate space
     uintptr_t total_scan_bytes = 0;
     for(const region_t &region : handle.regions)
-        total_scan_bytes += region.end - region.start;
+        total_scan_bytes += region.end - region.address;
     
     CHECK(total_scan_bytes > 0);
     
@@ -245,19 +245,19 @@ main() {
     chrono::high_resolution_clock::time_point timestamp = chrono::high_resolution_clock::now();
     
     for(region_t &region : handle.regions) {
-        region_size = region.end - region.start;
+        region_size = region.end - region.address;
         if (!region.writable || !region.readable || region_size <= 1)
             continue;
         
-        memcpy((void *)snapshot_begin+cursor_dst, &region.start, 2*sizeof(region.start));
-        cursor_dst += sizeof(region.start)+sizeof(region.end);
+        memcpy((void *)snapshot_begin+cursor_dst, &region.address, 2*sizeof(region.address));
+        cursor_dst += sizeof(region.address)+sizeof(region.end);
         
-        if (!handle.read((void *)snapshot_begin+cursor_dst, region.start, region_size)) {
+        if (!handle.read((void *)snapshot_begin+cursor_dst, region.address, region_size)) {
             clog<<"warning: region not copied: region: "<<region<<endl;
-            cursor_dst -= sizeof(region.start)+sizeof(region.end);
+            cursor_dst -= sizeof(region.address)+sizeof(region.end);
             total_scan_bytes -= region_size;
             
-            CHECK(handle.isRunning());
+            CHECK(handle.is_running());
         } else
             cursor_dst += region_size;
     }
@@ -274,10 +274,10 @@ main() {
     
     
     /// Create file for storing matches
-    file_matches matches;
+    matches_t matches;
     
     /// Scanning routines
-    constexpr size_t region_shift = 2*sizeof(region_t::start);
+    constexpr size_t region_shift = 2*sizeof(region_t::begin);
     constexpr size_t buffer_size = 4*1024*1024;  // 4 MiB
     region_t region;
     mutex getter_mutex;
@@ -293,7 +293,7 @@ main() {
     if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);\
     if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
     
-    match m;
+    match_t m;
     
     auto call = [&](char *buffer, char *map, size_t size) -> void {
         {
@@ -311,7 +311,7 @@ main() {
             FLAGS_CHECK_CODE
             if (m.flags) {
                 scoped_lock<mutex> lock{putter_mutex};
-                matches.append(m);
+                matches.append((m));
             }
             buffer += step;
         }
@@ -322,7 +322,7 @@ main() {
             m.flags &= ~(flags_64b);
             if (m.flags) {
                 scoped_lock<mutex> lock{putter_mutex};
-                matches.append(m);
+                matches.append((m));
             }
             buffer += step;
         }
@@ -333,7 +333,7 @@ main() {
             m.flags &= ~(flags_64b | flags_32b);
             if (m.flags) {
                 scoped_lock<mutex> lock{putter_mutex};
-                matches.append(m);
+                matches.append((m));
             }
             buffer += step;
         }
@@ -344,7 +344,7 @@ main() {
             m.flags &= ~(flags_64b | flags_32b | flags_16b);
             if (m.flags) {
                 scoped_lock<mutex> lock{putter_mutex};
-                matches.append(m);
+                matches.append((m));
             }
             buffer += step;
         }
@@ -357,12 +357,12 @@ main() {
     size_t calls = 0;
     
     while(snapshot < snapshot_end) {
-        memcpy(reinterpret_cast<void*>(&region.start), snapshot, sizeof(region_t::start));
-        snapshot += sizeof(region_t::start);
+        memcpy(reinterpret_cast<void*>(&region.address), snapshot, sizeof(region_t::begin));
+        snapshot += sizeof(region_t::begin);
         memcpy(reinterpret_cast<void*>(&region.end), snapshot, sizeof(region_t::end));
         snapshot += sizeof(region_t::end);
         
-        region_size = region.end - region.start;
+        region_size = region.end - region.address;
         clog<<"region_size: "<<region_size<<endl;
         
         while (region_size > buffer_size) {
