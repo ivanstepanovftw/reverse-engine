@@ -76,7 +76,6 @@ size_t parse_uservalue_number(const string &text, uservalue_t *val)
 {
     size_t ret;
     if ((ret = parse_uservalue_int(text, val)) && ret == text.size()) {
-        clog<<"parse_uservalue_number(): passed as int value"<<endl;
         val->flags |= flags_float;
         if (val->flags & flag_s64b) {
             val->float32_value = static_cast<float>(val->int64_value);
@@ -89,7 +88,6 @@ size_t parse_uservalue_number(const string &text, uservalue_t *val)
         return ret;
     }
     else if((ret = parse_uservalue_float(text, val)) && ret == text.size()) {
-        clog<<"parse_uservalue_number(): passed as float value"<<endl;
         double num = val->float64_value;
         if (num >= INT64_MIN && num <=  INT64_MAX) { val->int64_value =  static_cast< int64_t>(num); val->flags |= flag_s64b; }
         if (num >= INT32_MIN && num <=  INT32_MAX) { val->int32_value =  static_cast< int32_t>(num); val->flags |= flag_s32b; }

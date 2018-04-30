@@ -155,7 +155,6 @@ Scanner::make_snapshot(const string &path)
         total_scan_bytes += region.size;
     if (total_scan_bytes == 0)
         throw invalid_argument("zero bytes to scan");
-    clog<<"total_scan_bytes: "<<total_scan_bytes<<endl;
     
     /// Create mmap
     bio::mapped_file_params snapshot_mf_(path);
@@ -168,7 +167,6 @@ Scanner::make_snapshot(const string &path)
         throw invalid_argument("cant open '"+path+"'");
     
     char *snapshot_begin = snapshot_mf.data();
-    char *snapshot_end = snapshot_begin + snapshot_mf.size();
     char *snapshot = snapshot_begin;
     ssize_t copied;
     
@@ -195,7 +193,6 @@ Scanner::make_snapshot(const string &path)
 }
 
 
-
 #define FLAGS_CHECK_CODE\
     m.flags = flags_empty;\
     if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);\
@@ -204,6 +201,7 @@ Scanner::make_snapshot(const string &path)
     if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);\
     if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);\
     if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
+
 
 bool
 Scanner::scan(const scan_data_type_t data_type,
@@ -214,195 +212,150 @@ Scanner::scan(const scan_data_type_t data_type,
     scan_progress = 0.0;
     stop_flag = false;
     
-    constexpr size_t CHUNK_SIZE = 256*1024*1024;       // 32 MiB = 0x2000000
-    constexpr size_t RESERVED = sizeof(mem64_t) - 1;  // 7 elements reserved from start
-    constexpr size_t BUFFER_SIZE = CHUNK_SIZE + RESERVED;
+    uintptr_t max_region_size = 0;
+    for(const region_t& region : handle->regions)
+        max_region_size = MAX(max_region_size, region.size);
     
-    char *buffer_begin = new char[BUFFER_SIZE];
-    char *buffer_end = buffer_begin + BUFFER_SIZE;
-    char *chunk_begin = buffer_begin + RESERVED;
-    
-    bzero(buffer_begin, BUFFER_SIZE);
-    
-    char *buffer;
-    uintptr_t lshift, rshift;
+    char *region_begin = new char[max_region_size];
+    bzero(region_begin, max_region_size);
+    char *region_cur;
+    char *region_end;
     match_t m;
     ssize_t copied;
 
 #define NUMBER_SCAN_NO_SNAPSHOT(FLAGS_CHECK_CODE)
-    for(region_t region : handle->regions) {
-        /** говорим, что мы ещё не пропустили ни один байт в этом регионе */
-        buffer = buffer_begin + RESERVED;
+    for(const region_t& region : handle->regions) {
+        region_cur = region_begin;
         m.address = region.address;
-        
-        /** пока регион слишком большой */
-        while(region.size > CHUNK_SIZE) {
-            clog<<"читаем регион "<<region<<" по чанкам"<<endl;
-            /** читаем его по чанкам */
-            copied = handle->read(chunk_begin, m.address, CHUNK_SIZE);
-            if (copied < 0) {
-                clog<<"error: "<<std::strerror(errno)<<", region: "<<region<<endl;
-                if (!handle->is_running())
-                    throw invalid_argument("process not running");
-                goto next_region;
-            } else if (copied != CHUNK_SIZE) {
-                clog<<"warning: region: "<<region<<", requested: "<<HEX(CHUNK_SIZE)<<", copied "<<HEX(copied)<<endl;
-                region.size = static_cast<uintptr_t>(copied);
-            }
-            
-            /** сканируем */
-            buffer_end = buffer + copied;
-            while (buffer < buffer_end) {
-                m.memory = *reinterpret_cast<mem64_t *>(buffer);
-                FLAGS_CHECK_CODE
-                if (m.flags)
-                    matches.append(m);
-                m.address += step;
-                buffer += step;
-            }
-            
-            /** пропущеные байты переносим в начало */
-            for(lshift = 0, rshift = CHUNK_SIZE; lshift < RESERVED; lshift++, rshift++)
-                buffer_begin[lshift] = buffer_begin[rshift];
-            
-            /** сообщаем, что пропустили несколько байтов */
-            buffer = buffer_begin;
-            region.size -= copied;
-            clog<<"прочитали"<<endl;
-        }
-        
-        /** сейчас читаем либо последний чанк, либо маленький регион */
-        bzero(chunk_begin + region.size, RESERVED);
-        copied = handle->read(chunk_begin, m.address, region.size);
+        copied = handle->read(region_begin, m.address, region.size);
         if (copied < 0) {
             clog<<"error: "<<std::strerror(errno)<<", region: "<<region<<endl;
             if (!handle->is_running())
                 throw invalid_argument("process not running");
             goto next_region;
         } else if (copied != region.size) {
-            clog<<"warning: region: "<<region<<", requested: "<<HEX(CHUNK_SIZE)<<", copied "<<HEX(copied)<<endl;
-            region.size = static_cast<uintptr_t>(copied);
+            clog<<"warning: region: "<<region<<", requested: "<<HEX(region.size)<<", copied "<<HEX(copied)<<endl;
         }
         
         /** сканируем, не забывая исключать invalid flags */
-        buffer_end = chunk_begin + copied - 7;
-        while (buffer < buffer_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+        region_end = region_begin + copied - 7;
+        while (region_cur < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(region_cur);
             FLAGS_CHECK_CODE
             if (m.flags)
                 matches.append(m);
             m.address += step;
-            buffer += step;
+            region_cur += step;
         }
-        
-        buffer_end += 4;
-        while (buffer < buffer_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+    
+        region_end += 4;
+        while (region_cur < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(region_cur);
             FLAGS_CHECK_CODE
             m.flags &= ~(flags_64b);
             if (m.flags)
                 matches.append(m);
             m.address += step;
-            buffer += step;
+            region_cur += step;
         }
-        
-        buffer_end += 2;
-        while (buffer < buffer_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+    
+        region_end += 2;
+        while (region_cur < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(region_cur);
             FLAGS_CHECK_CODE
             m.flags &= ~(flags_64b | flags_32b);
             if (m.flags)
                 matches.append(m);
             m.address += step;
-            buffer += step;
+            region_cur += step;
         }
-        
-        buffer_end += 1;
-        while (buffer < buffer_end) {
-            m.memory = *reinterpret_cast<mem64_t *>(buffer);
+    
+        region_end += 1;
+        while (region_cur < region_end) {
+            m.memory = *reinterpret_cast<mem64_t *>(region_cur);
             FLAGS_CHECK_CODE
             m.flags &= ~(flags_64b | flags_32b | flags_16b);
             if (m.flags)
                 matches.append(m);
             m.address += step;
-            buffer += step;
+            region_cur += step;
         }
         next_region:;
     }
     matches.flush();
     
-    
-    if (data_type == BYTEARRAY) {
-        clog<<"not supported"<<endl;
-    }
-    else if (data_type == STRING) {
-        clog<<"not supported"<<endl;
-    } else {
-        switch(match_type) {
-            case MATCHANY:
-                NUMBER_SCAN_NO_SNAPSHOT(
-                        m.flags = flags_all;
-                )
-                break;
-            case MATCHEQUALTO:
-                NUMBER_SCAN_NO_SNAPSHOT(
-                        m.flags = flags_empty;
-                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                )
-                break;
-            case MATCHNOTEQUALTO:
-                NUMBER_SCAN_NO_SNAPSHOT(
-                        m.flags = flags_empty;
-                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   != uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  != uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  != uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  != uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value != uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value != uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                )
-                break;
-            case MATCHGREATERTHAN:
-                NUMBER_SCAN_NO_SNAPSHOT(
-                        m.flags = flags_empty;
-                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   >  uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  >  uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  >  uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  >  uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value >  uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value >  uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                )
-                break;
-            case MATCHLESSTHAN:
-                NUMBER_SCAN_NO_SNAPSHOT(
-                        m.flags = flags_empty;
-                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   <  uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  <  uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  <  uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  <  uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value <  uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value <  uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                )
-                break;
-            case MATCHRANGE:
-                NUMBER_SCAN_NO_SNAPSHOT(
-                        m.flags = flags_empty;
-                        if ((uservalue[0].flags & flags_i8b ) && (uservalue[0].uint8_value   <= m.memory.uint8_value   ) && (m.memory.uint8_value   >= uservalue[1].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                        if ((uservalue[0].flags & flags_i16b) && (uservalue[0].uint16_value  <= m.memory.uint16_value  ) && (m.memory.uint16_value  >= uservalue[1].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                        if ((uservalue[0].flags & flags_i32b) && (uservalue[0].uint32_value  <= m.memory.uint32_value  ) && (m.memory.uint32_value  >= uservalue[1].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                        if ((uservalue[0].flags & flags_i64b) && (uservalue[0].uint64_value  <= m.memory.uint64_value  ) && (m.memory.uint64_value  >= uservalue[1].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                        if ((uservalue[0].flags & flag_f32b ) && (uservalue[0].float32_value <= m.memory.float32_value ) && (m.memory.float32_value >= uservalue[1].float32_value)) m.flags |= (flag_f32b);
-                        if ((uservalue[0].flags & flag_f64b ) && (uservalue[0].float64_value <= m.memory.float64_value ) && (m.memory.float64_value >= uservalue[1].float64_value)) m.flags |= (flag_f64b);
-                )
-                break;
-            default:
-                clog<<"error: only scan supported"<<endl;
-        }
-    }
+//    
+//    if (data_type == BYTEARRAY) {
+//        clog<<"not supported"<<endl;
+//    }
+//    else if (data_type == STRING) {
+//        clog<<"not supported"<<endl;
+//    } else {
+//        switch(match_type) {
+//            case MATCHANY:
+//                NUMBER_SCAN_NO_SNAPSHOT(
+//                        m.flags = flags_all;
+//                )
+//                break;
+//            case MATCHEQUALTO:
+//                NUMBER_SCAN_NO_SNAPSHOT(
+//                        m.flags = flags_empty;
+//                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+//                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+//                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+//                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+//                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);
+//                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
+//                )
+//                break;
+//            case MATCHNOTEQUALTO:
+//                NUMBER_SCAN_NO_SNAPSHOT(
+//                        m.flags = flags_empty;
+//                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   != uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+//                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  != uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+//                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  != uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+//                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  != uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+//                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value != uservalue[0].float32_value)) m.flags |= (flag_f32b);
+//                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value != uservalue[0].float64_value)) m.flags |= (flag_f64b);
+//                )
+//                break;
+//            case MATCHGREATERTHAN:
+//                NUMBER_SCAN_NO_SNAPSHOT(
+//                        m.flags = flags_empty;
+//                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   >  uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+//                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  >  uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+//                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  >  uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+//                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  >  uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+//                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value >  uservalue[0].float32_value)) m.flags |= (flag_f32b);
+//                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value >  uservalue[0].float64_value)) m.flags |= (flag_f64b);
+//                )
+//                break;
+//            case MATCHLESSTHAN:
+//                NUMBER_SCAN_NO_SNAPSHOT(
+//                        m.flags = flags_empty;
+//                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   <  uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+//                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  <  uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+//                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  <  uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+//                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  <  uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+//                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value <  uservalue[0].float32_value)) m.flags |= (flag_f32b);
+//                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value <  uservalue[0].float64_value)) m.flags |= (flag_f64b);
+//                )
+//                break;
+//            case MATCHRANGE:
+//                NUMBER_SCAN_NO_SNAPSHOT(
+//                        m.flags = flags_empty;
+//                        if ((uservalue[0].flags & flags_i8b ) && (uservalue[0].uint8_value   <= m.memory.uint8_value   ) && (m.memory.uint8_value   >= uservalue[1].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
+//                        if ((uservalue[0].flags & flags_i16b) && (uservalue[0].uint16_value  <= m.memory.uint16_value  ) && (m.memory.uint16_value  >= uservalue[1].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
+//                        if ((uservalue[0].flags & flags_i32b) && (uservalue[0].uint32_value  <= m.memory.uint32_value  ) && (m.memory.uint32_value  >= uservalue[1].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
+//                        if ((uservalue[0].flags & flags_i64b) && (uservalue[0].uint64_value  <= m.memory.uint64_value  ) && (m.memory.uint64_value  >= uservalue[1].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
+//                        if ((uservalue[0].flags & flag_f32b ) && (uservalue[0].float32_value <= m.memory.float32_value ) && (m.memory.float32_value >= uservalue[1].float32_value)) m.flags |= (flag_f32b);
+//                        if ((uservalue[0].flags & flag_f64b ) && (uservalue[0].float64_value <= m.memory.float64_value ) && (m.memory.float64_value >= uservalue[1].float64_value)) m.flags |= (flag_f64b);
+//                )
+//                break;
+//            default:
+//                clog<<"error: only scan supported"<<endl;
+//        }
+//    }
     
     scan_progress = 1.0;
     return true;

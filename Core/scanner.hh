@@ -39,78 +39,17 @@ public:
     
     explicit match_t() {
         this->address = 0;
-        this->memory.uint64_value = 0;
+//        this->memory.uint64_value = 0;
         this->flags = 0;
     }
     
     explicit match_t(uintptr_t address, mem64_t memory, uint16_t userflag = flags_empty) {
         this->address = address;
-        this->memory = memory;
+//        this->memory = memory;
         this->flags = userflag;
     }
 };
 #pragma pack(pop)
-
-/*
-class ram_compressed_matches : public matches {
-    vector<uint8_t *> _comp;
-    
-    string compress(vector<match_t> &in, int compressionlevel = Z_BEST_COMPRESSION) {
-        z_stream zs;                        // z_stream is zlib's control structure
-        memset(&zs, 0, sizeof(zs));
-        
-        if (deflateInit(&zs, compressionlevel) != Z_OK)
-            throw(std::runtime_error("deflateInit failed while compressing."));
-        
-        vector<uint8_t> tmp;
-        tmp.reserve(in.size()*sizeof(match_t));
-        
-        for(match_t &b : in) {
-            uint8_t *data = b.data();
-            for(int i = 0; i < b.size(); i++) {
-                tmp.push_back(data[i]);
-            }
-        }
-        
-        zs.next_in = tmp.data();
-        zs.avail_in = static_cast<uInt>(tmp.size());
-        
-        int ret;
-        char outbuffer[32768];
-        std::string outstring;
-        
-        // retrieve the compressed bytes blockwise
-        do {
-            zs.next_out = reinterpret_cast<Bytef*>(outbuffer);
-            zs.avail_out = sizeof(outbuffer);
-        
-            ret = deflate(&zs, Z_FINISH);
-        
-            if (outstring.size() < zs.total_out) {
-                // append the block to the output string
-                outstring.append(outbuffer,
-                                 zs.total_out - outstring.size());
-            }
-        } while (ret == Z_OK);
-        
-        deflateEnd(&zs);
-        
-        if (ret != Z_STREAM_END) {          // an error occurred that was not EOF
-            std::ostringstream oss;
-            oss << "Exception during zlib compression: (" << ret << ") " << zs.msg;
-            throw(std::runtime_error(oss.str()));
-        }
-        
-        return outstring;
-    }
-    
-    
-public:
-    compressed_matches() {
-    }
-    
-};
-*/
 
 
 
@@ -125,7 +64,7 @@ public:
     matches_t() {
         buffer = new char[sizeof(match_t)];
         this->open();
-        mm.reserve(0x0F'00'00'00/sizeof(match_t));  // 240 MiB
+        mm.reserve(18*1024/sizeof(match_t));  // 18 KiB = 0x4800 = 1024 match_t
     }
     
     ~matches_t() {

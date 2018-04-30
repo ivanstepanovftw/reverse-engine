@@ -284,43 +284,73 @@ ScanWindow::on_button_first_scan()
     
     /// Снепшотим
     timestamp = high_resolution_clock::now();
-    
-    clog<<"~~~~~~~~~~~~~~~~~ making snapshot ~~~~~~~~~~~~~~~~~"<<endl;
     bio::mapped_file snapshot_mf;
     try {
         snapshot_mf = parent->hs->make_snapshot(snapshot_mf_path);
     } catch (const exception& e) {
-        clog<<"what(): "<<e.what()<<endl;
+        clog<<"error: "<<e.what()<<endl;
         return;
     }
-    if (!snapshot_mf.is_open())
-        clog<<"warning: !snapshot_mf.is_open()"<<endl;
-    clog<<"snapshot size: "<<snapshot_mf.size()
-        <<" bytes, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
-    clog<<"~~~~~~~~~~~~~~~~~ scanning snapshot ~~~~~~~~~~~~~~~~~"<<endl;
-
+    if (!snapshot_mf.is_open()) {
+        clog<<"error: !snapshot_mf.is_open()"<<endl;
+        return;
+    }
+    
+//    clog<<"Snapshot size: "<<snapshot_mf.size()
+//        <<" bytes, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+//        <<" seconds"<<endl;
+    
+    clog<<"CE: ";
     timestamp = high_resolution_clock::now();
     parent->hs->scan(snapshot_mf, data_type, uservalue, match_type);
     clog<<"Scan result: "<<parent->hs->matches.size()
         <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
-
     parent->hs->scan_reset();
     
-    clog<<"~~~~~~~~~~~~~~~~~ scanning ~~~~~~~~~~~~~~~~~"<<endl;
+    clog<<"SM: ";
     timestamp = high_resolution_clock::now();
     parent->hs->scan(data_type, uservalue, match_type);
     clog<<"Scan result: "<<parent->hs->matches.size()
         <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
-    clog<<"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"<<endl;
-    
     parent->hs->scan_reset();
-/*
-34943708 cheat engine & scanmem
-34943708 snapshot:  ok!
-33890952 pure:      0x2101000, readed only 0x2000000 bytes
+    clog<<" * "<<endl;
+/** 256 MiB zeros, CE: Snapshot size: 268796112 bytes, done in: 0.374515 seconds
+ * matches_t vector-only
+CE: Scan result: 268775980 matches, done in: 26.9197 seconds  // Max RAM usage: 256 Mi * 10 bytes
+SM: Scan result: 268775980 matches, done in: 6.59376 seconds  // Max RAM usage: 256 MiB + 256 Mi * 10 bytes
+ 
+ * matches_t vector-only, then flush to drive
+CE: Scan result: 268775980 matches, done in: 35.2186 seconds  // Max RAM usage: same as above
+SM: Scan result: 268775980 matches, done in: 24.924 seconds
+CE: Scan result: 268775980 matches, done in: 26.5153 seconds
+SM: Scan result: 268775980 matches, done in: 37.6836 seconds
+CE: Scan result: 268775980 matches, done in: 25.639 seconds
+SM: Scan result: 268775980 matches, done in: 36.4293 seconds
+ 
+ * matches_t using drive, buffered writer 32 MiB
+CE: Scan result: 268775980 matches, done in: 26.6371 seconds  // Max RAM usage: 32 MiB
+SM: Scan result: 268775980 matches, done in: 28.0616 seconds  // Max RAM usage: 256 MiB + 32 MiB
+ * matches_t using drive, buffered writer 10 MiB
+CE: Scan result: 268775980 matches, done in: 19.957 seconds
+SM: Scan result: 268775980 matches, done in: 22.9754 seconds
+CE: Scan result: 268775980 matches, done in: 20.6393 seconds
+SM: Scan result: 268775980 matches, done in: 25.5503 seconds
+ * matches_t using drive, buffered writer 18 KiB
+CE: Scan result: 268775980 matches, done in: 17.3962 seconds
+SM: Scan result: 268775980 matches, done in: 25.9339 seconds
+ * matches_t using drive, buffered writer 10 KiB
+CE: Scan result: 268775980 matches, done in: 15.9239 seconds
+SM: Scan result: 268775980 matches, done in: 22.992 seconds
+CE: Scan result: 268775980 matches, done in: 17.7612 seconds
+SM: Scan result: 268775980 matches, done in: 23.1339 seconds
+CE: Scan result: 268775980 matches, done in: 19.9194 seconds
+SM: Scan result: 268775980 matches, done in: 25.6483 seconds
+CE: Scan result: 268775980 matches, done in: 19.3292 seconds
+SM: Scan result: 268775980 matches, done in: 24.5894 seconds
+ 
+ * 
 */
     
 //    ref_tree_output->clear();
