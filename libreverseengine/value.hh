@@ -1,7 +1,7 @@
 /*
     This file is part of Reverse Engine.
 
-    Stucts for target process.
+    Structs for target process.
 
     Copyright (C) 2017-2018 Ivan Stepanov <ivanstepanovftw@gmail.com>
     Copyright (C) 2017      Andrea Stacchiotti <andreastacchiotti@gmail.com>
