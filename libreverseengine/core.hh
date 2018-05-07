@@ -339,6 +339,44 @@ public:
         return nullptr;
     }
     
+    // TODO: may be moved to scanner.hh
+    bool
+    find_pattern(uintptr_t *out, region_t *region, const char *pattern, const char *mask)
+    {
+        char buffer[0x1000];
+        
+        uintptr_t len = strlen(mask);
+        uintptr_t chunksize = sizeof(buffer);
+        uintptr_t totalsize = region->size;
+        uintptr_t chunknum = 0;
+        
+        while (totalsize) {
+            uintptr_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
+            uintptr_t readaddr = region->address + (chunksize * chunknum);
+            bzero(buffer, chunksize);
+            
+            if (this->read(buffer, readaddr, readsize)) {
+                for(uintptr_t b = 0; b < readsize; b++) {
+                    uintptr_t matches = 0;
+                    
+                    // если данные совпадают или пропустить
+                    while (buffer[b + matches] == pattern[matches] || mask[matches] != 'x') {
+                        matches++;
+                        
+                        if (matches == len) {
+                            *out = readaddr + b;
+                            return true;
+                        }
+                    }
+                }
+            }
+            
+            totalsize -= readsize;
+            chunknum++;
+        }
+        return false;
+    }
+    
     uintptr_t
     get_call_address(uintptr_t address)
     {
@@ -366,51 +404,6 @@ Handle::findPointer(void *out, uintptr_t address, std::vector<uintptr_t> offsets
     if (!this->read(out, buffer + offsets[offsets.size() - 1], size)) return false;
 
     return true;
-}
-
-bool
-Handle::findPattern(uintptr_t *out, region_t *region, const char *pattern, const char *mask) 
-{
-    char buffer[0x1000];
-
-    size_t len = strlen(mask);
-    size_t chunksize = sizeof(buffer);
-    size_t totalsize = region->end - region->address;
-    size_t chunknum = 0;
-
-    while (totalsize) {
-        size_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
-        size_t readaddr = region->address + (chunksize * chunknum);
-        bzero(buffer, chunksize);
-
-        if (this->read(buffer, (void *) readaddr, readsize)) {
-            for(size_t b = 0; b < readsize; b++) {
-                size_t matches = 0;
-
-                // если данные совпадают или пропустить
-                while (buffer[b + matches] == pattern[matches] || mask[matches] != 'x') {
-                    matches++;
-
-                    if (matches == len) {
-//                            printf("Debug Output:\data");
-//                            for (int i = 0; i < readsize-b; i++) {
-//                                if (i != 0 && i % 8 == 0) {
-//                                    printf("\data");
-//                                }
-//                                printf("%02x ",(unsigned char)buffer[b+i]);
-//                            }
-//                            printf("\data");
-                        *out = (uintptr_t) (readaddr + b);
-                        return true;
-                    }
-                }
-            }
-        }
-
-        totalsize -= readsize;
-        chunknum++;
-    }
-    return false;
 }
 
 size_t
