@@ -14,7 +14,7 @@ You can also create [trainers](./trainer.cc) for any program.
 ## Contents
 
    * [Features](#features)
-   * [Simple trainer example](#simple-trainer-example)
+   * [Simple trainer showcase](#simple-trainer-showcase)
    * [Contacts](#contacts)
 
 ## Features
@@ -48,7 +48,7 @@ h.read(&glow_array_offset, glow_call+0x10, sizeof(uintptr_t));
 // etc...
 ```
 
-## Credits
+## Contacts
 
 - Ivan Stepanov ivanstepanovftw@gmail.com
 - Andrea Stacchiotti andreastacchiotti@gmail.com 
