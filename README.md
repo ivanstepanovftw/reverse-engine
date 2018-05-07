@@ -15,11 +15,6 @@ You can also create [trainers](./trainer.cc) for any program.
 
    * [Features](#features)
    * [Simple trainer example](#simple-trainer-example)
-      * [Linux kernel driver usbhid](#linux-kernel-driver-usbhid)
-      * [On X Window System](#on-x-window-system)
-      * [On text console/virtual terminal](#on-text-consolevirtual-terminal)
-      * [USB auto-suspend](#usb-auto-suspend-on-linux)
-      * [USB mouse disconnects/reconnects every minute](#usb-mouse-disconnectsreconnects-every-minute-on-linux)
    * [Contacts](#contacts)
 
 ## Features

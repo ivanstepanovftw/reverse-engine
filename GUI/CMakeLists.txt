@@ -19,5 +19,5 @@ target_link_libraries(GUI
         ${GDLMM_LIBRARIES}
         -lpthread
         -lboost_iostreams
-        RECore
+        libreverseengine
         )

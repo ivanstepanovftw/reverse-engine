@@ -2,7 +2,7 @@
 // Created by root on 22.02.18.
 //
 
-#include <Core/scanner.hh>
+#include <libreverseengine/scanner.hh>
 #include "ScanWindow.hh"
 #include "MainWindow.hh"
 
