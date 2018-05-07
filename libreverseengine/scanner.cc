@@ -290,7 +290,6 @@ Scanner::scan(matches_t& matches_sink,
                 region.size -= (copied - RESERVED);
             }
             
-            clog<<"readin122g"<<endl;
             /** сейчас читаем либо последний чанк, либо маленький регион */
             bzero(buffer_begin + region.size, RESERVED);
             copied = handle->read(buffer_begin, m.address, region.size);

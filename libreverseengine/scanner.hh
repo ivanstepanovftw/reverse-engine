@@ -61,47 +61,39 @@ public:
 
 
 /* Single match struct */
-struct byte_with_flag /// :genius:
+#pragma pack(push, 1)
+struct byte_with_flags
 {
-    uint8_t old_value;
+    uint8_t byte;
     uint16_t flags;
 };
+#pragma pack(pop)
+
 
 class swath_t
 {
 public:
     uintptr_t base_address;
-    size_t number_of_bytes;
-    std::vector<byte_with_flag> data;
+    std::vector<byte_with_flags> data;
     
-    size_t
-    index_of_last_element()
-    {
-        return number_of_bytes - 1;
+    explicit swath_t(uintptr_t base_address)
+            : base_address(base_address) {
+        data.reserve(8);
     }
     
     uintptr_t
-    remote_address_of_nth_element(size_t n)
-    {
+    remote_get(size_t n) {
         return base_address + n;
     }
     
     uintptr_t
-    remote_address_of_last_element()
-    {
-        return (remote_address_of_nth_element(index_of_last_element()));
+    remote_last() {
+        return remote_get(data.size() - 1);
     }
     
-    uintptr_t///////////////////fixme possibly wrong
-    local_address_beyond_nth_element(size_t n)
-    {
-        return reinterpret_cast<uintptr_t>(&data[n + 1]);
-    }
-    
-    uintptr_t///////////////////////todo rename to next
-    local_address_beyond_last_element()
-    {
-        return local_address_beyond_nth_element(index_of_last_element());
+    size_t
+    size() {
+        return sizeof(*this)+sizeof(data)+8*sizeof(byte_with_flags);
     }
 };
 
@@ -119,210 +111,49 @@ class matches_t {
 public:
     size_t max_needed_bytes;
     size_t bytes_allocated;
-    swath_t *swaths;
-    
     size_t matches_size;
-    swath_t *swath_last; //current writing swath
-    
-    bool////////////////////////////////////////////////////////
-    allocate_enough_to_reach(char *last_byte_to_reach_plus_one,
-                             swath_t **swath_pointer_to_correct) //fixme aliasing
-    {
-        using namespace std;
-        size_t bytes_needed = last_byte_to_reach_plus_one - (char *) swaths;
-        //fixme if need to
-        clog<<"bytes_needed: "<<bytes_needed<<endl;
-        
-        if (bytes_needed <= this->bytes_allocated)
-            return true;
-        
-        /* allocate twice as much each time,
-           so we don't have to do it too often */
-        size_t bytes_to_allocate = this->bytes_allocated;
-        while (bytes_to_allocate < bytes_needed)
-            bytes_to_allocate *= 2;
-        
-        printf("to_allocate %ld, max %ld\n", 
-               bytes_to_allocate,
-               this->max_needed_bytes);
-        
-        /* sometimes we know an absolute max that we will need */
-        if (this->max_needed_bytes < bytes_to_allocate) {
-            assert(this->max_needed_bytes >= bytes_needed);
-            bytes_to_allocate = this->max_needed_bytes;
-        }
-        
-        size_t delta = (char *) (*swath_pointer_to_correct) - (char *) swaths;
-        
-        if ((swaths = (swath_t *)(realloc(swaths, bytes_to_allocate))) == NULL)
-            return false;
-    
-        this->bytes_allocated = bytes_to_allocate;
-        
-        /* Put the swath pointer back where it should be, if needed.
-           We cast everything to void pointers in this line to make
-           sure the math works out. */
-        if (swath_pointer_to_correct) {
-            *swath_pointer_to_correct = (swath_t *) ((char *)(*swath_pointer_to_correct) + delta);
-        }
-        
-        return true;
-    }///////////////////////////////////////////////////////
+    std::vector<swath_t> swaths;
     
     
-    /* returns a pointer to the swath to which the element was added -
-       i.e. the last swath in the array after the operation */
-    void//////////////////
+    // fixme: very slow
+    void
     add_element(match_t m)
     {
-        uintptr_t remote_address = m.address;
-        uint8_t new_byte = m.memory.u8;
-        uint16_t new_flags = m.flags;
+        if (swaths.size() == 0)
+            swaths.push_back(swath_t(m.address));
+        size_t remote_delta = m.address - swaths.back().remote_last();
+        size_t local_delta = remote_delta * sizeof(byte_with_flags);
         
-        if (swath_last->number_of_bytes == 0) {
-            assert(swath_last->base_address == 0);
-            
-            /* we have to overwrite this as a new swath */
-            this->allocate_enough_to_reach((char *) swath_last
-                                           + sizeof(swath_t)
-                                           + sizeof(byte_with_flag),
-                                           &swath_last);
-            
-            swath_last->base_address = remote_address;
-        }
-        else {
-            size_t local_index_excess =
-                    remote_address - swath_last->remote_address_of_last_element();
-            
-            size_t local_address_excess =
-                    local_index_excess * sizeof(byte_with_flag);
-            
-            size_t needed_size_for_a_new_swath =
-                    sizeof(swath_t);
-            
-            if (local_address_excess >= needed_size_for_a_new_swath) {
-                /* It is more memory-efficient to start a new swath.
-                 * The equal case is decided for a new swath, so that
-                 * later we don't needlessly iterate through a bunch
-                 * of empty values */
-                this->allocate_enough_to_reach(reinterpret_cast<char *>(swath_last->local_address_beyond_last_element()
-                                                                        + needed_size_for_a_new_swath),
-                                               &swath_last);
-                
-                swath_last = (swath_t *)(swath_last->local_address_beyond_last_element()); //fixme !!!!!!!!!!!!!!!!!!!!!
-                swath_last->base_address = remote_address;
-                swath_last->number_of_bytes = 0;
-            }
-            else {
-                /* It is more memory-efficient to write over the intervening
-                   space with null values */
-                this->allocate_enough_to_reach(reinterpret_cast<char *>(swath_last->local_address_beyond_last_element()
-                                                                        + local_address_excess),
-                                               &swath_last);
-                
-                switch (local_index_excess) {
-                    case 1:
-                        /* do nothing, the new value is right after the old */
-                        break;
-                    case 2:
-                        memset(reinterpret_cast<void *>(swath_last->local_address_beyond_last_element()),
-                               0,
-                               sizeof(byte_with_flag));
-                        break;
-                    default:
-                        /* slow due to unknown size to be zeroed */
-                        memset(reinterpret_cast<void *>(swath_last->local_address_beyond_last_element()),
-                               0,
-                               local_address_excess - sizeof(byte_with_flag));
-                        break;
-                }
-                swath_last->number_of_bytes += local_index_excess - 1;
-            }
-        }
-        
-        /* add me */
-        byte_with_flag *dataptr = (byte_with_flag *)(swath_last->local_address_beyond_last_element());
-        dataptr->old_value = new_byte;
-        dataptr->flags = new_flags;
-        swath_last->number_of_bytes++;
+        if (local_delta >= sizeof(swath_t) + sizeof(swaths) + 8 * sizeof(byte_with_flags))
+            swaths.emplace_back(swath_t(m.address));
+        else
+            while (remote_delta-->0)  // tends to zero xD
+                swaths.back().data.push_back(byte_with_flags{ 0, 0 });
+        swaths.back().data.push_back(byte_with_flags{m.memory.u8, m.flags});
         matches_size++;
     }
     
     
-    bool////////////////////////////
-    allocate_array(size_t max_bytes)
-    {
-        if ((swaths = (swath_t *)(realloc(swaths, sizeof(swath_t)))) == NULL) 
-            return false;
-        
-        /* make enough space for the matches header and a null first swath */
-        this->bytes_allocated = sizeof(swath_t);
-        this->max_needed_bytes = max_bytes;
-        return true;
-    }///////////////////////////
-    
-    
-    bool////////////
-    null_terminate()
-    {
-        if (swath_last->number_of_bytes == 0) {
-            assert(swath_last->base_address == 0);
-        } else {
-            swath_last = reinterpret_cast<swath_t *>(swath_last->local_address_beyond_last_element());
-            //fixme uglycode below
-            this->allocate_enough_to_reach((char *) (swath_last + 1),
-                                           &swath_last);
-            swath_last->base_address = 0;
-            swath_last->number_of_bytes = 0;
-        }
-    
-        size_t bytes_needed = (char *) swath_last
-                              + sizeof(swath_t)
-                              - ((char *) (this) + sizeof(size_t) + sizeof(size_t) + sizeof(swath_t *));
-        // fixme upper !!!!!!!!!!!
-        
-        if (bytes_needed < this->bytes_allocated) {
-            /* reduce matches to its final size */
-            if ((swaths = (swath_t *) (realloc(swaths, bytes_needed))) == NULL)
-                return false;
-    
-            this->bytes_allocated = bytes_needed;
-        }
-        
-        return true;
-    }///////////
-    
-    
-    match_location///// possibly ok
+    match_location
     nth_match(size_t n)
     {
         size_t i = 0;
-        swath_t *reading_swath_index;
-        size_t reading_iterator = 0;
-        
-        reading_swath_index = this->swaths;
-        
-        while (reading_swath_index->base_address) {
+        for(swath_t& swath : this->swaths) {
             /* only actual matches are considered */
-            if (reading_swath_index->data[reading_iterator].flags != flags_empty) {
-                if (i == n)
-                    return (match_location) { reading_swath_index, reading_iterator };
-                i++;
-            }
-            
-            /* go on to the next one... */
-            reading_iterator++;
-            if (reading_iterator >= reading_swath_index->number_of_bytes) {
-                reading_swath_index = (swath_t *)
-                        (reading_swath_index->local_address_beyond_last_element());
-                
-                reading_iterator = 0;
+            size_t i_inside = 0;
+            for(const byte_with_flags& bof : swath.data) {
+                if (bof.flags > flags_empty) {
+                    if (i == n)
+                        return match_location {&swath, i_inside};
+                    i++;
+                }
+                i_inside++;
             }
         }
         
-        /* I guess this is not a valid match-id */
+        /* invalid match id */
         return (match_location) { 0, 0 };
-    }//////////////
+    }
     
     
     

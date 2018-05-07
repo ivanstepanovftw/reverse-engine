@@ -18,6 +18,7 @@ ScanWindow::ScanWindow(MainWindow *parent)
 {
     delete parent->handle;
 //    parent->handle = new Handle("7DaysToDie.x86_64");
+//    parent->handle = new Handle("csgo_linux.x86_64");
     parent->handle = new Handle("FakeMem");
 //    parent->handle = new Handle("FakeGame");
     parent->handle->update_regions();
@@ -280,16 +281,6 @@ ScanWindow::on_button_first_scan()
     timestamp_overall = high_resolution_clock::now();
     
     /////////////////////////
-    uintptr_t total_size = 0;
-    /////////////////////////
-    for(const region_t& region : parent->handle->regions) {
-        total_size += region.size * sizeof(byte_with_flag) + sizeof(swath_t);
-    }
-    total_size += sizeof(swath_t); // null-terminate swath
-    
-    printf("allocate array, max size %ld\n", total_size);
-    scans.first.allocate_array(total_size);
-    
     
     timestamp = high_resolution_clock::now();
     parent->hs->scan(scans.first, data_type, uservalue, match_type);

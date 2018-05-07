@@ -1,7 +1,7 @@
 /*
     This file is part of Reverse Engine.
 
-    
+    Driver GUI.
 
     Copyright (C) 2017-2018 Ivan Stepanov <ivanstepanovftw@gmail.com>
 

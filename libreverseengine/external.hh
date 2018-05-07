@@ -28,6 +28,7 @@
 #include <cstdio>
 #include <cstdint>
 
+namespace {
 std::vector<std::string>
 split(const std::string& text,
       const std::string& delims,
@@ -127,5 +128,5 @@ get_mem_free()
 {
     return get_mem_total(2) + get_mem_total(3);
 }
-
+}
 #endif //RE_EXTERNAL_HH

@@ -33,7 +33,7 @@ You can also create [trainers](./trainer.cc) for any program.
 ## Simple trainer showcase
 *Further information:* [Advanced example of trainer](./trainer.cc) 
 
-```
+```cpp
 Handle h("csgo_linux64");
 h.update_regions();
 region_t *client = h.get_region_by_name("client_client.so");
