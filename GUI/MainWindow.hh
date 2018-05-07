@@ -1,9 +1,26 @@
-//
-// Created by root on 22.02.18.
-//
+/*
+    This file is part of Reverse Engine.
 
-#ifndef H4X0R_MAINWINDOW_HH
-#define H4X0R_MAINWINDOW_HH
+    
+
+    Copyright (C) 2017-2018 Ivan Stepanov <ivanstepanovftw@gmail.com>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published
+    by the Free Software Foundation; either version 3 of the License, or
+    (at your option) any later version.
+
+    This library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with this library.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#ifndef RE_MAINWINDOW_HH
+#define RE_MAINWINDOW_HH
 
 #include <iostream>
 #include <regex>
@@ -17,7 +34,7 @@
 #include <gtkmm/liststore.h>
 #include <gtkmm/grid.h>
 //
-#include <Core/core.hh>
+#include <libreverseengine/core.hh>
 #include "classes_predefines.hh"
 #include "MainWindow.hh"
 #include "SelectWindow.hh"
@@ -51,4 +68,4 @@ protected:
     ScanWindow *m_window_scan;
 };
 
-#endif //H4X0R_MAINWINDOW_HH
+#endif //RE_MAINWINDOW_HH

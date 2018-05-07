@@ -1,61 +1,100 @@
-//
-// Структуры, флаги и прочее
-//
+/*
+    This file is part of Reverse Engine.
+
+    Stucts for target process.
+
+    Copyright (C) 2017-2018 Ivan Stepanov <ivanstepanovftw@gmail.com>
+    Copyright (C) 2017      Andrea Stacchiotti <andreastacchiotti@gmail.com>
+
+    This library is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published
+    by the Free Software Foundation; either version 3 of the License, or
+    (at your option) any later version.
+
+    This library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with this library.  If not, see <http://www.gnu.org/licenses/>.
+*/
 
 #ifndef RE_VALUE_HH
 #define RE_VALUE_HH
 
-#include <cstring>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cctype>
 #include <cerrno>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <vector>
 #include <string>
 #include <iostream>
+#include <cassert>
+#include <cstring>
+#include <sys/param.h>
+#include <bitset>
+#include <cstddef>
 
-#undef	HEX
-#define HEX(s) std::hex<<std::showbase<<(s)<<std::dec
+using std::byte;
 
-typedef unsigned char byte;
+template <typename T>
+std::string HEX(T&& what)
+{
+    using namespace std;
+    stringstream ss;
+    ss<<"0x"<<hex<<setw(sizeof(T))<<setfill('0')<<noshowbase<<what<<dec;
+//    ss<<hex<<showbase<<what<<dec;
+    return ss.str();
+}
 
-enum region_mode_t : byte {
-    readable   = 1 << 0,
-    writable   = 1 << 1,
-    executable = 1 << 2,
-    shared     = 1 << 3,
+
+enum region_mode_t : uint8_t
+{
+    readable   = 1u<<0u,
+    writable   = 1u<<1u,
+    executable = 1u<<2u,
+    shared     = 1u<<3u,
 };
 
-class region_t {
+class region_t
+{
 public:
     uintptr_t address;
     uintptr_t size;
     
-    byte flags;
+    uint8_t flags;
     
     /// File data
     uintptr_t offset;
-    byte deviceMajor;
-    byte deviceMinor;
+    char deviceMajor;
+    char deviceMinor;
     unsigned long inodeFileNumber;
     std::string pathname;
     std::string filename;
     
-    void serialize() { 
+    void serialize()
+    {
         // TODO 334. Problem [high]: size dependent. Solution: [low] make serialization.
     }
     
-    friend std::ostream& operator<<(std::ostream& outputStream, const region_t& region) {
+    friend std::ostream& operator<<(std::ostream& outputStream, const region_t& region)
+    {
         return outputStream<<"{"
                            <<"filename: '"<<region.filename
                            <<"', address: "<<HEX(region.address)
                            <<", size: "<<HEX(region.size)
+                           <<", flags: "<<std::bitset<4>(region.flags)
                            <<"}";
     }
 };
 
-enum scan_data_type_t {
+enum scan_data_type_t
+{
     ANYNUMBER,              /* ANYINTEGER or ANYFLOAT */
     ANYINTEGER,             /* INTEGER of whatever width */
     ANYFLOAT,               /* FLOAT of whatever width */
@@ -69,7 +108,8 @@ enum scan_data_type_t {
     STRING
 };
 
-enum scan_match_type_t {
+enum scan_match_type_t
+{
     MATCHANY,                /* for snapshot */
     /* following: compare with a given value */
     MATCHEQUALTO,
@@ -97,20 +137,22 @@ enum scan_match_type_t {
  * valid for both endians, as the flags are ordered from smaller to bigger.
  * NAMING: Primitive, single-bit flags are called `flag_*`, while aggregates,
  * defined for convenience, are called `flags_*`*/
-enum match_flags : uint16_t { // не работает, тогда используем целочисленное значение вместо enum'ов
+//todo fit in 1 byte
+enum match_flags : uint16_t
+{
     flags_empty = 0,
     
-    flag_u8b  = 1 << 0,  /* could be an unsigned  8-bit variable (e.g. unsigned char)      */
-    flag_s8b  = 1 << 1,  /* could be a    signed  8-bit variable (e.g. signed char)        */
-    flag_u16b = 1 << 2,  /* could be an unsigned 16-bit variable (e.g. unsigned short)     */
-    flag_s16b = 1 << 3,  /* could be a    signed 16-bit variable (e.g. short)              */
-    flag_u32b = 1 << 4,  /* could be an unsigned 32-bit variable (e.g. unsigned int)       */
-    flag_s32b = 1 << 5,  /* could be a    signed 32-bit variable (e.g. int)                */
-    flag_u64b = 1 << 6,  /* could be an unsigned 64-bit variable (e.g. unsigned long long) */
-    flag_s64b = 1 << 7,  /* could be a    signed 64-bit variable (e.g. long long)          */
+    flag_u8b  = 1u<<0u,  /* could be an unsigned  8-bit variable (e.g. unsigned char)      */
+    flag_s8b  = 1u<<1u,  /* could be a    signed  8-bit variable (e.g. signed char)        */
+    flag_u16b = 1u<<2u,  /* could be an unsigned 16-bit variable (e.g. unsigned short)     */
+    flag_s16b = 1u<<3u,  /* could be a    signed 16-bit variable (e.g. short)              */
+    flag_u32b = 1u<<4u,  /* could be an unsigned 32-bit variable (e.g. unsigned int)       */
+    flag_s32b = 1u<<5u,  /* could be a    signed 32-bit variable (e.g. int)                */
+    flag_u64b = 1u<<6u,  /* could be an unsigned 64-bit variable (e.g. unsigned long long) */
+    flag_s64b = 1u<<7u,  /* could be a    signed 64-bit variable (e.g. long long)          */
     
-    flag_f32b = 1 << 8,  /* could be a 32-bit floating point variable (i.e. float)         */
-    flag_f64b = 1 << 9,  /* could be a 64-bit floating point variable (i.e. double)        */
+    flag_f32b = 1u<<8u,  /* could be a 32-bit floating point variable (i.e. float)         */
+    flag_f64b = 1u<<9u,  /* could be a 64-bit floating point variable (i.e. double)        */
     
     flags_i8b  = flag_u8b  | flag_s8b,
     flags_i16b = flag_u16b | flag_s16b,
@@ -118,8 +160,8 @@ enum match_flags : uint16_t { // не работает, тогда исполь�
     flags_i64b = flag_u64b | flag_s64b,
     
     flags_integer = flags_i8b | flags_i16b | flags_i32b | flags_i64b,
-    flags_float = flag_f32b | flag_f64b,
-    flags_all = flags_integer | flags_float,
+    flags_float   = flag_f32b | flag_f64b,
+    flags_all     = flags_integer | flags_float,
     
     flags_8b   = flags_i8b,
     flags_16b  = flags_i16b,
@@ -149,15 +191,15 @@ static uint16_t scan_data_type_to_flags[] = {
 
 static inline size_t flags_to_memlength(scan_data_type_t scan_data_type, uint16_t flags)
 {
-    switch(scan_data_type) {
+    switch (scan_data_type) {
         case BYTEARRAY:
         case STRING:
             return flags;
         default: /* NUMBER */
-            return (flags & flags_64b)?8:
-                   (flags & flags_32b)?4:
-                   (flags & flags_16b)?2:
-                   (flags & flags_8b )?1:0;
+            return (flags & flags_64b) ? 8 :
+                   (flags & flags_32b) ? 4 :
+                   (flags & flags_16b) ? 2 :
+                   (flags & flags_8b ) ? 1 : 0;
     }
 }
 
@@ -170,41 +212,44 @@ static inline size_t flags_to_memlength(scan_data_type_t scan_data_type, uint16_
  * that don't depend on alignment.
  * So NEVER EVER dereference a mem64_t*, but use its accessors to obtain the needed type.
  */
-typedef union {
-    int8_t int8_value;
-    uint8_t uint8_value;
-    int16_t int16_value;
-    uint16_t uint16_value;
-    int32_t int32_value;
-    uint32_t uint32_value;
-    int64_t int64_value;
-    uint64_t uint64_value;
-    float float32_value;
-    double float64_value;
-    uint8_t bytes[sizeof(int64_t)];
-    char chars[sizeof(int64_t)];
-} mem64_t;
+union mem64_t
+{
+    int8_t   i8;
+    uint8_t  u8;
+    int16_t  i16;
+    uint16_t u16;
+    int32_t  i32;
+    uint32_t u32;
+    int64_t  i64;
+    uint64_t u64;
+    float    f32;
+    double   f64;
+    byte     bytes[sizeof(int64_t)];
+    uint8_t  chars[sizeof(int64_t)];
+};
 
 /* bytearray wildcards: they must be uint8_t. They are ANDed with the incoming
  * memory before the comparison, so that '??' wildcards always return true
  * It's possible to extend them to fully granular wildcard-ing, if needed */
-typedef enum __attribute__ ((__packed__)) {
+enum wildcard_t
+{
     FIXED = 0xffu,
     WILDCARD = 0x00u,
-} wildcard_t;
+};
 
 /* this struct describes values provided by users */
-typedef struct {
-    int8_t int8_value;
-    uint8_t uint8_value;
-    int16_t int16_value;
-    uint16_t uint16_value;
-    int32_t int32_value;
-    uint32_t uint32_value;
-    int64_t int64_value;
-    uint64_t uint64_value;
-    float float32_value;
-    double float64_value;
+struct uservalue_t
+{
+    int8_t   i8;
+    uint8_t  u8;
+    int16_t  i16;
+    uint16_t u16;
+    int32_t  i32;
+    uint32_t u32;
+    int64_t  i64;
+    uint64_t u64;
+    float    f32;
+    double   f64;
     
     std::vector<uint8_t> bytearray_value;
     std::vector<wildcard_t> wildcard_value;
@@ -213,12 +258,16 @@ typedef struct {
     std::wstring wstring_value;
     
     uint16_t flags;
-} uservalue_t;
+};
 
-size_t parse_uservalue_int(const std::string &text, uservalue_t *uservalue);
-size_t parse_uservalue_float(const std::string &text, uservalue_t *uservalue);
-size_t parse_uservalue_number(const std::string &text, uservalue_t *uservalue);     // parse int or float
-size_t parse_uservalue_bytearray(const std::string &text, uservalue_t *uservalue);
-size_t parse_uservalue_string(const std::string &text, uservalue_t *uservalue);
+size_t parse_uservalue_int(const std::string& text, uservalue_t *uservalue);
+
+size_t parse_uservalue_float(const std::string& text, uservalue_t *uservalue);
+
+size_t parse_uservalue_number(const std::string& text, uservalue_t *uservalue);     // parse int or float
+
+size_t parse_uservalue_bytearray(const std::string& text, uservalue_t *uservalue);
+
+size_t parse_uservalue_string(const std::string& text, uservalue_t *uservalue);
 
 #endif //RE_VALUE_HH

@@ -1,8 +1,25 @@
-//
-// Created by root on 25.02.18.
-//
+/*
+    This file is part of Reverse Engine.
 
-#include <Core/core.hh>
+    
+
+    Copyright (C) 2017-2018 Ivan Stepanov <ivanstepanovftw@gmail.com>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published
+    by the Free Software Foundation; either version 3 of the License, or
+    (at your option) any later version.
+
+    This library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with this library.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#include <libreverseengine/core.hh>
 #include "SelectWindow.hh"
 
 using namespace std;
@@ -78,15 +95,15 @@ SelectWindow::on_button_attach()
                    "Start",
                    "End",
                    "r","w","x","-");
-            for(auto &region : parent->handle->regions_ignored) {
+            for(auto &region : parent->handle->regions) {
                 printf("%-32s0x%016lx 0x%016lx %i%i%i%i\n",
                        region.filename.empty()?"misc":region.filename.c_str(),
                        region.address,
                        region.address + region.size - 1,
-                       region.flags & readable,
-                       region.flags & writable,
-                       region.flags & executable,
-                       region.flags & shared);
+                       (bool)region.flags & readable,
+                       (bool)region.flags & writable,
+                       (bool)region.flags & executable,
+                       (bool)region.flags & shared);
             }
             cout<<"Regions enumeration is done!"<<endl;
             hide();

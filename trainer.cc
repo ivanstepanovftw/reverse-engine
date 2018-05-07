@@ -1,6 +1,23 @@
-//
-// Created by root on 12.02.18.
-//
+/*
+    This file is part of Reverse Engine.
+
+    Simple trainer example.
+
+    Copyright (C) 2017-2018 Ivan Stepanov <ivanstepanovftw@gmail.com>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published
+    by the Free Software Foundation; either version 3 of the License, or
+    (at your option) any later version.
+
+    This library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with this library.  If not, see <http://www.gnu.org/licenses/>.
+*/
 
 #include <iostream>
 #include <iomanip>
@@ -8,286 +25,97 @@
 #include <type_traits>
 #include <zconf.h>
 #include <functional>
-#include <Core/core.hh>
-#include <Core/value.hh>
-#include <Core/scanner.hh>
 #include <cmath>
 #include <cassert>
+#include <libreverseengine/core.hh>
+#include <libreverseengine/value.hh>
+#include <libreverseengine/scanner.hh>
 
-#define TRAINER_OFF 1
 
 using namespace std;
 using namespace std::chrono;
 using namespace std::literals;
 
-const string target = "HackMe";
 
-#define HEX(s) hex<<showbase<<(s)<<dec
-
-#define handle_error(msg) \
-    do { perror(msg); exit(EXIT_FAILURE); } while (0)
-
+const string target = "FakeGame";
+//const pid_t target = 1337;
 
 int
 main() {
-    // Todo performance match_flags or uint16_t
-    // Todo докажи, что reinterpret_cast<mem64_t *>(&buffer[r_off]) при buffer[1] = {0}; будет представлять ui64 как 0
-    /*
-     * -funswitch-loops:
-    Method A: done 333301 matches, in: 0.0136228 seconds, overall: 1.39055 seconds.
-    Method B: done 333301 matches, in: 0.00767857 seconds, overall: 0.618613 seconds.
-     * -O0 -funswitch-loops:
-    Method A: done 333301 matches, in: 0.0161664 seconds, overall: 1.6087 seconds.
-    Method B: done 333301 matches, in: 0.0114342 seconds, overall: 0.975553 seconds.
-     * -O0 -fno-unswitch-loops:
-    Method A: done 333301 matches, in: 0.0155338 seconds, overall: 1.60998 seconds.
-    Method B: done 333301 matches, in: 0.0100367 seconds, overall: 0.958184 seconds.
-     * -O3 -funswitch-loops
-    Method A: done 333301 matches, in: 0.0326429 seconds, overall: 3.25194 seconds.
-    Method B: done 333301 matches, in: 0.0117518 seconds, overall: 1.28925 seconds.
-     * -O3 -fno-unswitch-loops
-    Method A: done 333301 matches, in: 0.0330074 seconds, overall: 2.85701 seconds.
-    Method B: done 333301 matches, in: 0.0126842 seconds, overall: 1.1504 seconds.
-     * -O3 -Os -funswitch-loops
-    Method A: done 333261 matches, in: 0.0329324 seconds, overall: 2.1788 seconds.
-    Method B: done 333261 matches, in: 0.0134741 seconds, overall: 1.10469 seconds.
-     *
-     * My PC are too slow, CLion takes a lot of processor time, so this shit overheats, drop MHz and results are various.
-     * Conclusion: -funswitch-loops doesn't work. Manual unswitching works well.
-     */
+    if (getuid() > 0) {
+        cout<<"!! RUNNING WITHOUT ROOT !!"<<endl;
+    }
     /// Trainer and scanner example
-    Handle *h = nullptr;
+    Handle h;
     region_t *exe = nullptr;
     region_t *libc = nullptr;
     region_t *ld = nullptr;
     
 stage_waiting:;
-    cout<<"Waiting for ["<<target<<"] process"<<endl;
+    cout<<"Waiting for '"<<target<<"' process"<<endl;
     for(;;) {
-        delete h;
-        h = new Handle(target);
-        if (h->isRunning())
+        h.attach(target);
+        if (h.is_good())
             break;
         usleep(500'000);
     }
-    cout<<"Found! PID is ["<<h->pid<<"]"<<endl;
+    cout<<"Found! PID: "<<h.pid<<", title: "<<h.title<<endl;
+    cout<<"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"<<endl;
     
 stage_updating:;
     for(;;) {
-        h->updateRegions();
-        exe = h->getRegion();
-        libc = h->getRegion("libc-2.26.so");
-        ld = h->getRegion("ld-2.26.so");
+        h.update_regions();
+        exe = h.get_region_by_name(h.title);
+        libc = h.get_region_by_name("libc-2.26.so");
+        ld = h.get_region_by_name("ld-2.26.so");
         if (exe && libc && ld)
             break;
+        if (!h.is_running())
+            goto stage_waiting;
         usleep(500'000);
     }
-    cout<<"Found ["<<exe->filename<<"] at ["<<HEX(exe->start)<<"]"<<endl;
-    cout<<"Found ["<<libc->filename<<"] at ["<<HEX(libc->start)<<"]"<<endl;
-    cout<<"Found ["<<ld->filename<<"] at ["<<HEX(ld->start)<<"]"<<endl;
+    cout<<"Regions added: "<<h.regions.size()<<", ignored: "<<h.regions_ignored.size()<<endl;
+    cout<<"Found region: "<<*exe<<endl;
+    cout<<"Found region: "<<*libc<<endl;
+    cout<<"Found region: "<<*ld<<endl;
+    cout<<"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"<<endl;
     
-    /// Find region of address (it's so slow)
-    region_t *roa = h->getRegionOfAddress(ld->start+8);
-    cout<<"Region of address is: "<<roa->filename.c_str()<<endl;
-    
-stage_scanning:;
-    size_t rescanned = 0;
-    Scanner sc(h);
-    
-    // Known variables
-    scan_data_type_t data_type;
-    string data_type_s;
-    
-    cout<<"Enter data type: (a(ii(c,s,i,l), ff(f,d)), b, s): ";
-    cin>>data_type_s;
-    if (cin.fail()) {
-        cout<<""<<endl;
-        cin.clear(); // clear error state
-        cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // discard 'bad' character(s)
+    const uintptr_t test_address = exe->address+16;
+    region_t *test_region = h.get_region_of_address(test_address);
+    if (!test_region) {
+        cout<<"Can't find region of address: address: "<<HEX(test_address)<<endl;
+        return 1;
     }
-    if      (data_type_s == "ii")   data_type = ANYINTEGER;
-    else if (data_type_s == "ff")   data_type = ANYFLOAT;
-    else if (data_type_s == "c")    data_type = INTEGER8;
-    else if (data_type_s == "s")    data_type = INTEGER16;
-    else if (data_type_s == "i")    data_type = INTEGER32;
-    else if (data_type_s == "l")    data_type = INTEGER64;
-    else if (data_type_s == "f")    data_type = FLOAT32;
-    else if (data_type_s == "d")    data_type = FLOAT64;
-    else if (data_type_s == "b")    data_type = BYTEARRAY;
-    else if (data_type_s == "s")    data_type = STRING;
-    else                            data_type = ANYNUMBER;
+    cout<<"Address: "<<HEX(test_address)<<" belongs to "<<*test_region<<endl;
+    cout<<"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"<<endl;
     
-    cout<<"Enter pattern: ";
-    string text;
-    cin>>text;
-    
-    
-    // Unknown variables
-    uservalue_t uservalue[2];
-    scan_match_type_t match_type;
-    try {
-        // Parse text as uservalue
-        sc.string_to_uservalue(data_type, text, &match_type, uservalue);
-    } catch (bad_uservalue_cast &e) {
-        clog<<e.what()<<endl;
-        goto stage_scanning;
+    cout<<"Lets read 8 bytes to our union from our target address-space: "<<HEX(test_address)<<endl;
+    mem64_t test_memory;  /// it can be any type you need
+    errno = 0;
+    if (h.read(&test_memory, test_address, sizeof(test_memory)) != sizeof(test_memory)) {
+        if (errno) {
+            cout<<"Error while reading: "<<strerror(errno)<<endl;
+            return 1;
+        } else
+            cout<<"We have read partially"<<endl;
     }
+    cout<<"We can easily reinterpret this in other types: "<<endl;
+    cout<<"float: "<<test_memory.f32<<endl;
+    cout<<"double: "<<test_memory.f64<<endl;
+    cout<<"4 bytes unsigned: "<<test_memory.u32<<endl;
+    cout<<"8 bytes signed: "<<test_memory.i32<<endl;
+    cout<<"8 chars as text: '"<<+test_memory.chars<<"'"<<endl;
+    cout<<"8 chars in hex: "<<HEX(*reinterpret_cast<uint64_t *>(test_memory.bytes))<<endl;
+    cout<<"8 bytes in dec: ";
+    cout<<hex<<showbase;
+    ostream_iterator<int> out_it(cout, ", ");
+    copy(test_memory.chars, test_memory.chars + sizeof(mem64_t), out_it);
+    cout<<dec<<endl;
+    cout<<"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"<<endl;
     
-    // Clock for performance report
-    high_resolution_clock::time_point t1, t2;
-    duration<double> time_span;
-    
-    // Overall time counted for both methods
-    static duration<double> counterA = high_resolution_clock::duration::zero();
-    static duration<double> counterB = high_resolution_clock::duration::zero();
-    
-    /// Now, most interesting begin
-    // HackMe contains about 333274 (0x515DA) matches, so it will be 0x80000
-    const size_t RESERVED = static_cast<size_t>(pow(2, ceil(log2(333274))));
-    
-    
-    // Method A - sexy, but slow.
-stage_rescanning:;
-    if (!h->isRunning())
-        goto stage_waiting;
-    
-    // Now create an array to store our matches
-    vector<match> matches;
-    matches.reserve(RESERVED);
-    
-    
-    uint8_t *buffer = nullptr;
-    uintptr_t r_off = 0;
-    uintptr_t totalsize = 0;
-    size_t step = 1;
-    
-#define PART1 \
-    for(region_t &r : h->regions) {                                                                                         \
-        if (!r.writable || !r.readable) continue;                                                                           \
-        totalsize = r.end - r.start; /* calculate size of region */                                                         \
-        delete [] buffer; buffer = new uint8_t[totalsize];  /* reallocate buffer */                                         \
-        if (!h->read(buffer, r.start, totalsize)) { clog<<"error: invalid region: cant read memory: "<<r<<endl; continue; } \
-        for(r_off = 0; ;  r_off += step, totalsize -= step) {                                                               \
-            match m (r.start + r_off, *reinterpret_cast<mem64_t *>(&buffer[r_off]));
-#define PART2 \
-            if (totalsize >= 8) {                                                                                           \
-                if (m.flags)                                                                                                \
-                    matches.push_back(m);                                                                                   \
-            }                                                                                                               \
-            else if (totalsize >= 4) {                                                                                      \
-                m.flags &= ~(flags_64b);                                                                                    \
-                if (m.flags)                                                                                                \
-                    matches.push_back(m);                                                                                   \
-            }                                                                                                               \
-            else if (totalsize >= 2) {                                                                                      \
-                m.flags &= ~(flags_64b | flags_32b);                                                                        \
-                if (m.flags)                                                                                                \
-                    matches.push_back(m);                                                                                   \
-            }                                                                                                               \
-            else {                                                                                                          \
-                m.flags &= ~(flags_64b | flags_32b | flags_16b);                                                            \
-                if (m.flags)                                                                                                \
-                    matches.push_back(m);                                                                                   \
-            }                                                                                                               \
-            if (totalsize - step >= totalsize)                                                                              \
-                break;                                                                                                      \
-        }                                                                                                                   \
-    }
-    
-    t1 = high_resolution_clock::now();
-    if (data_type == BYTEARRAY) {
-        clog<<"not supported"<<endl;
-    }
-    else if (data_type == STRING) {
-        clog<<"not supported"<<endl;
-    } else {
-        switch(match_type) {
-                case MATCHANY:
-                    PART1
-                            m.flags = flags_all;
-                    PART2
-                    break;
-                case MATCHEQUALTO:
-                    PART1
-                            m.flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                    PART2
-                    break;
-                case MATCHNOTEQUALTO:
-                    PART1
-                            m.flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   != uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  != uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  != uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  != uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value != uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value != uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                    PART2
-                    break;
-                case MATCHGREATERTHAN:
-                    PART1
-                            m.flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   >  uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  >  uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  >  uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  >  uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value >  uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value >  uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                    PART2
-                    break;
-                case MATCHLESSTHAN:
-                    PART1
-                            m.flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   <  uservalue[0].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  <  uservalue[0].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  <  uservalue[0].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  <  uservalue[0].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value <  uservalue[0].float32_value)) m.flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value <  uservalue[0].float64_value)) m.flags |= (flag_f64b);
-                    PART2
-                    break;
-                case MATCHRANGE:
-                    PART1
-                            m.flags = flags_empty;
-                            if ((uservalue[0].flags & flags_i8b ) && (uservalue[0].uint8_value   <= m.memory.uint8_value   ) && (m.memory.uint8_value   >= uservalue[1].uint8_value  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                            if ((uservalue[0].flags & flags_i16b) && (uservalue[0].uint16_value  <= m.memory.uint16_value  ) && (m.memory.uint16_value  >= uservalue[1].uint16_value )) m.flags |= (uservalue[0].flags & flags_i16b);
-                            if ((uservalue[0].flags & flags_i32b) && (uservalue[0].uint32_value  <= m.memory.uint32_value  ) && (m.memory.uint32_value  >= uservalue[1].uint32_value )) m.flags |= (uservalue[0].flags & flags_i32b);
-                            if ((uservalue[0].flags & flags_i64b) && (uservalue[0].uint64_value  <= m.memory.uint64_value  ) && (m.memory.uint64_value  >= uservalue[1].uint64_value )) m.flags |= (uservalue[0].flags & flags_i64b);
-                            if ((uservalue[0].flags & flag_f32b ) && (uservalue[0].float32_value <= m.memory.float32_value ) && (m.memory.float32_value >= uservalue[1].float32_value)) m.flags |= (flag_f32b);
-                            if ((uservalue[0].flags & flag_f64b ) && (uservalue[0].float64_value <= m.memory.float64_value ) && (m.memory.float64_value >= uservalue[1].float64_value)) m.flags |= (flag_f64b);
-                    PART2
-                    break;
-                default:
-                    clog<<"error: only first_scan supported"<<endl;
-                    goto stage_scanning;
-            }
-    }
-    t2 = high_resolution_clock::now();
-    time_span = duration_cast<duration<double>>(t2 - t1);
-    counterB += time_span;
-    cout<<"Method B: done "<<matches.size()<<" matches, in: "<<time_span.count()<<" seconds, overall: "<<counterB.count()<<" seconds."<<endl;
-    
-    if (matches.capacity() > RESERVED) {
-        cout<<"warning: matches.capacity() > RESERVED: matches.capacity(): "<<matches.capacity()<<endl;
-    }
-    
-    // Method B - fastest, but with crappy macros
-    matches.clear();
-    matches.shrink_to_fit();
-    matches.reserve(RESERVED);
-    if (rescanned++ < 100)
-        goto stage_rescanning;
-    else
-        goto stage_scanning;
-    
-/// other example
+/// TODO other example
 //    vector<uintptr_t> sig;
-//    size_t found = h->findPattern(&sig, ld,
+//    size_t found = h.findPattern(&sig, ld,
 //                   "\x48\x89\xC7\xE8\x00\x00\x00\x00",
 //                   "xxxx????");
 //    clog<<"found: "<<found<<endl;

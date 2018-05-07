@@ -7,6 +7,7 @@
 #include "MainWindow.hh"
 
 using namespace std;
+using namespace std::chrono;
 
 #define REFRESH_RATE 2000
 
@@ -16,9 +17,9 @@ ScanWindow::ScanWindow(MainWindow *parent)
         , paned_2(Gtk::ORIENTATION_VERTICAL)
 {
     delete parent->handle;
-    parent->handle = new Handle("FakeMem");
-//    parent->handle = new Handle("HackMe");
 //    parent->handle = new Handle("7DaysToDie.x86_64");
+    parent->handle = new Handle("FakeMem");
+//    parent->handle = new Handle("FakeGame");
     parent->handle->update_regions();
     parent->hs = new Scanner(parent->handle);
     
@@ -101,9 +102,9 @@ ScanWindow::create_scanner()
     combo_stype->set_active(row);
     row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Integer";        row[columns_scan_type.m_col_scan_type] = scan_data_type_t::ANYINTEGER;
     row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Float";          row[columns_scan_type.m_col_scan_type] = scan_data_type_t::ANYFLOAT;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int8";               row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER8;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int16";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER16;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int32";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER32;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "i8";               row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER8;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "i16";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER16;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "i32";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER32;
     row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int64";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER64;
     row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "float32";            row[columns_scan_type.m_col_scan_type] = scan_data_type_t::FLOAT32;
     row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "float64";            row[columns_scan_type.m_col_scan_type] = scan_data_type_t::FLOAT64;
@@ -241,9 +242,10 @@ void ScanWindow::refresh_row(match_t *val, const char *type_string, Gtk::TreeMod
 
 void 
 ScanWindow::on_button_first_scan()
+// todo[low] THREADS
 {
-    using namespace std::chrono;
     namespace bio = boost::iostreams;
+    high_resolution_clock::time_point timestamp, timestamp_overall;
     
     conn.disconnect();
     
@@ -264,10 +266,6 @@ ScanWindow::on_button_first_scan()
     Gtk::TreeModel::Row row = *iter;
     if(!row) return;
     
-    
-    // todo[low] THREADS
-    high_resolution_clock::time_point timestamp;
-    
     scan_data_type_t data_type = row[columns_scan_type.m_col_scan_type];
     uservalue_t uservalue[2];
     scan_match_type_t match_type;
@@ -278,79 +276,104 @@ ScanWindow::on_button_first_scan()
         return;
     }
     
-    uintptr_t max_region_size = 0;
-    for(const region_t& region : parent->handle->regions)
-        max_region_size = MAX(max_region_size, region.size);
     
-    /// Снепшотим
+    timestamp_overall = high_resolution_clock::now();
+    
+    /////////////////////////
+    uintptr_t total_size = 0;
+    /////////////////////////
+    for(const region_t& region : parent->handle->regions) {
+        total_size += region.size * sizeof(byte_with_flag) + sizeof(swath_t);
+    }
+    total_size += sizeof(swath_t); // null-terminate swath
+    
+    printf("allocate array, max size %ld\n", total_size);
+    scans.first.allocate_array(total_size);
+    
+    
     timestamp = high_resolution_clock::now();
-    bio::mapped_file snapshot_mf;
-    try {
-        snapshot_mf = parent->hs->make_snapshot(snapshot_mf_path);
-    } catch (const exception& e) {
-        clog<<"error: "<<e.what()<<endl;
-        return;
-    }
-    if (!snapshot_mf.is_open()) {
-        clog<<"error: !snapshot_mf.is_open()"<<endl;
-        return;
-    }
+    parent->hs->scan(scans.first, data_type, uservalue, match_type);
+    clog<<"Scan 1/1 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+        <<" seconds"<<endl;
     
-//    clog<<"Snapshot size: "<<snapshot_mf.size()
+    clog<<"Scan result: "<<scans.first.size()
+        <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp_overall).count()
+        <<" seconds"<<endl;
+    
+//    timestamp_overall = high_resolution_clock::now();
+//    
+//    timestamp = high_resolution_clock::now();
+//    scans.first.path = "first";
+//    try { scans.first.snapshot_mf = parent->hs->make_snapshot(scans.first.path); }
+//    catch (const exception& e) {
+//        clog<<"error: "<<e.what()<<endl;
+//        return;
+//    }
+//    if (!scans.first.snapshot_mf.is_open()) {
+//        clog<<"error: !snapshot_mf.is_open()"<<endl;
+//        return;
+//    }
+//    clog<<"Snapshot size: "<<scans.first.snapshot_mf.size()
 //        <<" bytes, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
 //        <<" seconds"<<endl;
+//    
+//    timestamp = high_resolution_clock::now();
+//    parent->hs->scan(scans.first, data_type, uservalue, match_type);
+//    clog<<"Scan 1/1 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+//        <<" seconds"<<endl;
+//    
+//    clog<<"Scan result: "<<scans.first.size()
+//        <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp_overall).count()
+//        <<" seconds"<<endl;
     
-    clog<<"CE: ";
-    timestamp = high_resolution_clock::now();
-    parent->hs->scan(snapshot_mf, data_type, uservalue, match_type);
-    clog<<"Scan result: "<<parent->hs->matches.size()
-        <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
-    parent->hs->scan_reset();
+/** Target: [7DaysToDie.x86_64] Value: [100] Type: [All] Step: [1]
+Arch: [Cheat Engine 6.7]
+    Done in: {34, 45, 60, 26, 41}
+    Matches: [386'287]
+    RAM usage: O(1)
+Arch: [scanmem]
+    Done in: {17}
+    Matches: [1'864'373]
+    RAM usage:
+        all process memory 2000 MiB 0's memory '(6803×1024×1024−26980)/2097489503' = 3.4 byte per match
     
-    clog<<"SM: ";
-    timestamp = high_resolution_clock::now();
-    parent->hs->scan(data_type, uservalue, match_type);
-    clog<<"Scan result: "<<parent->hs->matches.size()
-        <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
-    parent->hs->scan_reset();
-    clog<<" * "<<endl;
-/** 256 MiB zeros, CE: Snapshot size: 268796112 bytes, done in: 0.374515 seconds
- * matches_t vector-only
-CE: Scan result: 268775980 matches, done in: 26.9197 seconds  // Max RAM usage: 256 Mi * 10 bytes
-SM: Scan result: 268775980 matches, done in: 6.59376 seconds  // Max RAM usage: 256 MiB + 256 Mi * 10 bytes
- 
- * matches_t vector-only, then flush to drive
-CE: Scan result: 268775980 matches, done in: 35.2186 seconds  // Max RAM usage: same as above
-SM: Scan result: 268775980 matches, done in: 24.924 seconds
-CE: Scan result: 268775980 matches, done in: 26.5153 seconds
-SM: Scan result: 268775980 matches, done in: 37.6836 seconds
-CE: Scan result: 268775980 matches, done in: 25.639 seconds
-SM: Scan result: 268775980 matches, done in: 36.4293 seconds
- 
- * matches_t using drive, buffered writer 32 MiB
-CE: Scan result: 268775980 matches, done in: 26.6371 seconds  // Max RAM usage: 32 MiB
-SM: Scan result: 268775980 matches, done in: 28.0616 seconds  // Max RAM usage: 256 MiB + 32 MiB
- * matches_t using drive, buffered writer 10 MiB
-CE: Scan result: 268775980 matches, done in: 19.957 seconds
-SM: Scan result: 268775980 matches, done in: 22.9754 seconds
-CE: Scan result: 268775980 matches, done in: 20.6393 seconds
-SM: Scan result: 268775980 matches, done in: 25.5503 seconds
- * matches_t using drive, buffered writer 18 KiB
-CE: Scan result: 268775980 matches, done in: 17.3962 seconds
-SM: Scan result: 268775980 matches, done in: 25.9339 seconds
- * matches_t using drive, buffered writer 10 KiB
-CE: Scan result: 268775980 matches, done in: 15.9239 seconds
-SM: Scan result: 268775980 matches, done in: 22.992 seconds
-CE: Scan result: 268775980 matches, done in: 17.7612 seconds
-SM: Scan result: 268775980 matches, done in: 23.1339 seconds
-CE: Scan result: 268775980 matches, done in: 19.9194 seconds
-SM: Scan result: 268775980 matches, done in: 25.6483 seconds
-CE: Scan result: 268775980 matches, done in: 19.3292 seconds
-SM: Scan result: 268775980 matches, done in: 24.5894 seconds
- 
- * 
+3000 MiB ~= 8.388 seconds to write wia SATA II
+    
+FakeMem, 1024 MiB, random on:
+    Reverse Engine: (old)
+        Without snapshot file:
+            Scan 1/1 done in: 8.29149 seconds
+        With snapshot file:
+            Snapshot size: 1074102480 bytes, done in: 3.31221 seconds
+            Scan 1/1 done in: 7.97895 seconds
+            Scan result: 0 matches, done in: 11.2907 seconds
+    Scanmem: 15 sec, memusage O(mem) + O(res)
+    
+FakeMem, 3072 MiB, random on:
+    Reverse Engine: (old)
+        Without snapshot file:
+            Scan 1/1 done in: 16.1244 seconds
+        With snapshot file:
+            Snapshot size: 2147836128 bytes, done in: 9.44651 seconds
+            Scan 1/1 done in: 14.6049 seconds
+            Scan result: 8724679 matches, done in: 24.0515 seconds
+    Scanmem: 23 sec, 15 matches
+    
+
+7DaysToDie.x86_64:
+    Reverse Engine: (old)
+        Without snapshot file:
+            Scan result: 3134389 matches, done in: 27.1671 seconds
+            Scan result: 3266304 matches, done in: 27.6923 seconds
+        With snapshot file:
+            Snapshot size: 3102333344 bytes, done in: 14.3963 seconds
+            Scan 1/1 done in: 31.08 seconds
+            Scan result: 3142226 matches, done in: 45.4764 seconds
+            Snapshot size: 3160164992 bytes, done in: 17.4711 seconds
+            Scan 1/1 done in: 30.0419 seconds
+            Scan result: 3255075 matches, done in: 47.513 seconds
+            
+    scanmem: 32 sec, 3170852 matches
 */
     
 //    ref_tree_output->clear();
@@ -371,13 +394,13 @@ SM: Scan result: 268775980 matches, done in: 24.5894 seconds
 //        match_t val = parent->hs->matches.get(i);
 //        
 //        if      (val.flags & flag_s64b) add_row<int64_t> (&val, "int64");
-//        else if (val.flags & flag_s32b) add_row<int32_t> (&val, "int32");
-//        else if (val.flags & flag_s16b) add_row<int16_t> (&val, "int16");
-//        else if (val.flags & flag_s8b)  add_row<int8_t>  (&val, "int8");
+//        else if (val.flags & flag_s32b) add_row<int32_t> (&val, "i32");
+//        else if (val.flags & flag_s16b) add_row<int16_t> (&val, "i16");
+//        else if (val.flags & flag_s8b)  add_row<int8_t>  (&val, "i8");
 //        else if (val.flags & flag_u64b) add_row<uint64_t>(&val, "uint64");
 //        else if (val.flags & flag_u32b) add_row<uint32_t>(&val, "uint32");
-//        else if (val.flags & flag_u16b) add_row<uint16_t>(&val, "uint16");
-//        else if (val.flags & flag_u8b)  add_row<uint8_t> (&val, "uint8");
+//        else if (val.flags & flag_u16b) add_row<uint16_t>(&val, "u16");
+//        else if (val.flags & flag_u8b)  add_row<uint8_t> (&val, "u8");
 //        else if (val.flags & flag_f64b) add_row<double>  (&val, "double");
 //        else if (val.flags & flag_f32b) add_row<float>   (&val, "float");
 //    }
@@ -391,9 +414,69 @@ SM: Scan result: 268775980 matches, done in: 24.5894 seconds
 void
 ScanWindow::on_button_next_scan() 
 {
+    using namespace std::chrono;
+    namespace bio = boost::iostreams;
+    high_resolution_clock::time_point timestamp, timestamp_overall;
+    
     conn.disconnect();
     
-    parent->hs->scan_reset();
+    if (entry_value->get_text().empty()) {
+        clog<<"Enter value first!"<<endl;
+        return;
+    }
+    
+    if (!parent->handle->is_running()) {
+        clog<<"error: process not running"<<endl;
+        return;
+    }
+    
+    Gtk::TreeModel::iterator iter = combo_stype->get_active();
+    if(!iter) return;
+    Gtk::TreeModel::Row row = *iter;
+    if(!row) return;
+    
+    
+    scan_data_type_t data_type = row[columns_scan_type.m_col_scan_type];
+    uservalue_t uservalue[2];
+    scan_match_type_t match_type;
+    try {
+        parent->hs->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
+    } catch (bad_uservalue_cast &e) {
+        clog<<e.what()<<endl;
+        return;
+    }
+    
+    
+    timestamp_overall = high_resolution_clock::now();
+    
+    timestamp = high_resolution_clock::now();
+    scans.last.path = "last";
+    try { scans.last.snapshot_mf = parent->hs->make_snapshot(scans.last.path); }
+    catch (const exception& e) {
+        clog<<"error: "<<e.what()<<endl;
+        return;
+    }
+    if (!scans.last.snapshot_mf.is_open()) {
+        clog<<"error: !snapshot_mf.is_open()"<<endl;
+        return;
+    }
+    clog<<"Snapshot size: "<<scans.last.snapshot_mf.size()
+        <<" bytes, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+        <<" seconds"<<endl;
+    
+    timestamp = high_resolution_clock::now();
+    parent->hs->scan(scans.last, data_type, uservalue, match_type);
+    clog<<"Scan 1/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+        <<" seconds"<<endl;
+    
+    timestamp = high_resolution_clock::now();
+    parent->hs->flags_compare(scans.first, scans.last);
+    clog<<"Scan 2/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+        <<" seconds"<<endl;
+    
+    clog<<"Scan result: "<<scans.last.size()
+        <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp_overall).count()
+        <<" seconds"<<endl;
     
     ref_tree_output->clear();
 //    size_t output_count = parent->hs->matches.size();
@@ -411,13 +494,13 @@ ScanWindow::on_button_next_scan()
 //    for(int i = 0; i < parent->hs->matches.size(); i++) {
 //        match_t val = parent->hs->matches.get(i);
 //        if      (val.flags & flag_s64b) add_row<int64_t> (&val, "int64");
-//        else if (val.flags & flag_s32b) add_row<int32_t> (&val, "int32");
-//        else if (val.flags & flag_s16b) add_row<int16_t> (&val, "int16");
-//        else if (val.flags & flag_s8b)  add_row<int8_t>  (&val, "int8");
+//        else if (val.flags & flag_s32b) add_row<int32_t> (&val, "i32");
+//        else if (val.flags & flag_s16b) add_row<int16_t> (&val, "i16");
+//        else if (val.flags & flag_s8b)  add_row<int8_t>  (&val, "i8");
 //        else if (val.flags & flag_u64b) add_row<uint64_t>(&val, "uint64");
 //        else if (val.flags & flag_u32b) add_row<uint32_t>(&val, "uint32");
-//        else if (val.flags & flag_u16b) add_row<uint16_t>(&val, "uint16");
-//        else if (val.flags & flag_u8b)  add_row<uint8_t> (&val, "uint8");
+//        else if (val.flags & flag_u16b) add_row<uint16_t>(&val, "u16");
+//        else if (val.flags & flag_u8b)  add_row<uint8_t> (&val, "u8");
 //        else if (val.flags & flag_f64b) add_row<double>  (&val, "double");
 //        else if (val.flags & flag_f32b) add_row<float>   (&val, "float");
 //    }
@@ -437,34 +520,15 @@ ScanWindow::on_timer_refresh()
 //        Gtk::TreeModel::Row row = *ref_child[i];
 //        
 //        if      (val.flags & flag_s64b) refresh_row<int64_t> (&val, "int64",  row);
-//        else if (val.flags & flag_s32b) refresh_row<int32_t> (&val, "int32",  row);
-//        else if (val.flags & flag_s16b) refresh_row<int16_t> (&val, "int16",  row);
-//        else if (val.flags & flag_s8b)  refresh_row<int8_t>  (&val, "int8",   row);
+//        else if (val.flags & flag_s32b) refresh_row<int32_t> (&val, "i32",  row);
+//        else if (val.flags & flag_s16b) refresh_row<int16_t> (&val, "i16",  row);
+//        else if (val.flags & flag_s8b)  refresh_row<int8_t>  (&val, "i8",   row);
 //        else if (val.flags & flag_u64b) refresh_row<uint64_t>(&val, "uint64", row);
 //        else if (val.flags & flag_u32b) refresh_row<uint32_t>(&val, "uint32", row);
-//        else if (val.flags & flag_u16b) refresh_row<uint16_t>(&val, "uint16", row);
-//        else if (val.flags & flag_u8b)  refresh_row<uint8_t> (&val, "uint8",  row);
+//        else if (val.flags & flag_u16b) refresh_row<uint16_t>(&val, "u16", row);
+//        else if (val.flags & flag_u8b)  refresh_row<uint8_t> (&val, "u8",  row);
 //        else if (val.flags & flag_f64b) refresh_row<double>  (&val, "double", row);
 //        else if (val.flags & flag_f32b) refresh_row<float>   (&val, "float",  row);
 //    }
     return true;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

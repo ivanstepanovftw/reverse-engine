@@ -1,22 +1,50 @@
-//
-// Created by root on 22.02.18.
-//
+/*
+    This file is part of Reverse Engine.
 
-#ifndef H4X0R_SCANWINDOW_HH
-#define H4X0R_SCANWINDOW_HH
+    
+
+    Copyright (C) 2017-2018 Ivan Stepanov <ivanstepanovftw@gmail.com>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published
+    by the Free Software Foundation; either version 3 of the License, or
+    (at your option) any later version.
+
+    This library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with this library.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#ifndef RE_SCANWINDOW_HH
+#define RE_SCANWINDOW_HH
 
 #include <gtkmm.h>
 #include <iostream>
-#include <Core/core.hh>
-#include <Core/value.hh>
-#include <Core/scanner.hh>
+#include <libreverseengine/core.hh>
+#include <libreverseengine/value.hh>
+#include <libreverseengine/scanner.hh>
 #include "classes_predefines.hh" //fixme remove this file
+
+
+
+struct scans_t {
+    matches_t first;
+    matches_t prev;
+    matches_t last;
+};
+
+
 
 class ScanWindow
         : public Gtk::Window
 {
 public:
     MainWindow *parent = nullptr;
+    scans_t scans;
     
     explicit ScanWindow(MainWindow *parent);
     
@@ -127,7 +155,6 @@ protected:
     Gtk::CheckButton *check_unicode = new Gtk::CheckButton("Unicode");
     Gtk::CheckButton *check_case = new Gtk::CheckButton("Case Sensitive");
     
-    
 private:
      Gtk::Paned paned_1;
      Gtk::Paned paned_2;
@@ -140,39 +167,4 @@ private:
     void refresh_row(match_t *val, const char *type_string, Gtk::TreeModel::Row &row);
 };
 
-//class 
-
-
-#endif //H4X0R_SCANWINDOW_HH
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#endif //RE_SCANWINDOW_HH

@@ -1,30 +1,32 @@
-//
-// Created by root on 12.02.18.
-//
-
+#include <algorithm>
 #include <iostream>
-//#include <Core/core.hh>
-//#include <Core/value.hh>
-//#include <Core/scanner.hh>
+#include <iterator>
+#include <vector>
+#include <libreverseengine/value.hh>
+#include <bitset>
 
 
-#define HEX(s) hex<<showbase<<(s)<<dec
-
-#define CHECK(x) { if(!(x)) { \
-fprintf(stderr, "%s:%i: failure at: %s\n", __FILE__, __LINE__, #x); \
-_exit(1); } }
-
-
-
-int
-main() {
+int main()
+{
     using namespace std;
+    uint8_t c = '\xf0';
+    int res = (c << 24) | (c << 16) | (c << 8) | c;
+    clog<<HEX(res)<<endl;
     
-    
-    
-    
-    
-    
-    
-    return 0;
+//    char flags;
+//    flags = readable | writable | executable | shared;
+//    clog<<"flags: "<<bitset<4>(flags)<<"\n"
+//        <<"flags: "<<bitset<4>(flags ^ (readable | writable | ~shared))<<", bool: "<<(bool)((flags ^ (readable | writable | ~shared))!=0)<<"\n"
+//        <<endl;
+//    
+//    flags = readable | writable | executable;
+//    clog<<"flags: "<<bitset<4>(flags)<<"\n"
+//        <<"flags: "<<bitset<4>(flags ^ (readable | writable | ~shared))<<", bool: "<<(bool)((flags ^ (readable | writable | ~shared))!=0)<<"\n"
+//        <<endl;
+//    
+//    flags = readable | writable;
+//    clog<<"flags: "<<bitset<4>(flags)<<"\n"
+//        <<"flags: "<<bitset<4>(flags ^ (readable | writable | ~shared))<<", bool: "<<(bool)((flags ^ (readable | writable | ~shared))!=0)<<"\n"
+//        <<endl;
+//    
 }

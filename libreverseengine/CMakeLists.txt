@@ -1,9 +1,14 @@
 # ┌──────────────────────────────────────────────────────────────────┐
 # │  Project settings                                                │
 # └──────────────────────────────────────────────────────────────────┘
-project(HackMe)
+project(libreverseengine)
 
 # ┌──────────────────────────────────────────────────────────────────┐
 # │  Build executable                                                │
 # └──────────────────────────────────────────────────────────────────┘
-add_executable(HackMe main.cc)
+add_library(libreverseengine
+        core.hh
+        external.hh
+        scanner.hh      scanner.cc
+        value.hh        value.cc
+        )
