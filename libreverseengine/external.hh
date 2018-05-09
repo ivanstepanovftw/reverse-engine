@@ -28,39 +28,54 @@
 #include <cstdio>
 #include <cstdint>
 
-namespace {
+
+/** 
+ * Retrieve a summary of tokens, no more than max_tokens size.
+ * 
+ * @example:
+ *   @arg text: "  \t This is   a very long string"
+ *   @arg delims: "\t "
+ *   @arg max_tokens_count: 3
+ *   @return { "This", "is", "a very\t long string" }
+ */
+static
 std::vector<std::string>
-split(const std::string& text,
-      const std::string& delims,
-      uint64_t d = std::numeric_limits<uint64_t>::max())
+tokenize(const std::string& text,
+         const std::string& delims,
+         size_t max_tokens = SIZE_MAX)
 {
     using namespace std;
-    //https://stackoverflow.com/a/7408245
-    //https://stackoverflow.com/questions/236129/the-most-elegant-way-to-iterate-the-words-of-a-string
     vector<string> tokens;
-    size_t start = text.find_first_not_of(delims), _end = 0;
-    for(; (_end = text.find_first_of(delims, start)) != string::npos && d > 1; d--) {
-        tokens.push_back(text.substr(start, _end - start));
-        start = text.find_first_not_of(delims, _end);
+    size_t _start = text.find_first_not_of(delims),
+             _end = 0;
+    
+    for(; (_end = text.find_first_of(delims, _start)) != string::npos && max_tokens > 1; max_tokens--) {
+        tokens.push_back(text.substr(_start, _end - _start));
+        _start = text.find_first_not_of(delims, _end);
     }
-    if (start != string::npos)
-        tokens.push_back(text.substr(start));
+    // last token remain
+    if (_start != string::npos)
+        tokens.push_back(text.substr(_start));
     
     return tokens;
 }
 
+/** 
+ * Execute command, return output
+ */
+static
 std::string
 execute(const std::string& cmd)
 {
     using namespace std;
-    static char buffer[128];
-    static string result;
+    char buffer[256];
+    string result;
     FILE *pipe = popen(cmd.c_str(), "r");
     if (!pipe)
         throw runtime_error("popen() failed!");
     try {
         while (!feof(pipe))
-            if (fgets(buffer, 128, pipe) != nullptr)
+            if (fgets(buffer, 256, pipe) != nullptr)
                 result += buffer;
     } catch (...) {
         pclose(pipe);
@@ -71,34 +86,45 @@ execute(const std::string& cmd)
 }
 
 
-std::vector<std::vector<std::string>>
+struct process_t {
+    std::string pid;
+    std::string user;
+    std::string command;
+};
+
+
+static
+std::vector<process_t>
 getProcesses()
 {
     using namespace std;
     string executed = execute("ps -wweo pid=,user=,command=-sort=-pid");
-    int lines_to_skip = 1;
-    vector<string> rows = split(executed, "\n");
-    vector<vector<string>> processes;
-    processes.clear();
+    size_t lines_to_skip = 1;  // skip N first lines
+    vector<string> rows = tokenize(executed, "\n");
+    vector<process_t> processes;
+    
     for(const string& row : rows) {
-        if (lines_to_skip-- > 0)
+        if (lines_to_skip > 0) {
+            lines_to_skip--;
+            continue;
+        }
+        
+        vector<string> to_push = tokenize(row, " ", 3);
+        if (to_push.size() < 3)
             continue;
         
-        vector<string> to_push;
-        for(const auto& col : split(row, " ", 3))
-            to_push.push_back(col);
-        
-        processes.push_back(to_push);
+        processes.emplace_back(process_t {to_push[0], to_push[1], to_push[2]});
     }
     return processes;
 }
 
 
+static
 size_t
 get_mem_total(size_t i)
 {
     using namespace std;
-    static string ss;
+    string ss;
     switch (i) {
         case 1: ss = "MemFree:";      break;
         case 2: ss = "MemAvailable:"; break;
@@ -123,10 +149,11 @@ get_mem_total(size_t i)
 }
 
 // fixme ну и костыль xD
+static
 size_t
 get_mem_free()
 {
     return get_mem_total(2) + get_mem_total(3);
 }
-}
+
 #endif //RE_EXTERNAL_HH

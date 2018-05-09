@@ -44,20 +44,20 @@ size_t parse_uservalue_int(const std::string& text, uservalue_t *val)
         return strlen(text_c) - MAX(strlen(endptr), strlen(endptr2));
     
     /// determine correct flags
-    if (valid_sint && snum >= INT64_MIN && snum <=  INT64_MAX) { val->i64 = static_cast< int64_t>(snum); val->flags |= flag_s64b; }
-    if (valid_sint && snum >= INT32_MIN && snum <=  INT32_MAX) { val->i32 = static_cast< int32_t>(snum); val->flags |= flag_s32b; }
-    if (valid_sint && snum >= INT16_MIN && snum <=  INT16_MAX) { val->i16 = static_cast< int16_t>(snum); val->flags |= flag_s16b; }
-    if (valid_sint && snum >=  INT8_MIN && snum <=   INT8_MAX) { val->i8  = static_cast< int8_t >(snum); val->flags |= flag_s8b ; }
-    if (valid_uint &&                      unum <= UINT64_MAX) { val->u64 = static_cast<uint64_t>(unum); val->flags |= flag_u64b; }
-    if (valid_uint &&                      unum <= UINT32_MAX) { val->u32 = static_cast<uint32_t>(unum); val->flags |= flag_u32b; }
-    if (valid_uint &&                      unum <= UINT16_MAX) { val->u16 = static_cast<uint16_t>(unum); val->flags |= flag_u16b; }
-    if (valid_uint &&                      unum <=  UINT8_MAX) { val->u8  = static_cast<uint8_t >(unum); val->flags |= flag_u8b ; }
+    if (valid_sint && snum >= INT64_MIN && snum <=  INT64_MAX) { val->i64 = static_cast< int64_t>(snum); val->flags |= flag_i64; }
+    if (valid_sint && snum >= INT32_MIN && snum <=  INT32_MAX) { val->i32 = static_cast< int32_t>(snum); val->flags |= flag_i32; }
+    if (valid_sint && snum >= INT16_MIN && snum <=  INT16_MAX) { val->i16 = static_cast< int16_t>(snum); val->flags |= flag_i16; }
+    if (valid_sint && snum >=  INT8_MIN && snum <=   INT8_MAX) { val->i8  = static_cast< int8_t >(snum); val->flags |= flag_i8 ; }
+    if (valid_uint &&                      unum <= UINT64_MAX) { val->u64 = static_cast<uint64_t>(unum); val->flags |= flag_u64; }
+    if (valid_uint &&                      unum <= UINT32_MAX) { val->u32 = static_cast<uint32_t>(unum); val->flags |= flag_u32; }
+    if (valid_uint &&                      unum <= UINT16_MAX) { val->u16 = static_cast<uint16_t>(unum); val->flags |= flag_u16; }
+    if (valid_uint &&                      unum <=  UINT8_MAX) { val->u8  = static_cast<uint8_t >(unum); val->flags |= flag_u8 ; }
     
     /// If signed flag exist and unsigned not exist, fill unsigned value. Used at first_scan() to scan 5% faster.
-    if ((val->flags & flag_s64b) && !(val->flags & flag_u64b)) { val->u64 = static_cast<uint64_t>(val->i64); }
-    if ((val->flags & flag_s32b) && !(val->flags & flag_u32b)) { val->u32 = static_cast<uint32_t>(val->i32); }
-    if ((val->flags & flag_s16b) && !(val->flags & flag_u16b)) { val->u16 = static_cast<uint16_t>(val->i16); }
-    if ((val->flags & flag_s8b ) && !(val->flags & flag_u8b )) { val->u8  = static_cast<uint8_t >(val->i8 ); }
+    if ((val->flags & flag_i64) && !(val->flags & flag_u64)) { val->u64 = static_cast<uint64_t>(val->i64); }
+    if ((val->flags & flag_i32) && !(val->flags & flag_u32)) { val->u32 = static_cast<uint32_t>(val->i32); }
+    if ((val->flags & flag_i16) && !(val->flags & flag_u16)) { val->u16 = static_cast<uint16_t>(val->i16); }
+    if ((val->flags & flag_i8 ) && !(val->flags & flag_u8 )) { val->u8  = static_cast<uint8_t >(val->i8 ); }
     return strlen(text_c);
 }
 
@@ -91,7 +91,7 @@ size_t parse_uservalue_number(const std::string& text, uservalue_t *val)
     size_t ret;
     if ((ret = parse_uservalue_int(text, val)) && ret == text.size()) {
         val->flags |= flags_float;
-        if (val->flags & flag_s64b) {
+        if (val->flags & flag_i64) {
             val->f32 = static_cast<float>(val->i64);
             val->f64 = static_cast<double>(val->i64);
         } else {
@@ -101,20 +101,20 @@ size_t parse_uservalue_number(const std::string& text, uservalue_t *val)
         return ret;
     } else if ((ret = parse_uservalue_float(text, val)) && ret == text.size()) {
         double num = val->f64;
-        if (num >= INT64_MIN && num <=  INT64_MAX) { val->i64 = static_cast< int64_t>(num); val->flags |= flag_s64b; }
-        if (num >= INT32_MIN && num <=  INT32_MAX) { val->i32 = static_cast< int32_t>(num); val->flags |= flag_s32b; }
-        if (num >= INT16_MIN && num <=  INT16_MAX) { val->i16 = static_cast< int16_t>(num); val->flags |= flag_s16b; }
-        if (num >=  INT8_MIN && num <=   INT8_MAX) { val->i8  = static_cast< int8_t >(num); val->flags |= flag_s8b ; }
-        if (num >=         0 && num <= UINT64_MAX) { val->u64 = static_cast<uint64_t>(num); val->flags |= flag_u64b; }
-        if (num >=         0 && num <= UINT32_MAX) { val->u32 = static_cast<uint32_t>(num); val->flags |= flag_u32b; }
-        if (num >=         0 && num <= UINT16_MAX) { val->u16 = static_cast<uint16_t>(num); val->flags |= flag_u16b; }
-        if (num >=         0 && num <=  UINT8_MAX) { val->u8  = static_cast<uint8_t >(num); val->flags |= flag_u8b ; }
+        if (num >= INT64_MIN && num <=  INT64_MAX) { val->i64 = static_cast< int64_t>(num); val->flags |= flag_i64; }
+        if (num >= INT32_MIN && num <=  INT32_MAX) { val->i32 = static_cast< int32_t>(num); val->flags |= flag_i32; }
+        if (num >= INT16_MIN && num <=  INT16_MAX) { val->i16 = static_cast< int16_t>(num); val->flags |= flag_i16; }
+        if (num >=  INT8_MIN && num <=   INT8_MAX) { val->i8  = static_cast< int8_t >(num); val->flags |= flag_i8 ; }
+        if (num >=         0 && num <= UINT64_MAX) { val->u64 = static_cast<uint64_t>(num); val->flags |= flag_u64; }
+        if (num >=         0 && num <= UINT32_MAX) { val->u32 = static_cast<uint32_t>(num); val->flags |= flag_u32; }
+        if (num >=         0 && num <= UINT16_MAX) { val->u16 = static_cast<uint16_t>(num); val->flags |= flag_u16; }
+        if (num >=         0 && num <=  UINT8_MAX) { val->u8  = static_cast<uint8_t >(num); val->flags |= flag_u8 ; }
         
         /// If signed flag exist and unsigned not exist, fill unsigned value. Used at first_scan() to scan 5% faster.
-        if ((val->flags & flag_s64b) && !(val->flags & flag_u64b)) { val->u64 = static_cast<uint64_t>(val->i64); }
-        if ((val->flags & flag_s32b) && !(val->flags & flag_u32b)) { val->u32 = static_cast<uint32_t>(val->i32); }
-        if ((val->flags & flag_s16b) && !(val->flags & flag_u16b)) { val->u16 = static_cast<uint16_t>(val->i16); }
-        if ((val->flags & flag_s8b ) && !(val->flags & flag_u8b )) { val->u8  = static_cast<uint8_t >(val->i8 ); }
+        if ((val->flags & flag_i64) && !(val->flags & flag_u64)) { val->u64 = static_cast<uint64_t>(val->i64); }
+        if ((val->flags & flag_i32) && !(val->flags & flag_u32)) { val->u32 = static_cast<uint32_t>(val->i32); }
+        if ((val->flags & flag_i16) && !(val->flags & flag_u16)) { val->u16 = static_cast<uint16_t>(val->i16); }
+        if ((val->flags & flag_i8 ) && !(val->flags & flag_u8 )) { val->u8  = static_cast<uint8_t >(val->i8 ); }
         return ret;
     }
     clog<<"parse_uservalue_number(): cannot parse ret: ret: "<<ret<<endl;
@@ -168,8 +168,8 @@ size_t parse_uservalue_bytearray(const char *text, uservalue_t *val)
     }
     
     /* everything is ok */
-    val->wildcard_value = wildcards_array;
-    val->bytearray_value = bytes_array;
+    val->wildcard_value = wildcards_array.data();
+    val->bytearray_value = bytes_array.data();
     val->flags = flags_all;
     return true;
 }
@@ -219,8 +219,8 @@ size_t parse_uservalue_string(const char *text, uservalue_t *val)
     }
     
     /* everything is ok */
-    val->wildcard_value = wildcards_array;
-    val->bytearray_value = bytes_array;
+    val->wildcard_value = wildcards_array.data();
+    val->bytearray_value = bytes_array.data();
     val->flags = flags_all;
     return true;
 }

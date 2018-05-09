@@ -103,9 +103,9 @@ ScanWindow::create_scanner()
     combo_stype->set_active(row);
     row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Integer";        row[columns_scan_type.m_col_scan_type] = scan_data_type_t::ANYINTEGER;
     row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Float";          row[columns_scan_type.m_col_scan_type] = scan_data_type_t::ANYFLOAT;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "i8";               row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER8;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "i16";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER16;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "i32";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER32;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int8";               row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER8;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int16";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER16;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int32";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER32;
     row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int64";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER64;
     row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "float32";            row[columns_scan_type.m_col_scan_type] = scan_data_type_t::FLOAT32;
     row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "float64";            row[columns_scan_type.m_col_scan_type] = scan_data_type_t::FLOAT64;
@@ -280,15 +280,18 @@ ScanWindow::on_button_first_scan()
     
     timestamp_overall = high_resolution_clock::now();
     
-    /////////////////////////
-    
+
+/* Reverse Engine alpha -O3
+1 GiB of rand i8  5.12282 seconds
+1 GiB of rand any 15.6694 seconds
+*/
+/* scanmem alpha -O3
+1 GiB of rand i8  5.253 seconds
+1 GiB of rand any 16.689 seconds
+*/
     timestamp = high_resolution_clock::now();
     parent->hs->scan(scans.first, data_type, uservalue, match_type);
     clog<<"Scan 1/1 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
-    
-    clog<<"Scan result: "<<scans.first.size()
-        <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp_overall).count()
         <<" seconds"<<endl;
     
 //    timestamp_overall = high_resolution_clock::now();
@@ -384,16 +387,16 @@ FakeMem, 3072 MiB, random on:
 //    for(int i = 0; i < parent->hs->matches.size(); i++) {
 //        match_t val = parent->hs->matches.get(i);
 //        
-//        if      (val.flags & flag_s64b) add_row<int64_t> (&val, "int64");
-//        else if (val.flags & flag_s32b) add_row<int32_t> (&val, "i32");
-//        else if (val.flags & flag_s16b) add_row<int16_t> (&val, "i16");
-//        else if (val.flags & flag_s8b)  add_row<int8_t>  (&val, "i8");
-//        else if (val.flags & flag_u64b) add_row<uint64_t>(&val, "uint64");
-//        else if (val.flags & flag_u32b) add_row<uint32_t>(&val, "uint32");
-//        else if (val.flags & flag_u16b) add_row<uint16_t>(&val, "u16");
-//        else if (val.flags & flag_u8b)  add_row<uint8_t> (&val, "u8");
-//        else if (val.flags & flag_f64b) add_row<double>  (&val, "double");
-//        else if (val.flags & flag_f32b) add_row<float>   (&val, "float");
+//        if      (val.flags & flag_i64) add_row<int64_t> (&val, "int64");
+//        else if (val.flags & flag_i32) add_row<int32_t> (&val, "i32");
+//        else if (val.flags & flag_i16) add_row<int16_t> (&val, "i16");
+//        else if (val.flags & flag_i8)  add_row<int8_t>  (&val, "i8");
+//        else if (val.flags & flag_u64) add_row<uint64_t>(&val, "uint64");
+//        else if (val.flags & flag_u32) add_row<uint32_t>(&val, "uint32");
+//        else if (val.flags & flag_u16) add_row<uint16_t>(&val, "u16");
+//        else if (val.flags & flag_u8)  add_row<uint8_t> (&val, "u8");
+//        else if (val.flags & flag_f64) add_row<double>  (&val, "double");
+//        else if (val.flags & flag_f32) add_row<float>   (&val, "float");
 //    }
     
     // Continue refresh values inside Scanner output
@@ -461,7 +464,7 @@ ScanWindow::on_button_next_scan()
         <<" seconds"<<endl;
     
     timestamp = high_resolution_clock::now();
-    parent->hs->flags_compare(scans.first, scans.last);
+    parent->hs->scan_next(scans.first, scans.last);
     clog<<"Scan 2/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
     
@@ -484,16 +487,16 @@ ScanWindow::on_button_next_scan()
 //    // For each address, that scanner found, add row to tree_output
 //    for(int i = 0; i < parent->hs->matches.size(); i++) {
 //        match_t val = parent->hs->matches.get(i);
-//        if      (val.flags & flag_s64b) add_row<int64_t> (&val, "int64");
-//        else if (val.flags & flag_s32b) add_row<int32_t> (&val, "i32");
-//        else if (val.flags & flag_s16b) add_row<int16_t> (&val, "i16");
-//        else if (val.flags & flag_s8b)  add_row<int8_t>  (&val, "i8");
-//        else if (val.flags & flag_u64b) add_row<uint64_t>(&val, "uint64");
-//        else if (val.flags & flag_u32b) add_row<uint32_t>(&val, "uint32");
-//        else if (val.flags & flag_u16b) add_row<uint16_t>(&val, "u16");
-//        else if (val.flags & flag_u8b)  add_row<uint8_t> (&val, "u8");
-//        else if (val.flags & flag_f64b) add_row<double>  (&val, "double");
-//        else if (val.flags & flag_f32b) add_row<float>   (&val, "float");
+//        if      (val.flags & flag_i64) add_row<int64_t> (&val, "int64");
+//        else if (val.flags & flag_i32) add_row<int32_t> (&val, "i32");
+//        else if (val.flags & flag_i16) add_row<int16_t> (&val, "i16");
+//        else if (val.flags & flag_i8)  add_row<int8_t>  (&val, "i8");
+//        else if (val.flags & flag_u64) add_row<uint64_t>(&val, "uint64");
+//        else if (val.flags & flag_u32) add_row<uint32_t>(&val, "uint32");
+//        else if (val.flags & flag_u16) add_row<uint16_t>(&val, "u16");
+//        else if (val.flags & flag_u8)  add_row<uint8_t> (&val, "u8");
+//        else if (val.flags & flag_f64) add_row<double>  (&val, "double");
+//        else if (val.flags & flag_f32) add_row<float>   (&val, "float");
 //    }
 //    
     
@@ -510,16 +513,16 @@ ScanWindow::on_timer_refresh()
 //        match_t val = parent->hs->matches.get(i);
 //        Gtk::TreeModel::Row row = *ref_child[i];
 //        
-//        if      (val.flags & flag_s64b) refresh_row<int64_t> (&val, "int64",  row);
-//        else if (val.flags & flag_s32b) refresh_row<int32_t> (&val, "i32",  row);
-//        else if (val.flags & flag_s16b) refresh_row<int16_t> (&val, "i16",  row);
-//        else if (val.flags & flag_s8b)  refresh_row<int8_t>  (&val, "i8",   row);
-//        else if (val.flags & flag_u64b) refresh_row<uint64_t>(&val, "uint64", row);
-//        else if (val.flags & flag_u32b) refresh_row<uint32_t>(&val, "uint32", row);
-//        else if (val.flags & flag_u16b) refresh_row<uint16_t>(&val, "u16", row);
-//        else if (val.flags & flag_u8b)  refresh_row<uint8_t> (&val, "u8",  row);
-//        else if (val.flags & flag_f64b) refresh_row<double>  (&val, "double", row);
-//        else if (val.flags & flag_f32b) refresh_row<float>   (&val, "float",  row);
+//        if      (val.flags & flag_i64) refresh_row<int64_t> (&val, "int64",  row);
+//        else if (val.flags & flag_i32) refresh_row<int32_t> (&val, "i32",  row);
+//        else if (val.flags & flag_i16) refresh_row<int16_t> (&val, "i16",  row);
+//        else if (val.flags & flag_i8)  refresh_row<int8_t>  (&val, "i8",   row);
+//        else if (val.flags & flag_u64) refresh_row<uint64_t>(&val, "uint64", row);
+//        else if (val.flags & flag_u32) refresh_row<uint32_t>(&val, "uint32", row);
+//        else if (val.flags & flag_u16) refresh_row<uint16_t>(&val, "u16", row);
+//        else if (val.flags & flag_u8)  refresh_row<uint8_t> (&val, "u8",  row);
+//        else if (val.flags & flag_f64) refresh_row<double>  (&val, "double", row);
+//        else if (val.flags & flag_f32) refresh_row<float>   (&val, "float",  row);
 //    }
     return true;
 }

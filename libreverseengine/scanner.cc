@@ -4,6 +4,9 @@
     
 
     Copyright (C) 2017-2018 Ivan Stepanov <ivanstepanovftw@gmail.com>
+    Copyright (C) 2015,2017 Sebastian Parschauer <s.parschauer@gmx.de>
+    Copyright (C) 2010      WANG Lu  <coolwanglu(a)gmail.com>
+    Copyright (C) 2009      Eli Dupree  <elidupree(a)charter.net>
 
     This library is free software: you can redistribute it and/or modify
     it under the terms of the GNU Lesser General Public License as published
@@ -21,6 +24,7 @@
 
 #include "scanner.hh"
 #include "value.hh"
+#include "scanroutines.hh"
 
 
 namespace bio = boost::iostreams;
@@ -39,12 +43,12 @@ Scanner::string_to_uservalue(const scan_data_type_t &data_type,
     
     switch (data_type) {
         case BYTEARRAY:
-            //            if (!parse_uservalue_bytearray(text, &uservalue[0])) {
-            //                return false;
-            //            }
+//            if (!parse_uservalue_bytearray(text, &uservalue[0])) {
+//                return false;
+//            }
             return;
         case STRING:
-            uservalue[0].string_value = text;
+            uservalue[0].string_value = const_cast<char *>(text.c_str());
             uservalue[0].flags = flags_max;
             return;
         default:
@@ -220,16 +224,6 @@ Scanner::make_snapshot(const std::string& path)
 }
 
 
-#define FLAGS_CHECK_CODE\
-    m.flags = flags_empty;\
-    if ((uservalue[0].flags & flags_i8b ) && (m.memory.u8  == uservalue[0].u8 )) m.flags |= (uservalue[0].flags & flags_i8b);\
-    if ((uservalue[0].flags & flags_i16b) && (m.memory.u16 == uservalue[0].u16)) m.flags |= (uservalue[0].flags & flags_i16b);\
-    if ((uservalue[0].flags & flags_i32b) && (m.memory.u32 == uservalue[0].u32)) m.flags |= (uservalue[0].flags & flags_i32b);\
-    if ((uservalue[0].flags & flags_i64b) && (m.memory.u64 == uservalue[0].u64)) m.flags |= (uservalue[0].flags & flags_i64b);\
-    if ((uservalue[0].flags & flag_f32b ) && (m.memory.f32 == uservalue[0].f32)) m.flags |= (flag_f32b);\
-    if ((uservalue[0].flags & flag_f64b ) && (m.memory.f64 == uservalue[0].f64)) m.flags |= (flag_f64b);
-
-
 bool
 Scanner::scan(matches_t& matches_sink,
               const scan_data_type_t& data_type,
@@ -238,273 +232,88 @@ Scanner::scan(matches_t& matches_sink,
 {
     using namespace std;
     
+    if (!sm_choose_scanroutine(data_type, match_type, uservalue, 0)) {
+        printf("unsupported scan for current data type.\n");
+        return false;
+    }
+    
     scan_progress = 0.0;
     stop_flag = false;
     
-    if (!matches_sink.snapshot_mf.is_open()) {
-        clog<<"сканируем на лету"<<endl;
-        constexpr size_t RESERVED = sizeof(mem64_t) - 1;
-        constexpr size_t CHECK_SIZE = 32 * 1024 * 1024;        // 32 MiB = 0x2000000
-        constexpr size_t BUFFER_SIZE = CHECK_SIZE + RESERVED;  // 7 bytes reserved at end
+    /* The maximum logical size is a comfortable 1MiB (increasing it does not help).
+     * The actual allocation is that plus the rounded size of the maximum possible VLT.
+     * This is needed because the last byte might be scanned as max size VLT,
+     * thus need 2^16 - 2 extra bytes after it */
+    constexpr size_t MAX_BUFFER_SIZE = 32 * 1024 * 1024;        // 32 MiB = 0x2000000
+//    constexpr size_t MAX_BUFFER_SIZE = 1u<<20u;
+    constexpr size_t MAX_ALLOC_SIZE = MAX_BUFFER_SIZE + (1u<<16u);
+    
+    /* allocate data array */
+    uint8_t *buffer = new uint8_t[MAX_ALLOC_SIZE];
+    uint8_t *buf_pos = buffer;
+    uintptr_t reg_pos;
+    
+    const mem64_t *memory_ptr = nullptr;
+    unsigned int match_length;
+    uint16_t checkflags;
+    
+    ssize_t copied;
+    size_t required_extra_bytes_to_record = 0;
+    
+    /* check every memory region */
+    for(const region_t& region : handle->regions) {
+        /* For every offset, check if we have a match. */
+        size_t memlength = region.size;
+        size_t buffer_size = 0;
+        reg_pos = region.address;
         
-        char *buffer_begin = new char[BUFFER_SIZE];
-        char *buffer_end = buffer_begin + BUFFER_SIZE;
-        char *buffer = buffer_begin;
-        bzero(buffer_begin, BUFFER_SIZE);
-        
-        match_t m;
-        ssize_t copied;
-        
-        
-        for(region_t region : handle->regions) {
-            m.address = region.address;
-            /** пока регион слишком большой */
-            while (region.size - RESERVED > CHECK_SIZE) {
-                /** читаем его по чанкам */
-                copied = handle->read(buffer_begin, m.address, BUFFER_SIZE);
-                if (copied < 0) {
-//                    clog<<"error: "<<std::strerror(errno)<<", region: "<<region<<endl;
-//                    if (!handle->is_running())
-//                        throw invalid_argument("process not running");
-                    goto next_region;
-                } else if (copied != BUFFER_SIZE) {
-                    clog<<"warning: region: "<<region<<", requested: "<<HEX(BUFFER_SIZE)<<", copied "<<HEX(copied)<<endl;
-                    region.size = static_cast<uintptr_t>(copied);
-                    goto asdasd;
+        for ( ; ; memlength--, buffer_size--, reg_pos++, buf_pos++) {
+            /* check if the buffer is finished (or we just started) */
+            if (UNLIKELY(buffer_size == 0)) {
+                /* the whole region is finished */
+                if (memlength == 0) break;
+                
+                /* stop scanning if asked to */
+                if (stop_flag) break;
+                
+                /* load the next buffer block */
+                size_t alloc_size = MIN(memlength, MAX_ALLOC_SIZE);
+                copied = handle->read(buffer, reg_pos, alloc_size);
+                if (UNLIKELY(copied < 0))
+                    break;
+                else if (UNLIKELY(copied < alloc_size)) {
+                    /* the region ends here, update `memlength` */
+                    memlength = copied;
+                    bzero(buffer + copied, MAX_ALLOC_SIZE - copied);
                 }
-                
-                /** сканируем */
-                buffer = buffer_begin;
-                buffer_end = buffer_begin + copied - RESERVED;
-                
-                while (buffer < buffer_end) {
-                    m.memory = *reinterpret_cast<mem64_t *>(buffer);
-                    FLAGS_CHECK_CODE
-                    if (__glibc_unlikely(m.flags > 0))
-                        matches_sink.add_element(m);
-                    m.address += step;
-                    buffer += step;
-                }
-                
-                /** сообщаем, что пропустили несколько байтов */
-                region.size -= (copied - RESERVED);
+                /* If less than `MAX_ALLOC_SIZE` bytes remain, we have all of them
+                 * in the buffer, so go all the way.
+                 * Otherwise we need to stop at `MAX_BUFFER_SIZE`, so that
+                 * the last byte we look at has a full VLT after it */
+                buffer_size = memlength <= MAX_ALLOC_SIZE ? memlength : MAX_BUFFER_SIZE;
+                buf_pos = buffer;
             }
+    
+            memory_ptr = reinterpret_cast<mem64_t *>(buf_pos);
+            checkflags = flags_empty;
             
-            /** сейчас читаем либо последний чанк, либо маленький регион */
-            bzero(buffer_begin + region.size, RESERVED);
-            copied = handle->read(buffer_begin, m.address, region.size);
-            if (copied < 0) {
-//                clog<<"error: "<<std::strerror(errno)<<", region: "<<region<<endl;
-//                if (!handle->is_running())
-//                    throw invalid_argument("process not running");
-                goto next_region;
-            } else if (copied != region.size) {
-                clog<<"warning: region: "<<region<<", requested: "<<HEX(region.size)<<", copied "<<HEX(copied)<<endl;
-                region.size = static_cast<uintptr_t>(copied);
+            /* check if we have a match */
+            match_length = (*sm_scan_routine)(memory_ptr, memlength, NULL, uservalue, checkflags);
+            if (UNLIKELY(match_length > 0)) {
+                assert(match_length <= memlength);
+                matches_sink.add_element(reg_pos, memory_ptr, checkflags);
+                matches_sink.matches_size++;
+                required_extra_bytes_to_record = match_length - 1;
             }
-            
-asdasd:;    /** сканируем, не забывая исключать invalid flags */
-            buffer = buffer_begin;
-            buffer_end = buffer_begin + copied - RESERVED;
-            while (buffer < buffer_end) {
-                m.memory = *reinterpret_cast<mem64_t *>(buffer);
-                FLAGS_CHECK_CODE
-                if (__glibc_unlikely(m.flags > 0))
-                    matches_sink.add_element(m);
-                m.address += step;
-                buffer += step;
-            }
-        
-            buffer_end += 4;
-            while (buffer < buffer_end) {
-                m.memory = *reinterpret_cast<mem64_t *>(buffer);
-                FLAGS_CHECK_CODE
-                m.flags &= ~(flags_64b);
-                if (__glibc_unlikely(m.flags > 0))
-                    matches_sink.add_element(m);
-                m.address += step;
-                buffer += step;
-            }
-        
-            buffer_end += 2;
-            while (buffer < buffer_end) {
-                m.memory = *reinterpret_cast<mem64_t *>(buffer);
-                FLAGS_CHECK_CODE
-                m.flags &= ~(flags_64b | flags_32b);
-                if (__glibc_unlikely(m.flags > 0))
-                    matches_sink.add_element(m);
-                m.address += step;
-                buffer += step;
-            }
-        
-            buffer_end += 1;
-            while (buffer < buffer_end) {
-                m.memory = *reinterpret_cast<mem64_t *>(buffer);
-                FLAGS_CHECK_CODE
-                m.flags &= ~(flags_64b | flags_32b | flags_16b);
-                if (__glibc_unlikely(m.flags > 0))
-                    matches_sink.add_element(m);
-                m.address += step;
-                buffer += step;
-            }
-next_region:;
-        }
-        clog<<"readed: "<<matches_sink.matches_size<<endl;
-    
-        scan_progress = 0.0;
-        stop_flag = false;
-    }
-    else {
-        clog<<"сканируем снепшот на диске"<<endl;
-        constexpr size_t RESERVED = sizeof(mem64_t) - 1;
-        char *snapshot_begin = matches_sink.snapshot_mf.begin();
-        char *snapshot_end = matches_sink.snapshot_mf.end();
-        char *snapshot = snapshot_begin;
-        char *region_end;
-    
-//    bio::mapped_file_params flags_mf_(matches_sink.path+".flg");
-//    flags_mf_.flags         = bio::mapped_file::mapmode::readwrite;
-//    flags_mf_.length        = matches_sink.snapshot_mf.size()*sizeof(match_t::flags);
-//    flags_mf_.new_file_size = matches_sink.snapshot_mf.size()*sizeof(match_t::flags);
-//    if (matches_sink.flags_mf.is_open())
-//        matches_sink.flags_mf.close();
-//    matches_sink.flags_mf.open(flags_mf_);
-//    if (!matches_sink.flags_mf.is_open())
-//        throw invalid_argument("cant open '"+matches_sink.path+".flg"+"'");
-    
-        std::vector<uint16_t> flags;
-        match_t m;
-        region_t region;
-
-
-#define NUMBER_SCAN(FLAGS_CHECK_CODE)
-        while (snapshot < snapshot_end) {
-            /** сначала десериализуем регион, а именно первые два поля. TODO 334 */
-            memcpy(&region,
-                   snapshot,
-                   2 * sizeof(region.address));
-            snapshot += 2 * sizeof(region.address);
-        
-            /** сканируем, не забывая исключать invalid flags */
-            m.address = region.address;
-            region_end = snapshot + region.size - RESERVED;
-        
-            while (snapshot < region_end) {
-                m.memory = *reinterpret_cast<mem64_t *>(snapshot);
-                FLAGS_CHECK_CODE
-                if (m.flags)
-                    flags.emplace_back(m.flags);
-                m.address += step;
-                snapshot += step;
-            }
-        
-            region_end += 4;
-            while (snapshot < region_end) {
-                m.memory = *reinterpret_cast<mem64_t *>(snapshot);
-                FLAGS_CHECK_CODE
-                m.flags &= ~(flags_64b);
-                if (m.flags)
-                    flags.emplace_back(m.flags);
-                m.address += step;
-                snapshot += step;
-            }
-        
-            region_end += 2;
-            while (snapshot < region_end) {
-                m.memory = *reinterpret_cast<mem64_t *>(snapshot);
-                FLAGS_CHECK_CODE
-                m.flags &= ~(flags_64b | flags_32b);
-                if (m.flags)
-                    flags.emplace_back(m.flags);
-                m.address += step;
-                snapshot += step;
-            }
-        
-            region_end += 1;
-            while (snapshot < region_end) {
-                m.memory = *reinterpret_cast<mem64_t *>(snapshot);
-                FLAGS_CHECK_CODE
-                m.flags &= ~(flags_64b | flags_32b | flags_16b);
-                if (m.flags)
-                    flags.emplace_back(m.flags);
-                m.address += step;
-                snapshot += step;
+            else if (required_extra_bytes_to_record) {
+                matches_sink.add_element(reg_pos, memory_ptr, flags_empty);
+                required_extra_bytes_to_record--;
             }
         }
-        clog<<"res: "<<flags.size()<<endl;
-        flags.clear();
+        if (stop_flag)
+            break;
     }
-    if (data_type == BYTEARRAY) {
-        clog<<"not supported"<<endl;
-    }
-    else if (data_type == STRING) {
-        clog<<"not supported"<<endl;
-    } else {
-        switch(match_type) {
-            case MATCHANY:
-                NUMBER_SCAN(
-                        m.flags = flags_all;
-                )
-                break;
-            case MATCHEQUALTO:
-                NUMBER_SCAN(
-                        m.flags = flags_empty;
-                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   == uservalue[0].u8  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  == uservalue[0].u16 )) m.flags |= (uservalue[0].flags & flags_i16b);
-                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  == uservalue[0].u32 )) m.flags |= (uservalue[0].flags & flags_i32b);
-                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  == uservalue[0].u64 )) m.flags |= (uservalue[0].flags & flags_i64b);
-                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value == uservalue[0].f32)) m.flags |= (flag_f32b);
-                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value == uservalue[0].f64)) m.flags |= (flag_f64b);
-                )
-                break;
-            case MATCHNOTEQUALTO:
-                NUMBER_SCAN(
-                        m.flags = flags_empty;
-                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   != uservalue[0].u8  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  != uservalue[0].u16 )) m.flags |= (uservalue[0].flags & flags_i16b);
-                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  != uservalue[0].u32 )) m.flags |= (uservalue[0].flags & flags_i32b);
-                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  != uservalue[0].u64 )) m.flags |= (uservalue[0].flags & flags_i64b);
-                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value != uservalue[0].f32)) m.flags |= (flag_f32b);
-                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value != uservalue[0].f64)) m.flags |= (flag_f64b);
-                )
-                break;
-            case MATCHGREATERTHAN:
-                NUMBER_SCAN(
-                        m.flags = flags_empty;
-                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   >  uservalue[0].u8  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  >  uservalue[0].u16 )) m.flags |= (uservalue[0].flags & flags_i16b);
-                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  >  uservalue[0].u32 )) m.flags |= (uservalue[0].flags & flags_i32b);
-                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  >  uservalue[0].u64 )) m.flags |= (uservalue[0].flags & flags_i64b);
-                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value >  uservalue[0].f32)) m.flags |= (flag_f32b);
-                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value >  uservalue[0].f64)) m.flags |= (flag_f64b);
-                )
-                break;
-            case MATCHLESSTHAN:
-                NUMBER_SCAN(
-                        m.flags = flags_empty;
-                        if ((uservalue[0].flags & flags_i8b ) && (m.memory.uint8_value   <  uservalue[0].u8  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                        if ((uservalue[0].flags & flags_i16b) && (m.memory.uint16_value  <  uservalue[0].u16 )) m.flags |= (uservalue[0].flags & flags_i16b);
-                        if ((uservalue[0].flags & flags_i32b) && (m.memory.uint32_value  <  uservalue[0].u32 )) m.flags |= (uservalue[0].flags & flags_i32b);
-                        if ((uservalue[0].flags & flags_i64b) && (m.memory.uint64_value  <  uservalue[0].u64 )) m.flags |= (uservalue[0].flags & flags_i64b);
-                        if ((uservalue[0].flags & flag_f32b ) && (m.memory.float32_value <  uservalue[0].f32)) m.flags |= (flag_f32b);
-                        if ((uservalue[0].flags & flag_f64b ) && (m.memory.float64_value <  uservalue[0].f64)) m.flags |= (flag_f64b);
-                )
-                break;
-            case MATCHRANGE:
-                NUMBER_SCAN(
-                        m.flags = flags_empty;
-                        if ((uservalue[0].flags & flags_i8b ) && (uservalue[0].u8   <= m.memory.uint8_value   ) && (m.memory.uint8_value   >= uservalue[1].u8  )) m.flags |= (uservalue[0].flags & flags_i8b);
-                        if ((uservalue[0].flags & flags_i16b) && (uservalue[0].u16  <= m.memory.uint16_value  ) && (m.memory.uint16_value  >= uservalue[1].u16 )) m.flags |= (uservalue[0].flags & flags_i16b);
-                        if ((uservalue[0].flags & flags_i32b) && (uservalue[0].u32  <= m.memory.uint32_value  ) && (m.memory.uint32_value  >= uservalue[1].u32 )) m.flags |= (uservalue[0].flags & flags_i32b);
-                        if ((uservalue[0].flags & flags_i64b) && (uservalue[0].u64  <= m.memory.uint64_value  ) && (m.memory.uint64_value  >= uservalue[1].u64 )) m.flags |= (uservalue[0].flags & flags_i64b);
-                        if ((uservalue[0].flags & flag_f32b ) && (uservalue[0].f32 <= m.memory.float32_value ) && (m.memory.float32_value >= uservalue[1].f32)) m.flags |= (flag_f32b);
-                        if ((uservalue[0].flags & flag_f64b ) && (uservalue[0].f64 <= m.memory.float64_value ) && (m.memory.float64_value >= uservalue[1].f64)) m.flags |= (flag_f64b);
-                )
-                break;
-            default:
-                clog<<"error: only scan supported"<<endl;
-        }
-    }
+    delete[] buffer;
     
     scan_progress = 1.0;
     return true;
@@ -513,30 +322,90 @@ next_region:;
 
 
 bool
-Scanner::flags_compare(const matches_t& matches_source,
-                       const matches_t& matches_sink)
+Scanner::scan_next(const matches_t& matches_source,
+                   matches_t& matches_sink,
+                   const scan_data_type_t& data_type,
+                   scan_match_type_t match_type,
+                   const uservalue_t *uservalue)
 {
-    scan_progress = 0.0;
-    stop_flag = false;
+    using namespace std;
     
-    uint16_t *flags_source_begin = reinterpret_cast<uint16_t *>(matches_source.flags_mf.begin());
-    uint16_t *flags_source_end = reinterpret_cast<uint16_t *>(matches_source.flags_mf.end());
-    uint16_t *flags_source = flags_source_begin;
-    
-    uint16_t *flags_sink_begin = reinterpret_cast<uint16_t *>(matches_sink.flags_mf.begin());
-    uint16_t *flags_sink_end = reinterpret_cast<uint16_t *>(matches_sink.flags_mf.end());
-    uint16_t *flags_sink = flags_sink_begin;
-    
-    while(flags_sink < flags_sink_end) {
-        *flags_sink = *flags_sink & *flags_source;
-        flags_source++;
-        flags_sink++;
+    if (!sm_choose_scanroutine(data_type, match_type, uservalue, 0)) {
+        printf("unsupported scan for current data type.\n");
+        return false;
     }
     
-    scan_progress = 1.0;
+    unsigned long bytes_scanned = 0;
+    unsigned long total_scan_bytes = 0;
+    size_t bytes_at_next_sample;
+    size_t bytes_per_sample;
+    
+    
+    
+//    size_t reading_iterator = 0;
+//    int required_extra_bytes_to_record = 0;
+//    matches_sink.matches_size = 0;
+//    scan_progress = 0.0;
+//    stop_flag = false;
+//    
+//    for(swath_t &swath : matches_source.swaths) {
+//        unsigned int match_length = 0;
+//        const mem64_t *memory_ptr;
+//        size_t memlength;
+//        uint16_t checkflags = flags_empty;
+//        
+//        uint16_t old_flags = swath.data[reading_iterator].flags;
+//        size_t old_length = flags_to_memlength(data_type, old_flags);
+//        uintptr_t address = swath.base_address + reading_iterator;
+//        
+//        /* read value from this address */
+//        if (UNLIKELY(sm_peekdata((void *) address, old_length, &memory_ptr, &memlength) == false)) {
+//            /* If we can't look at the data here, just abort the whole recording, something bad happened */
+//            required_extra_bytes_to_record = 0;
+//        }
+//        /* Test only valid old matches */
+//        else if (old_flags != flags_empty)  {
+//            value_t old_val = data_to_val_aux(reading_swath_index, reading_iterator, reading_swath.number_of_bytes);
+//            memlength = old_length < memlength ? old_length : memlength;
+//            
+//            checkflags = flags_empty;
+//            
+//            match_length = (*sm_scan_routine)(memory_ptr, memlength, &old_val, uservalue, checkflags);
+//        }
+//        
+//        if (match_length > 0) {
+//            assert(match_length <= memlength);
+//            
+//            /* Still a candidate. Write data.
+//               - We can get away with overwriting in the same array because it is guaranteed to take up the same number of bytes or fewer,
+//                 and because we copied out the reading swath metadata already.
+//               - We can get away with assuming that the pointers will stay valid,
+//                 because as we never add more data to the array than there was before, it will not reallocate. */
+//            matches_sink.add_element(address, memory_ptr, checkflags);
+//            matches_sink.matches_size++;
+//            required_extra_bytes_to_record = match_length - 1;
+//        }
+//        else if (required_extra_bytes_to_record) {
+//            matches_sink.add_element(address, memory_ptr, flags_empty);
+//            required_extra_bytes_to_record--;
+//        }
+//        
+//        ++bytes_scanned;
+//        
+//        /* go on to the next one... */
+//        ++reading_iterator;
+//        if (reading_iterator >= reading_swath.number_of_bytes)
+//        {
+//            reading_swath_index = (swath_t *)
+//                    (&reading_swath_index->data[reading_swath.number_of_bytes]);
+//            reading_swath = *reading_swath_index;
+//            reading_iterator = 0;
+//            required_extra_bytes_to_record = 0; /* just in case */
+//        }
+//    }
+//    
     return true;
 }
-
 
 
 

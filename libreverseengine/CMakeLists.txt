@@ -11,4 +11,5 @@ add_library(libreverseengine
         external.hh
         scanner.hh      scanner.cc
         value.hh        value.cc
+        scanroutines.hh scanroutines.cc
         )

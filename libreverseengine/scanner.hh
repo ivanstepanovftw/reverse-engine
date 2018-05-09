@@ -4,8 +4,10 @@
     Array of scanner results.
 
     Copyright (C) 2017-2018 Ivan Stepanov <ivanstepanovftw@gmail.com>
+    Copyright (C) 2015,2017 Sebastian Parschauer <s.parschauer@gmx.de>
     Copyright (C) 2017      Andrea Stacchiotti <andreastacchiotti@gmail.com>
-    Copyright (C) 2016-2017 Sebastian Parschauer <s.parschauer@gmx.de>
+    Copyright (C) 2010      WANG Lu <coolwanglu@gmail.com>
+    Copyright (C) 2009      Eli Dupree <elidupree@harter.net>
 
     This library is free software: you can redistribute it and/or modify
     it under the terms of the GNU Lesser General Public License as published
@@ -111,26 +113,25 @@ class matches_t {
 public:
     size_t max_needed_bytes;
     size_t bytes_allocated;
-    size_t matches_size;
+    size_t matches_size = 0;
     std::vector<swath_t> swaths;
     
     
     // fixme: very slow
     void
-    add_element(match_t m)
+    add_element(const uintptr_t& address, const mem64_t *memory, const uint16_t& flags)
     {
         if (swaths.size() == 0)
-            swaths.push_back(swath_t(m.address));
-        size_t remote_delta = m.address - swaths.back().remote_last();
+            swaths.push_back(swath_t(address));
+        size_t remote_delta = address - swaths.back().remote_last();
         size_t local_delta = remote_delta * sizeof(byte_with_flags);
         
         if (local_delta >= sizeof(swath_t) + sizeof(swaths) + 8 * sizeof(byte_with_flags))
-            swaths.emplace_back(swath_t(m.address));
+            swaths.emplace_back(swath_t(address));
         else
             while (remote_delta-->0)  // tends to zero xD
                 swaths.back().data.push_back(byte_with_flags{ 0, 0 });
-        swaths.back().data.push_back(byte_with_flags{m.memory.u8, m.flags});
-        matches_size++;
+        swaths.back().data.push_back(byte_with_flags{memory->u8, flags});
     }
     
     
@@ -314,7 +315,7 @@ class Scanner
 public:
     /// Create file for storing matches
     Handle *handle;
-    bool stop_flag = false;
+    volatile bool stop_flag = false;
     double scan_progress = 0;
     uintptr_t step = 1;
     
@@ -334,8 +335,11 @@ public:
               const uservalue_t *uservalue,
               const scan_match_type_t& match_type);
     
-    bool flags_compare(const matches_t& matches_source,
-                       const matches_t& matches_sink);
+    bool scan_next(const matches_t& matches_source,
+                   matches_t& matches_sink,
+                   const scan_data_type_t& data_type,
+                   scan_match_type_t match_type,
+                   const uservalue_t *uservalue);
     
     bool scan_reset();
     

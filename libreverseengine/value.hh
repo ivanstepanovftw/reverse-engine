@@ -40,7 +40,14 @@
 #include <bitset>
 #include <cstddef>
 
-using std::byte;
+
+#ifdef __GNUC__
+# define LIKELY(x)     __builtin_expect(!!(x), 1)
+# define UNLIKELY(x)   __builtin_expect(!!(x), 0)
+#else
+# define LIKELY(x)     (x)
+# define UNLIKELY(x)   (x)
+#endif
 
 template <typename T>
 std::string HEX(T&& what)
@@ -142,31 +149,31 @@ enum match_flags : uint16_t
 {
     flags_empty = 0,
     
-    flag_u8b  = 1u<<0u,  /* could be an unsigned  8-bit variable (e.g. unsigned char)      */
-    flag_s8b  = 1u<<1u,  /* could be a    signed  8-bit variable (e.g. signed char)        */
-    flag_u16b = 1u<<2u,  /* could be an unsigned 16-bit variable (e.g. unsigned short)     */
-    flag_s16b = 1u<<3u,  /* could be a    signed 16-bit variable (e.g. short)              */
-    flag_u32b = 1u<<4u,  /* could be an unsigned 32-bit variable (e.g. unsigned int)       */
-    flag_s32b = 1u<<5u,  /* could be a    signed 32-bit variable (e.g. int)                */
-    flag_u64b = 1u<<6u,  /* could be an unsigned 64-bit variable (e.g. unsigned long long) */
-    flag_s64b = 1u<<7u,  /* could be a    signed 64-bit variable (e.g. long long)          */
+    flag_u8  = 1u<<0u,  /* could be an unsigned  8-bit variable (e.g. unsigned char)      */
+    flag_i8  = 1u<<1u,  /* could be a    signed  8-bit variable (e.g. signed char)        */
+    flag_u16 = 1u<<2u,  /* could be an unsigned 16-bit variable (e.g. unsigned short)     */
+    flag_i16 = 1u<<3u,  /* could be a    signed 16-bit variable (e.g. short)              */
+    flag_u32 = 1u<<4u,  /* could be an unsigned 32-bit variable (e.g. unsigned int)       */
+    flag_i32 = 1u<<5u,  /* could be a    signed 32-bit variable (e.g. int)                */
+    flag_u64 = 1u<<6u,  /* could be an unsigned 64-bit variable (e.g. unsigned long long) */
+    flag_i64 = 1u<<7u,  /* could be a    signed 64-bit variable (e.g. long long)          */
     
-    flag_f32b = 1u<<8u,  /* could be a 32-bit floating point variable (i.e. float)         */
-    flag_f64b = 1u<<9u,  /* could be a 64-bit floating point variable (i.e. double)        */
+    flag_f32 = 1u<<8u,  /* could be a 32-bit floating point variable (i.e. float)         */
+    flag_f64 = 1u<<9u,  /* could be a 64-bit floating point variable (i.e. double)        */
     
-    flags_i8b  = flag_u8b  | flag_s8b,
-    flags_i16b = flag_u16b | flag_s16b,
-    flags_i32b = flag_u32b | flag_s32b,
-    flags_i64b = flag_u64b | flag_s64b,
+    flags_i8b  = flag_u8  | flag_i8,
+    flags_i16b = flag_u16 | flag_i16,
+    flags_i32b = flag_u32 | flag_i32,
+    flags_i64b = flag_u64 | flag_i64,
     
     flags_integer = flags_i8b | flags_i16b | flags_i32b | flags_i64b,
-    flags_float   = flag_f32b | flag_f64b,
+    flags_float   = flag_f32 | flag_f64,
     flags_all     = flags_integer | flags_float,
     
     flags_8b   = flags_i8b,
     flags_16b  = flags_i16b,
-    flags_32b  = flags_i32b | flag_f32b,
-    flags_64b  = flags_i64b | flag_f64b,
+    flags_32b  = flags_i32b | flag_f32,
+    flags_64b  = flags_i64b | flag_f64,
     
     flags_max = 0xffffu
 };
@@ -183,8 +190,8 @@ static uint16_t scan_data_type_to_flags[] = {
         [INTEGER16]  = flags_i16b,
         [INTEGER32]  = flags_i32b,
         [INTEGER64]  = flags_i64b,
-        [FLOAT32]    = flag_f32b,
-        [FLOAT64]    = flag_f64b,
+        [FLOAT32]    = flag_f32,
+        [FLOAT64]    = flag_f64,
         [BYTEARRAY]  = flags_max,
         [STRING]     = flags_max
 };
@@ -224,8 +231,8 @@ union mem64_t
     uint64_t u64;
     float    f32;
     double   f64;
-    byte     bytes[sizeof(int64_t)];
-    uint8_t  chars[sizeof(int64_t)];
+    uint8_t bytes[sizeof(int64_t)];
+    int8_t  chars[sizeof(int64_t)];
 };
 
 /* bytearray wildcards: they must be uint8_t. They are ANDed with the incoming
@@ -251,11 +258,14 @@ struct uservalue_t
     float    f32;
     double   f64;
     
-    std::vector<uint8_t> bytearray_value;
-    std::vector<wildcard_t> wildcard_value;
+    uint8_t *bytearray_value;
+    wildcard_t *wildcard_value;
+//    std::vector<uint8_t> bytearray_value;
+//    std::vector<wildcard_t> wildcard_value;
     
-    std::string string_value;
-    std::wstring wstring_value;
+    char *string_value;
+//    std::string string_value;
+//    std::wstring wstring_value;
     
     uint16_t flags;
 };

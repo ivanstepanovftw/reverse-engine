@@ -138,14 +138,15 @@ SelectWindow::tree_refresh()
         return;
     }
 
-    vector<vector<string>> processes = getProcesses();
+    vector<process_t> processes = getProcesses();
+    
     int r_counted=0;
     for(int i=0; i<processes.size(); i++) {
-        if (regex_match(processes[i][2], r) || regex_match(processes[i][0], r)) { //match_t by name or pid
+        if (regex_match(processes[i].command, r) || regex_match(processes[i].pid, r)) {
             Gtk::TreeModel::Row row = *(ref_tree_processes->append());
-            row[m_Columns.m_col_pid] = stoi(processes[i][0]);
-            row[m_Columns.m_col_name] = processes[i][1];
-            row[m_Columns.m_col_command] = processes[i][2];
+            row[m_Columns.m_col_pid] = stoi(processes[i].pid);
+            row[m_Columns.m_col_name] = processes[i].user;
+            row[m_Columns.m_col_command] = processes[i].command;
             r_counted++;
         }
     }
@@ -159,19 +160,3 @@ SelectWindow::tree_refresh()
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
