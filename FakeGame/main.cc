@@ -19,6 +19,7 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+
 #include <sys/types.h>
 #include <fcntl.h>
 #include <linux/input.h>
@@ -27,12 +28,15 @@
 #include <zconf.h>
 #include <vector>
 
+
 using namespace std;
+
 
 uint64_t r() {
     int64_t r = random();
     return *(int64_t *)(&r);
 }
+
 
 struct Entry {
     long id;
@@ -159,12 +163,14 @@ main(int, char **argv) {
     bool loop = false;
     bool loopl = false;
     
+//    fixme[high]: may be variate
     int kbd = open("/dev/input/by-path/platform-i8042-serio-0-event-kbd", O_RDONLY);
     if (kbd == -1) {
         cerr << "error while opening keyboard" << endl;
         return 0;
     }
     
+//    fixme[high]: some users have tenkeyless keyboards
     input_event ie{};
     while (read(kbd, &ie, sizeof(ie))) {
         if (ie.type == EV_KEY && ie.value == 1) {
@@ -216,5 +222,4 @@ main(int, char **argv) {
         }
     }
     close(kbd);
-
 }

@@ -27,16 +27,9 @@
 //
 #include <gtkmm/window.h>
 #include <gtkmm/box.h>
-#include <gtkmm/entry.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/treeview.h>
-#include <gtkmm/treemodel.h>
-#include <gtkmm/liststore.h>
-#include <gtkmm/grid.h>
+#include <gtkmm/button.h>
 //
-#include <libreverseengine/core.hh>
-#include "classes_predefines.hh"
-#include "MainWindow.hh"
+#include "globals.hh"
 #include "SelectWindow.hh"
 #include "ScanWindow.hh"
 
@@ -48,10 +41,6 @@ class MainWindow
 public:
     MainWindow();
     virtual ~MainWindow();
-    
-    // Global
-    Handle *handle = nullptr;
-    Scanner *hs = nullptr;
     
 protected:
     // Signals

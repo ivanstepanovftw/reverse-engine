@@ -19,15 +19,13 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <libreverseengine/core.hh>
 #include "SelectWindow.hh"
 
-using namespace std;
 
-/// @author is пидор https://git.gnome.org//browse/gtkmm-documentation/tree/examples/book/treeview/list/?h=gtkmm-3-22
-SelectWindow::SelectWindow(MainWindow *parent)
-        : parent(parent),
-          tree_processes(),
+
+// https://git.gnome.org//browse/gtkmm-documentation/tree/examples/book/treeview/list/?h=gtkmm-3-22
+SelectWindow::SelectWindow()
+        : tree_processes(),
           scroll_tree_processes(),
           vbox_1(Gtk::ORIENTATION_VERTICAL),
           button_attach("Select"),
@@ -71,31 +69,35 @@ SelectWindow::SelectWindow(MainWindow *parent)
     this->show_all_children();
 }
 
+
+
 SelectWindow::~SelectWindow()
 {
 
 }
 
+
+
 void
 SelectWindow::on_button_attach()
 {
     auto refSelection = tree_processes.get_selection();
-    if(refSelection) {
+    if (refSelection) {
         Gtk::TreeModel::iterator iter = refSelection->get_selected();
         if(iter) {
             int pid = (*iter)[m_Columns.m_col_pid];
             printf("Selected PID: %i\n", pid);
-            delete parent->handle;
-            parent->handle = new Handle(pid);
-//            printf("Title: %s\data", parent->handle->title.c_str()); todo print title of pid
-            parent->handle->update_regions();
-            parent->hs = new Scanner(parent->handle);
+            delete globals.handle;
+            globals.handle = new Handle(pid);
+            printf("Title: %s\n", globals.handle->title.c_str());
+            globals.handle->update_regions();
+            globals.scanner = new Scanner(globals.handle);
             printf("%-32s%-18s %-18s %s%s%s%s\n",
                    "Region name",
                    "Start",
                    "End",
                    "r","w","x","-");
-            for(auto &region : parent->handle->regions) {
+            for(const region_t& region : globals.handle->regions) {
                 printf("%-32s0x%016lx 0x%016lx %i%i%i%i\n",
                        region.filename.empty()?"misc":region.filename.c_str(),
                        region.address,
@@ -111,17 +113,23 @@ SelectWindow::on_button_attach()
     }
 }
 
+
+
 void
 SelectWindow::on_entry_pattern()
 {
     tree_refresh();
 }
 
+
+
 void
 SelectWindow::on_button_cancel()
 {
     hide();
 }
+
+
 
 void
 SelectWindow::tree_refresh()

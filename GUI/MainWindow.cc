@@ -21,7 +21,6 @@
 
 #include "MainWindow.hh"
 
-using namespace std;
 
 MainWindow::MainWindow()
         : vbox_1(Gtk::ORIENTATION_HORIZONTAL),
@@ -42,9 +41,9 @@ MainWindow::MainWindow()
     m_window_scan = nullptr;
     
     ///DEBUG
-    m_window_scan = new ScanWindow(this);
+    m_window_scan = new ScanWindow();
     m_window_scan->show();
-    hs = new Scanner(handle);
+    globals.scanner = new Scanner(globals.handle);
     ///
 
     this->show_all_children();
@@ -59,7 +58,7 @@ void
 MainWindow::on_button_sel()
 {
     if(!m_window_select)
-        m_window_select = new SelectWindow(this);
+        m_window_select = new SelectWindow();
 
     if (m_window_select->is_visible())
         m_window_select->hide();
@@ -72,17 +71,10 @@ void
 MainWindow::on_button_scan()
 {
     if(!m_window_scan)
-        m_window_scan = new ScanWindow(this);
+        m_window_scan = new ScanWindow();
 
     if (m_window_scan->is_visible())
         m_window_scan->hide();
     else
         m_window_scan->show();
 }
-
-
-
-
-
-
-

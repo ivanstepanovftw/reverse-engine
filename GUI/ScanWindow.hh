@@ -22,20 +22,26 @@
 #ifndef RE_SCANWINDOW_HH
 #define RE_SCANWINDOW_HH
 
-#include <gtkmm.h>
 #include <iostream>
-#include <libreverseengine/core.hh>
-#include <libreverseengine/value.hh>
-#include <libreverseengine/scanner.hh>
-#include "classes_predefines.hh" //fixme remove this file
-
-
-
-struct scans_t {
-    matches_t first;
-    matches_t prev;
-    matches_t last;
-};
+// header
+#include <gtkmm/window.h>
+#include <gtkmm/treeview.h>
+#include <gtkmm/treemodel.h>
+#include <gtkmm/liststore.h>
+#include <gtkmm/button.h>
+#include <gtkmm/radiobutton.h>
+#include <gtkmm/combobox.h>
+// source
+#include <gtkmm/box.h>
+#include <gtkmm/buttonbox.h>
+#include <gtkmm/grid.h>
+#include <gtkmm/scrolledwindow.h>
+// source
+#include <sigc++/connection.h>
+#include <gtkmm/paned.h>
+#include <glibmm/main.h>
+//
+#include "globals.hh"
 
 
 
@@ -43,10 +49,7 @@ class ScanWindow
         : public Gtk::Window
 {
 public:
-    MainWindow *parent = nullptr;
-    scans_t scans;
-    
-    explicit ScanWindow(MainWindow *parent);
+    explicit ScanWindow();
     
     virtual ~ScanWindow();
 

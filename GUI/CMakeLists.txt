@@ -8,7 +8,7 @@ project(GUI)
 # └──────────────────────────────────────────────────────────────────┘
 add_executable(GUI
         main.cc
-        classes_predefines.hh
+        globals.hh
         MainWindow.hh           MainWindow.cc   
         ScanWindow.hh           ScanWindow.cc   
         SelectWindow.hh         SelectWindow.cc

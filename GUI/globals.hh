@@ -18,8 +18,44 @@
     You should have received a copy of the GNU Lesser General Public License
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
+#ifndef RE_GLOBALS_HH
+#define RE_GLOBALS_HH
 
-class MainWindow;
-class SelectWindow;
-class ScanWindow;
+#include <libreverseengine/core.hh>
+#include <libreverseengine/value.hh>
+#include <libreverseengine/scanner.hh>
 
+
+// todo[low]: remove namespace
+using namespace std;
+using namespace std::chrono;    
+
+
+constexpr size_t REFRESH_RATE = 2000;
+
+
+class scans_t {
+public:
+    matches_t *first = nullptr;
+    matches_t *prev  = nullptr;
+    matches_t *last  = nullptr;
+    
+    void scan_new() {
+        delete first;
+        delete prev;
+        delete last;
+    }
+    
+private:
+    
+};
+
+
+// fixme [med]: or use it as namespace?
+struct {
+    Handle *handle = nullptr;  //fixme [low]: remove pointer
+    Scanner *scanner = nullptr;  //fixme [low]: remove pointer
+    scans_t scans;
+} globals;
+
+#endif //RE_GLOBALS_HH

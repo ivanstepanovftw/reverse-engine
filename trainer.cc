@@ -37,13 +37,17 @@ using namespace std::chrono;
 using namespace std::literals;
 
 
-const string target = "FakeGame";
+//const string target = "FakeGame";
+//const string target = "FakeMem";
+const string target = "csgo.x86_64";
+//const string target = "dota2";
 //const pid_t target = 1337;
 
 int
-main() {
+main() 
+{
     if (getuid() > 0) {
-        cout<<"!! RUNNING WITHOUT ROOT !!"<<endl;
+        cout<<"Warning: running without root"<<endl;
     }
     /// Trainer and scanner example
     Handle h;
@@ -113,16 +117,14 @@ stage_updating:;
     cout<<dec<<endl;
     cout<<"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"<<endl;
     
-/// TODO other example
-//    vector<uintptr_t> sig;
-//    size_t found = h.findPattern(&sig, ld,
-//                   "\x48\x89\xC7\xE8\x00\x00\x00\x00",
-//                   "xxxx????");
-//    clog<<"found: "<<found<<endl;
-//    if (found > 0 && found < 20)
-//        for(uintptr_t a : sig) { 
-//            clog<<"\tat 0x"<<HEX(a)<<endl;
-//        }
+    uintptr_t found;
+    if (!h.find_pattern(&found,
+                       ld, 
+                       "\x48\x89\xC7\xE8\x00\x00\x00\x00", 
+                       "xxxx????")) {
+        clog<<"Not found :("<<endl;
+    } else
+        clog<<"found: "<<HEX(found)<<endl;
     
     return 0;
 }

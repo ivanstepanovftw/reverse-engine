@@ -2,27 +2,23 @@
 // Created by root on 22.02.18.
 //
 
-#include <libreverseengine/scanner.hh>
+
+
 #include "ScanWindow.hh"
-#include "MainWindow.hh"
 
-using namespace std;
-using namespace std::chrono;
 
-#define REFRESH_RATE 2000
 
-ScanWindow::ScanWindow(MainWindow *parent)
-        : parent(parent)
-        , paned_1(Gtk::ORIENTATION_HORIZONTAL)
-        , paned_2(Gtk::ORIENTATION_VERTICAL)
+ScanWindow::ScanWindow() : 
+        paned_1(Gtk::ORIENTATION_HORIZONTAL),
+        paned_2(Gtk::ORIENTATION_VERTICAL)
 {
-    delete parent->handle;
-//    parent->handle = new Handle("7DaysToDie.x86_64");
-//    parent->handle = new Handle("csgo_linux.x86_64");
-    parent->handle = new Handle("FakeMem");
-//    parent->handle = new Handle("FakeGame");
-    parent->handle->update_regions();
-    parent->hs = new Scanner(parent->handle);
+    delete globals.handle;
+//    globals.handle = new Handle("7DaysToDie.x86_64");
+//    globals.handle = new Handle("csgo_linux");
+    globals.handle = new Handle("FakeMem");
+//    globals.handle = new Handle("FakeGame");
+    globals.handle->update_regions();
+    globals.scanner = new Scanner(globals.handle);
     
     Gtk::Widget *scanner_output = create_scanner_output();
     Gtk::Widget *scanner = create_scanner();
@@ -46,6 +42,8 @@ ScanWindow::ScanWindow(MainWindow *parent)
     this->set_border_width(10);
     this->show_all_children();
 }
+
+
 
 ScanWindow::~ScanWindow()
 {
@@ -79,6 +77,8 @@ ScanWindow::create_scanner_output()
     box->show_all();
     return Gtk::manage(box);
 }
+
+
 
 Gtk::Widget *
 ScanWindow::create_scanner()
@@ -182,6 +182,8 @@ ScanWindow::create_scanner()
     return Gtk::manage(grid);
 }
 
+
+
 Gtk::Widget *
 ScanWindow::create_saved_list()
 {
@@ -218,7 +220,7 @@ void ScanWindow::add_row(match_t *val, const char *type_string)
     asprintf(&address_string, /*0x*/"%02x%02x%02x%02x%02x%02x", b[5], b[4], b[3], b[2], b[1], b[0]);
     
     T value;
-    parent->handle->read
+    globals.handle->read
             (&value, val->address, sizeof(T));
 //    clog<<"address: "<<hex<<mem->address.data<<dec<<", value: "<<value<<endl;
     Gtk::TreeModel::Row row = *(ref_tree_output->append());
@@ -227,6 +229,8 @@ void ScanWindow::add_row(match_t *val, const char *type_string)
     row[columns_output.m_col_value_type] = type_string;
 }
 
+
+
 template<typename T>
 void ScanWindow::refresh_row(match_t *val, const char *type_string, Gtk::TreeModel::Row &row)
 {
@@ -234,19 +238,22 @@ void ScanWindow::refresh_row(match_t *val, const char *type_string, Gtk::TreeMod
     const uint8_t *b = reinterpret_cast<const uint8_t *>(&val->address);
     asprintf(&address_string, /*0x*/"%02x%02x%02x%02x%02x%02x", b[5], b[4], b[3], b[2], b[1], b[0]);
     T value;
-    parent->handle->read
+    globals.handle->read
             (&value, val->address, sizeof(T));
 
     row[columns_output.m_col_value] = to_string(value);
     row[columns_output.m_col_value_type] = type_string;
 }
 
+
+
 void 
 ScanWindow::on_button_first_scan()
 // todo[low] THREADS
 {
     namespace bio = boost::iostreams;
-    high_resolution_clock::time_point timestamp, timestamp_overall;
+    high_resolution_clock::time_point timestamp,
+            timestamp_overall = high_resolution_clock::now();
     
     conn.disconnect();
     
@@ -255,12 +262,12 @@ ScanWindow::on_button_first_scan()
         return;
     }
     
-    if (!parent->handle->is_running()) {
+    if (!globals.handle->is_running()) {
         clog<<"error: process not running"<<endl;
         return;
     }
     
-    parent->handle->update_regions();
+    globals.handle->update_regions();
     
     Gtk::TreeModel::iterator iter = combo_stype->get_active();
     if(!iter) return;
@@ -271,146 +278,61 @@ ScanWindow::on_button_first_scan()
     uservalue_t uservalue[2];
     scan_match_type_t match_type;
     try {
-        parent->hs->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
+        globals.scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
     } catch (bad_uservalue_cast &e) {
         clog<<e.what()<<endl;
         return;
     }
     
-    
-    timestamp_overall = high_resolution_clock::now();
-    
-
-/* Reverse Engine alpha -O3
-1 GiB of rand i8  5.12282 seconds
-1 GiB of rand any 15.6694 seconds
-*/
-/* scanmem alpha -O3
-1 GiB of rand i8  5.253 seconds
-1 GiB of rand any 16.689 seconds
-*/
     timestamp = high_resolution_clock::now();
-    parent->hs->scan(scans.first, data_type, uservalue, match_type);
+    globals.scanner->scan(*globals.scans.last, data_type, uservalue, match_type);
     clog<<"Scan 1/1 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
     
-//    timestamp_overall = high_resolution_clock::now();
-//    
-//    timestamp = high_resolution_clock::now();
-//    scans.first.path = "first";
-//    try { scans.first.snapshot_mf = parent->hs->make_snapshot(scans.first.path); }
-//    catch (const exception& e) {
-//        clog<<"error: "<<e.what()<<endl;
-//        return;
-//    }
-//    if (!scans.first.snapshot_mf.is_open()) {
-//        clog<<"error: !snapshot_mf.is_open()"<<endl;
-//        return;
-//    }
-//    clog<<"Snapshot size: "<<scans.first.snapshot_mf.size()
-//        <<" bytes, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-//        <<" seconds"<<endl;
-//    
-//    timestamp = high_resolution_clock::now();
-//    parent->hs->scan(scans.first, data_type, uservalue, match_type);
-//    clog<<"Scan 1/1 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-//        <<" seconds"<<endl;
-//    
-//    clog<<"Scan result: "<<scans.first.size()
-//        <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp_overall).count()
-//        <<" seconds"<<endl;
     
-/** Target: [7DaysToDie.x86_64] Value: [100] Type: [All] Step: [1]
-Arch: [Cheat Engine 6.7]
-    Done in: {34, 45, 60, 26, 41}
-    Matches: [386'287]
-    RAM usage: O(1)
-Arch: [scanmem]
-    Done in: {17}
-    Matches: [1'864'373]
-    RAM usage:
-        all process memory 2000 MiB 0's memory '(6803×1024×1024−26980)/2097489503' = 3.4 byte per match
-    
-3000 MiB ~= 8.388 seconds to write wia SATA II
-    
-FakeMem, 1024 MiB, random on:
-    Reverse Engine: (old)
-        Without snapshot file:
-            Scan 1/1 done in: 8.29149 seconds
-        With snapshot file:
-            Snapshot size: 1074102480 bytes, done in: 3.31221 seconds
-            Scan 1/1 done in: 7.97895 seconds
-            Scan result: 0 matches, done in: 11.2907 seconds
-    Scanmem: 15 sec, memusage O(mem) + O(res)
-    
-FakeMem, 3072 MiB, random on:
-    Reverse Engine: (old)
-        Without snapshot file:
-            Scan 1/1 done in: 16.1244 seconds
-        With snapshot file:
-            Snapshot size: 2147836128 bytes, done in: 9.44651 seconds
-            Scan 1/1 done in: 14.6049 seconds
-            Scan result: 8724679 matches, done in: 24.0515 seconds
-    Scanmem: 23 sec, 15 matches
-    
-
-7DaysToDie.x86_64:
-    Reverse Engine: (old)
-        Without snapshot file:
-            Scan result: 3134389 matches, done in: 27.1671 seconds
-            Scan result: 3266304 matches, done in: 27.6923 seconds
-        With snapshot file:
-            Snapshot size: 3102333344 bytes, done in: 14.3963 seconds
-            Scan 1/1 done in: 31.08 seconds
-            Scan result: 3142226 matches, done in: 45.4764 seconds
-            Snapshot size: 3160164992 bytes, done in: 17.4711 seconds
-            Scan 1/1 done in: 30.0419 seconds
-            Scan result: 3255075 matches, done in: 47.513 seconds
-            
-    scanmem: 32 sec, 3170852 matches
-*/
-    
-//    ref_tree_output->clear();
-//    ssize_t output_count = parent->hs->matches.size();
-//    char *label_count_text;
-//    asprintf(&label_count_text, "Found: %li", output_count);
-//    label_found->set_text(label_count_text);
-//    if (output_count > 10'000) {
-//        // todo[low] FIRST OF ALL - CALCULATE AND ALLOCATE, THEN - ADD TO TABLE!
-//        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
-//        return;
-//    } else {
-//        clog<<"SHOWING"<<endl;
-//    }
+    ref_tree_output->clear();
+    ssize_t output_count = globals.scans.last->size();
+    char *label_count_text;
+    asprintf(&label_count_text, "Found: %li", output_count);
+    label_found->set_text(label_count_text);
+    if (output_count > 10'000) {
+        // todo[low] FIRST OF ALL - CALCULATE AND ALLOCATE, THEN - ADD TO TABLE!
+        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
+        return;
+    } else {
+        clog<<"SHOWING"<<endl;
+    }
     
     // For each address, that scanner found, add row to tree_output
-//    for(int i = 0; i < parent->hs->matches.size(); i++) {
-//        match_t val = parent->hs->matches.get(i);
-//        
-//        if      (val.flags & flag_i64) add_row<int64_t> (&val, "int64");
-//        else if (val.flags & flag_i32) add_row<int32_t> (&val, "i32");
-//        else if (val.flags & flag_i16) add_row<int16_t> (&val, "i16");
-//        else if (val.flags & flag_i8)  add_row<int8_t>  (&val, "i8");
-//        else if (val.flags & flag_u64) add_row<uint64_t>(&val, "uint64");
-//        else if (val.flags & flag_u32) add_row<uint32_t>(&val, "uint32");
-//        else if (val.flags & flag_u16) add_row<uint16_t>(&val, "u16");
-//        else if (val.flags & flag_u8)  add_row<uint8_t> (&val, "u8");
-//        else if (val.flags & flag_f64) add_row<double>  (&val, "double");
-//        else if (val.flags & flag_f32) add_row<float>   (&val, "float");
-//    }
+    for(int i = 0; i < globals.scans.last->size(); i++) {
+        match_t val = globals.scans.last->nth_match(i);
+
+        if      (val.flags & flag_i64) add_row<int64_t> (&val, "i64");
+        else if (val.flags & flag_i32) add_row<int32_t> (&val, "i32");
+        else if (val.flags & flag_i16) add_row<int16_t> (&val, "i16");
+        else if (val.flags & flag_i8)  add_row<int8_t>  (&val, "i8");
+        else if (val.flags & flag_u64) add_row<uint64_t>(&val, "u64");
+        else if (val.flags & flag_u32) add_row<uint32_t>(&val, "u32");
+        else if (val.flags & flag_u16) add_row<uint16_t>(&val, "u16");
+        else if (val.flags & flag_u8)  add_row<uint8_t> (&val, "u8");
+        else if (val.flags & flag_f64) add_row<double>  (&val, "f64");
+        else if (val.flags & flag_f32) add_row<float>   (&val, "f32");
+    }
     
     // Continue refresh values inside Scanner output
-//    conn = Glib::signal_timeout().connect
-//            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
+    conn = Glib::signal_timeout().connect
+            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
 }
 
-//todo next scan impl
+
+
 void
 ScanWindow::on_button_next_scan() 
 {
     using namespace std::chrono;
     namespace bio = boost::iostreams;
-    high_resolution_clock::time_point timestamp, timestamp_overall;
+    high_resolution_clock::time_point timestamp,
+                                      timestamp_overall = high_resolution_clock::now();
     
     conn.disconnect();
     
@@ -419,7 +341,7 @@ ScanWindow::on_button_next_scan()
         return;
     }
     
-    if (!parent->handle->is_running()) {
+    if (!globals.handle->is_running()) {
         clog<<"error: process not running"<<endl;
         return;
     }
@@ -434,95 +356,99 @@ ScanWindow::on_button_next_scan()
     uservalue_t uservalue[2];
     scan_match_type_t match_type;
     try {
-        parent->hs->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
+        globals.scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
     } catch (bad_uservalue_cast &e) {
         clog<<e.what()<<endl;
         return;
     }
     
-    
-    timestamp_overall = high_resolution_clock::now();
-    
-    timestamp = high_resolution_clock::now();
-    scans.last.path = "last";
-    try { scans.last.snapshot_mf = parent->hs->make_snapshot(scans.last.path); }
-    catch (const exception& e) {
-        clog<<"error: "<<e.what()<<endl;
-        return;
-    }
-    if (!scans.last.snapshot_mf.is_open()) {
-        clog<<"error: !snapshot_mf.is_open()"<<endl;
-        return;
-    }
-    clog<<"Snapshot size: "<<scans.last.snapshot_mf.size()
-        <<" bytes, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
-    
-    timestamp = high_resolution_clock::now();
-    parent->hs->scan(scans.last, data_type, uservalue, match_type);
-    clog<<"Scan 1/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
+//    timestamp = high_resolution_clock::now();
+//    scans.last.path = "last";
+//    try { scans.last.snapshot_mf = globals.scanner->make_snapshot(scans.last.path); }
+//    catch (const exception& e) {
+//        clog<<"error: "<<e.what()<<endl;
+//        return;
+//    }
+//    if (!scans.last.snapshot_mf.is_open()) {
+//        clog<<"error: !snapshot_mf.is_open()"<<endl;
+//        return;
+//    }
+//    clog<<"Snapshot size: "<<scans.last.snapshot_mf.size()
+//        <<" bytes, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+//        <<" seconds"<<endl;
+//
+//    timestamp = high_resolution_clock::now();
+//    globals.scanner->scan(scans.last, data_type, uservalue, match_type);
+//    clog<<"Scan 1/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+//        <<" seconds"<<endl;
     
     timestamp = high_resolution_clock::now();
-    parent->hs->scan_next(scans.first, scans.last);
-    clog<<"Scan 2/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
-    
-    clog<<"Scan result: "<<scans.last.size()
-        <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp_overall).count()
+    globals.scanner->scan_next(*globals.scans.first, *globals.scans.last, data_type, uservalue, match_type);
+    clog<<"Scan result: "<<globals.scans.last->size()
+        <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
     
     ref_tree_output->clear();
-//    size_t output_count = parent->hs->matches.size();
-//    char *label_count_text;
-//    asprintf(&label_count_text, "Found: %li", output_count);
-//    label_found->set_text(label_count_text);
-//    if (output_count > 10'000) {
-//        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
-//        return;
-//    } else {
-//        clog<<"SHOWING"<<endl;
-//    }
-//    
-//    // For each address, that scanner found, add row to tree_output
-//    for(int i = 0; i < parent->hs->matches.size(); i++) {
-//        match_t val = parent->hs->matches.get(i);
-//        if      (val.flags & flag_i64) add_row<int64_t> (&val, "int64");
-//        else if (val.flags & flag_i32) add_row<int32_t> (&val, "i32");
-//        else if (val.flags & flag_i16) add_row<int16_t> (&val, "i16");
-//        else if (val.flags & flag_i8)  add_row<int8_t>  (&val, "i8");
-//        else if (val.flags & flag_u64) add_row<uint64_t>(&val, "uint64");
-//        else if (val.flags & flag_u32) add_row<uint32_t>(&val, "uint32");
-//        else if (val.flags & flag_u16) add_row<uint16_t>(&val, "u16");
-//        else if (val.flags & flag_u8)  add_row<uint8_t> (&val, "u8");
-//        else if (val.flags & flag_f64) add_row<double>  (&val, "double");
-//        else if (val.flags & flag_f32) add_row<float>   (&val, "float");
-//    }
-//    
+    size_t output_count = globals.scans.last->size();
+    char *label_count_text;
+    asprintf(&label_count_text, "Found: %li", output_count);
+    label_found->set_text(label_count_text);
+    if (output_count > 10'000) {
+        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
+        return;
+    } else {
+        clog<<"SHOWING"<<endl;
+    }
+    
+    // For each address, that scanner found, add row to tree_output
+    for(int i = 0; i < globals.scans.last->size(); i++) {
+        match_t val = globals.scans.last->nth_match(i);
+        if      (val.flags & flag_i64) add_row<int64_t> (&val, "i64");
+        else if (val.flags & flag_i32) add_row<int32_t> (&val, "i32");
+        else if (val.flags & flag_i16) add_row<int16_t> (&val, "i16");
+        else if (val.flags & flag_i8)  add_row<int8_t>  (&val, "i8");
+        else if (val.flags & flag_u64) add_row<uint64_t>(&val, "u64");
+        else if (val.flags & flag_u32) add_row<uint32_t>(&val, "u32");
+        else if (val.flags & flag_u16) add_row<uint16_t>(&val, "u16");
+        else if (val.flags & flag_u8)  add_row<uint8_t> (&val, "u8");
+        else if (val.flags & flag_f64) add_row<double>  (&val, "f64");
+        else if (val.flags & flag_f32) add_row<float>   (&val, "f32");
+    }
+    
     
     // Continue refresh values inside Scanner output
-//    conn = Glib::signal_timeout().connect
-//            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
+    conn = Glib::signal_timeout().connect
+            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
 }
+
+
+
+//void
+//ScanWindow::on_button_reset()
+//{
+//    
+//}
+
+
 
 bool
 ScanWindow::on_timer_refresh()
 {
-//    auto ref_child = ref_tree_output->children();
-//    for(int i = 0; i < parent->hs->matches.size(); i++) {
-//        match_t val = parent->hs->matches.get(i);
-//        Gtk::TreeModel::Row row = *ref_child[i];
-//        
-//        if      (val.flags & flag_i64) refresh_row<int64_t> (&val, "int64",  row);
-//        else if (val.flags & flag_i32) refresh_row<int32_t> (&val, "i32",  row);
-//        else if (val.flags & flag_i16) refresh_row<int16_t> (&val, "i16",  row);
-//        else if (val.flags & flag_i8)  refresh_row<int8_t>  (&val, "i8",   row);
-//        else if (val.flags & flag_u64) refresh_row<uint64_t>(&val, "uint64", row);
-//        else if (val.flags & flag_u32) refresh_row<uint32_t>(&val, "uint32", row);
-//        else if (val.flags & flag_u16) refresh_row<uint16_t>(&val, "u16", row);
-//        else if (val.flags & flag_u8)  refresh_row<uint8_t> (&val, "u8",  row);
-//        else if (val.flags & flag_f64) refresh_row<double>  (&val, "double", row);
-//        else if (val.flags & flag_f32) refresh_row<float>   (&val, "float",  row);
-//    }
+    auto ref_child = ref_tree_output->children();
+    for(int i = 0; i < globals.scans.last->size(); i++) {
+        match_t val = globals.scans.last->nth_match(i);
+        Gtk::TreeModel::Row row = *ref_child[i];
+
+        if      (val.flags & flag_i64) refresh_row<int64_t> (&val, "i64",  row);
+        else if (val.flags & flag_i32) refresh_row<int32_t> (&val, "i32",  row);
+        else if (val.flags & flag_i16) refresh_row<int16_t> (&val, "i16",  row);
+        else if (val.flags & flag_i8)  refresh_row<int8_t>  (&val, "i8",   row);
+        else if (val.flags & flag_u64) refresh_row<uint64_t>(&val, "u64", row);
+        else if (val.flags & flag_u32) refresh_row<uint32_t>(&val, "u32", row);
+        else if (val.flags & flag_u16) refresh_row<uint16_t>(&val, "u16", row);
+        else if (val.flags & flag_u8)  refresh_row<uint8_t> (&val, "u8",  row);
+        else if (val.flags & flag_f64) refresh_row<double>  (&val, "f64", row);
+        else if (val.flags & flag_f32) refresh_row<float>   (&val, "f32",  row);
+    }
     return true;
 }

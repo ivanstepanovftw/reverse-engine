@@ -42,8 +42,8 @@ print_help() {
     cout<<"---------------------------------"<<endl;
     cout<<" Command  | Description          "<<endl;
     cout<<"----------+----------------------"<<endl;
-    cout<<" > N      | allocate N bytes     "<<endl;
-    cout<<" > -N     | allocate N mebibytes "<<endl;
+    cout<<" > N      | reallocate N bytes     "<<endl;
+    cout<<" > -N     | reallocate N mebibytes "<<endl;
     cout<<" > del    | delete an array      "<<endl;
     cout<<" > info   | prints info          "<<endl;
     cout<<" > rand   | turn on/off random   "<<endl;

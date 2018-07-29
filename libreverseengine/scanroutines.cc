@@ -25,6 +25,8 @@
 #include "scanroutines.hh"
 #include "value.hh"
 
+
+//todo 1005 move to another header
 /* true if host is big endian */
 #ifdef WORDS_BIGENDIAN
 static const bool big_endian = true;
@@ -97,7 +99,10 @@ static inline void fix_endianness(value_t *data_value, bool reverse_endianness)
     }
     return;
 }
+//end todo 1005
 
+
+//todo 0905 fit below in templates if possible, inline any macro
 /* for convenience */
 #define SCAN_ROUTINE_ARGUMENTS (const mem64_t *memory_ptr,size_t memlength, const value_t *old_value, const uservalue_t *user_value, uint16_t& saveflags)
 unsigned int (*sm_scan_routine) SCAN_ROUTINE_ARGUMENTS;
@@ -165,22 +170,6 @@ DEFINE_INTEGER_MATCHUPDATE_ROUTINE(64)
         } \
         return ret; \
     }
-
-//extern inline unsigned int scan_routine_INTEGER8_EQUALTO SCAN_ROUTINE_ARGUMENTS
-//    {
-//        if (memlength < (8)/8) return 0;
-//        int ret = 0;
-//        mem64_t val;
-//        if (MEMORY_COMP(user_value, i8, ==)) {
-//            saveflags |= flag_i8;
-//            ret = (8)/8;
-//        }
-//        if (MEMORY_COMP(user_value, u8, ==)) {
-//            saveflags |= flag_u8;
-//            ret = (8)/8;
-//        }
-//        return ret;
-//    }
 
 #define DEFINE_INTEGER_ROUTINE_FOR_ALL_INTEGER_TYPES(MATCHTYPENAME, MATCHTYPE, VALUE_TO_COMPARE_WITH) \
     DEFINE_INTEGER_ROUTINE( 8, MATCHTYPENAME, MATCHTYPE, VALUE_TO_COMPARE_WITH, 0, ) \
@@ -779,6 +768,8 @@ bool sm_choose_scanroutine(scan_data_type_t dt, scan_match_type_t mt, const user
         }
     }
 
+    std::clog<<"sm_choose_scanroutine(dt, mt, "<<uflags<<", "<<reverse_endianness<<")"<<std::endl;
     sm_scan_routine = sm_get_scanroutine(dt, mt, uflags, reverse_endianness);
+    std::clog<<"got scan_routine at "<<&sm_scan_routine<<std::endl;
     return (sm_scan_routine != nullptr);
 }

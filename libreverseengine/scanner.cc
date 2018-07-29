@@ -231,8 +231,12 @@ Scanner::scan(matches_t& matches_sink,
               const scan_match_type_t& match_type)
 {
     using namespace std;
-    
-    if (!sm_choose_scanroutine(data_type, match_type, uservalue, 0)) {
+    using namespace std::chrono;
+
+//    high_resolution_clock::time_point timestamp;
+//    double i_total = 0;
+
+    if (!sm_choose_scanroutine(data_type, match_type, uservalue, false)) {
         printf("unsupported scan for current data type.\n");
         return false;
     }
@@ -244,7 +248,7 @@ Scanner::scan(matches_t& matches_sink,
      * The actual allocation is that plus the rounded size of the maximum possible VLT.
      * This is needed because the last byte might be scanned as max size VLT,
      * thus need 2^16 - 2 extra bytes after it */
-    constexpr size_t MAX_BUFFER_SIZE = 32 * 1024 * 1024;        // 32 MiB = 0x2000000
+    constexpr size_t MAX_BUFFER_SIZE = 1 * 1024 * 1024;        // 32 MiB = 0x2000000
 //    constexpr size_t MAX_BUFFER_SIZE = 1u<<20u;
     constexpr size_t MAX_ALLOC_SIZE = MAX_BUFFER_SIZE + (1u<<16u);
     
@@ -298,6 +302,7 @@ Scanner::scan(matches_t& matches_sink,
             checkflags = flags_empty;
             
             /* check if we have a match */
+//            timestamp = high_resolution_clock::now();
             match_length = (*sm_scan_routine)(memory_ptr, memlength, NULL, uservalue, checkflags);
             if (UNLIKELY(match_length > 0)) {
                 assert(match_length <= memlength);
@@ -309,12 +314,13 @@ Scanner::scan(matches_t& matches_sink,
                 matches_sink.add_element(reg_pos, memory_ptr, flags_empty);
                 required_extra_bytes_to_record--;
             }
+//            i_total += duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count();
         }
         if (stop_flag)
             break;
     }
     delete[] buffer;
-    
+//    clog<<"internal: "<<i_total<<" sec"<<endl;
     scan_progress = 1.0;
     return true;
 }
@@ -325,8 +331,8 @@ bool
 Scanner::scan_next(const matches_t& matches_source,
                    matches_t& matches_sink,
                    const scan_data_type_t& data_type,
-                   scan_match_type_t match_type,
-                   const uservalue_t *uservalue)
+                   const uservalue_t *uservalue,
+                   scan_match_type_t match_type)
 {
     using namespace std;
     
@@ -335,75 +341,62 @@ Scanner::scan_next(const matches_t& matches_source,
         return false;
     }
     
-    unsigned long bytes_scanned = 0;
-    unsigned long total_scan_bytes = 0;
-    size_t bytes_at_next_sample;
-    size_t bytes_per_sample;
-    
-    
-    
-//    size_t reading_iterator = 0;
-//    int required_extra_bytes_to_record = 0;
-//    matches_sink.matches_size = 0;
-//    scan_progress = 0.0;
-//    stop_flag = false;
-//    
-//    for(swath_t &swath : matches_source.swaths) {
-//        unsigned int match_length = 0;
-//        const mem64_t *memory_ptr;
-//        size_t memlength;
-//        uint16_t checkflags = flags_empty;
-//        
-//        uint16_t old_flags = swath.data[reading_iterator].flags;
-//        size_t old_length = flags_to_memlength(data_type, old_flags);
-//        uintptr_t address = swath.base_address + reading_iterator;
-//        
-//        /* read value from this address */
-//        if (UNLIKELY(sm_peekdata((void *) address, old_length, &memory_ptr, &memlength) == false)) {
-//            /* If we can't look at the data here, just abort the whole recording, something bad happened */
-//            required_extra_bytes_to_record = 0;
-//        }
-//        /* Test only valid old matches */
-//        else if (old_flags != flags_empty)  {
-//            value_t old_val = data_to_val_aux(reading_swath_index, reading_iterator, reading_swath.number_of_bytes);
-//            memlength = old_length < memlength ? old_length : memlength;
-//            
-//            checkflags = flags_empty;
-//            
-//            match_length = (*sm_scan_routine)(memory_ptr, memlength, &old_val, uservalue, checkflags);
-//        }
-//        
-//        if (match_length > 0) {
-//            assert(match_length <= memlength);
-//            
-//            /* Still a candidate. Write data.
-//               - We can get away with overwriting in the same array because it is guaranteed to take up the same number of bytes or fewer,
-//                 and because we copied out the reading swath metadata already.
-//               - We can get away with assuming that the pointers will stay valid,
-//                 because as we never add more data to the array than there was before, it will not reallocate. */
-//            matches_sink.add_element(address, memory_ptr, checkflags);
-//            matches_sink.matches_size++;
-//            required_extra_bytes_to_record = match_length - 1;
-//        }
-//        else if (required_extra_bytes_to_record) {
-//            matches_sink.add_element(address, memory_ptr, flags_empty);
-//            required_extra_bytes_to_record--;
-//        }
-//        
-//        ++bytes_scanned;
-//        
-//        /* go on to the next one... */
-//        ++reading_iterator;
-//        if (reading_iterator >= reading_swath.number_of_bytes)
-//        {
-//            reading_swath_index = (swath_t *)
-//                    (&reading_swath_index->data[reading_swath.number_of_bytes]);
-//            reading_swath = *reading_swath_index;
-//            reading_iterator = 0;
-//            required_extra_bytes_to_record = 0; /* just in case */
-//        }
-//    }
-//    
+    size_t reading_iterator = 0;
+    size_t required_extra_bytes_to_record = 0;
+    matches_sink.matches_size = 0;
+    delete[] matches_sink.swaths;
+    scan_progress = 0.0;
+    stop_flag = false;
+
+    for(size_t s = 0; s < matches_source.swaths_count; s++) {
+        const swath_t& swath = matches_source.swaths[s];
+        size_t bytes_remain = swath.data_count;
+        while(bytes_remain) {
+            unsigned int match_length = 0;
+            mem64_t *memory_ptr;
+            size_t memlength;
+            uint16_t checkflags = flags_empty;
+
+            uint16_t old_flags = swath.data[reading_iterator].flags;
+            size_t old_length = flags_to_memlength(data_type, old_flags);
+            uintptr_t address = swath.base_address + reading_iterator;
+
+            /* read value from this address */
+            if (UNLIKELY(handle->read(memory_ptr, address, old_length) < 0)) {
+                /* If we can't look at the data here, just abort the whole recording, something bad happened */
+                required_extra_bytes_to_record = 0;
+            }
+            /* Test only valid old matches */
+            else if (old_flags != flags_empty)  {
+                value_t old_val = swath.data_to_val_aux(reading_iterator, swath.data_count);
+                memlength = old_length < memlength ? old_length : memlength;
+
+                checkflags = flags_empty;
+
+                match_length = (*sm_scan_routine)(memory_ptr, memlength, &old_val, uservalue, checkflags);
+            }
+
+            if (match_length > 0) {
+                assert(match_length <= memlength);
+
+                /* Still a candidate. Write data.
+                   - We can get away with overwriting in the same array because it is guaranteed to take up the same number of bytes or fewer,
+                     and because we copied out the reading swath metadata already.
+                   - We can get away with assuming that the pointers will stay valid,
+                     because as we never add more data to the array than there was before, it will not reallocate. */
+                matches_sink.add_element(address, memory_ptr, checkflags);
+                matches_sink.matches_size++;
+                required_extra_bytes_to_record = match_length - 1;
+            }
+            else if (required_extra_bytes_to_record) {
+                matches_sink.add_element(address, memory_ptr, flags_empty);
+                required_extra_bytes_to_record--;
+            }
+
+            bytes_remain--;
+        }
+    }
+
     return true;
 }
 

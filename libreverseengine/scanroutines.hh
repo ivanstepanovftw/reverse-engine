@@ -20,8 +20,8 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef SCANROUTINES_H
-#define SCANROUTINES_H
+#ifndef RE_SCANROUTINES_HEADER
+#define RE_SCANROUTINES_HEADER
 
 #include <stdbool.h>
 
@@ -51,7 +51,7 @@ typedef struct {
         char     chars[sizeof(int64_t)];
     };
     
-    match_flags flags;
+    uint16_t flags;
 } value_t;
 
 //int main() {
@@ -80,4 +80,4 @@ scan_routine_t sm_get_scanroutine(scan_data_type_t dt,
                                   uint16_t uflags,
                                   bool reverse_endianness);
 
-#endif /* SCANROUTINES_H */
+#endif //RE_SCANNER_HH
