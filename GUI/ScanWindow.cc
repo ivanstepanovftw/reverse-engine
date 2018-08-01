@@ -15,10 +15,10 @@ ScanWindow::ScanWindow() :
     delete globals.handle;
 //    globals.handle = new Handle("7DaysToDie.x86_64");
 //    globals.handle = new Handle("csgo_linux");
-    globals.handle = new Handle("FakeMem");
+    globals.handle = new RE::Handle("FakeMem");
 //    globals.handle = new Handle("FakeGame");
     globals.handle->update_regions();
-    globals.scanner = new Scanner(globals.handle);
+    globals.scanner = new RE::Scanner(globals.handle);
     
     Gtk::Widget *scanner_output = create_scanner_output();
     Gtk::Widget *scanner = create_scanner();
@@ -33,8 +33,8 @@ ScanWindow::ScanWindow() :
     paned_1.set_size_request(-1, 350);
     
     /// Timers
-    conn = Glib::signal_timeout().connect
-            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
+//    conn = Glib::signal_timeout().connect
+//            (sigc::bind(sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), NULL), REFRESH_RATE);
     
     add(paned_2);
     this->set_title("Scan window");
@@ -99,18 +99,18 @@ ScanWindow::create_scanner()
     ref_stype = Gtk::ListStore::create(columns_scan_type);
     combo_stype->set_model(ref_stype);
     
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Number";         row[columns_scan_type.m_col_scan_type] = scan_data_type_t::ANYNUMBER;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Number";         row[columns_scan_type.m_col_scan_type] = RE::Edata_type::ANYNUMBER;
     combo_stype->set_active(row);
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Integer";        row[columns_scan_type.m_col_scan_type] = scan_data_type_t::ANYINTEGER;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Float";          row[columns_scan_type.m_col_scan_type] = scan_data_type_t::ANYFLOAT;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int8";               row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER8;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int16";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER16;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int32";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER32;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int64";              row[columns_scan_type.m_col_scan_type] = scan_data_type_t::INTEGER64;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "float32";            row[columns_scan_type.m_col_scan_type] = scan_data_type_t::FLOAT32;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "float64";            row[columns_scan_type.m_col_scan_type] = scan_data_type_t::FLOAT64;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Array of Bytes";     row[columns_scan_type.m_col_scan_type] = scan_data_type_t::BYTEARRAY;
-    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "String";             row[columns_scan_type.m_col_scan_type] = scan_data_type_t::STRING;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Integer";        row[columns_scan_type.m_col_scan_type] = RE::Edata_type::ANYINTEGER;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Any Float";          row[columns_scan_type.m_col_scan_type] = RE::Edata_type::ANYFLOAT;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int8";               row[columns_scan_type.m_col_scan_type] = RE::Edata_type::INTEGER8;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int16";              row[columns_scan_type.m_col_scan_type] = RE::Edata_type::INTEGER16;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int32";              row[columns_scan_type.m_col_scan_type] = RE::Edata_type::INTEGER32;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "int64";              row[columns_scan_type.m_col_scan_type] = RE::Edata_type::INTEGER64;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "float32";            row[columns_scan_type.m_col_scan_type] = RE::Edata_type::FLOAT32;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "float64";            row[columns_scan_type.m_col_scan_type] = RE::Edata_type::FLOAT64;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "Array of Bytes";     row[columns_scan_type.m_col_scan_type] = RE::Edata_type::BYTEARRAY;
+    row = *(ref_stype->append()); row[columns_scan_type.m_col_name] = "String";             row[columns_scan_type.m_col_scan_type] = RE::Edata_type::STRING;
     combo_stype->pack_start(columns_scan_type.m_col_name);
     
     
@@ -213,7 +213,7 @@ ScanWindow::create_saved_list()
 
 
 template<typename T>
-void ScanWindow::add_row(match_t *val, const char *type_string)
+void ScanWindow::add_row(RE::match_t *val, const char *type_string)
 {
     char *address_string;
     const uint8_t *b = reinterpret_cast<const uint8_t *>(&val->address);
@@ -232,7 +232,7 @@ void ScanWindow::add_row(match_t *val, const char *type_string)
 
 
 template<typename T>
-void ScanWindow::refresh_row(match_t *val, const char *type_string, Gtk::TreeModel::Row &row)
+void ScanWindow::refresh_row(RE::match_t *val, const char *type_string, Gtk::TreeModel::Row &row)
 {
     char *address_string;
     const uint8_t *b = reinterpret_cast<const uint8_t *>(&val->address);
@@ -274,12 +274,12 @@ ScanWindow::on_button_first_scan()
     Gtk::TreeModel::Row row = *iter;
     if(!row) return;
     
-    scan_data_type_t data_type = row[columns_scan_type.m_col_scan_type];
-    uservalue_t uservalue[2];
-    scan_match_type_t match_type;
+    RE::Edata_type data_type = row[columns_scan_type.m_col_scan_type];
+    RE::Cuservalue uservalue[2];
+    RE::Ematch_type match_type;
     try {
         globals.scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
-    } catch (bad_uservalue_cast &e) {
+    } catch (RE::bad_uservalue_cast &e) {
         clog<<e.what()<<endl;
         return;
     }
@@ -304,24 +304,24 @@ ScanWindow::on_button_first_scan()
     }
     
     // For each address, that scanner found, add row to tree_output
-    for(int i = 0; i < globals.scans.last->size(); i++) {
-        match_t val = globals.scans.last->nth_match(i);
+    for(size_t i = 0; i < globals.scans.last->size(); i++) {
+        RE::match_t val = globals.scans.last->get(i, data_type);
 
-        if      (val.flags & flag_i64) add_row<int64_t> (&val, "i64");
-        else if (val.flags & flag_i32) add_row<int32_t> (&val, "i32");
-        else if (val.flags & flag_i16) add_row<int16_t> (&val, "i16");
-        else if (val.flags & flag_i8)  add_row<int8_t>  (&val, "i8");
-        else if (val.flags & flag_u64) add_row<uint64_t>(&val, "u64");
-        else if (val.flags & flag_u32) add_row<uint32_t>(&val, "u32");
-        else if (val.flags & flag_u16) add_row<uint16_t>(&val, "u16");
-        else if (val.flags & flag_u8)  add_row<uint8_t> (&val, "u8");
-        else if (val.flags & flag_f64) add_row<double>  (&val, "f64");
-        else if (val.flags & flag_f32) add_row<float>   (&val, "f32");
+        if      (val.flags & RE::flag_i64) add_row<int64_t> (&val, "i64");
+        else if (val.flags & RE::flag_i32) add_row<int32_t> (&val, "i32");
+        else if (val.flags & RE::flag_i16) add_row<int16_t> (&val, "i16");
+        else if (val.flags & RE::flag_i8)  add_row<int8_t>  (&val, "i8");
+        else if (val.flags & RE::flag_u64) add_row<uint64_t>(&val, "u64");
+        else if (val.flags & RE::flag_u32) add_row<uint32_t>(&val, "u32");
+        else if (val.flags & RE::flag_u16) add_row<uint16_t>(&val, "u16");
+        else if (val.flags & RE::flag_u8)  add_row<uint8_t> (&val, "u8");
+        else if (val.flags & RE::flag_f64) add_row<double>  (&val, "f64");
+        else if (val.flags & RE::flag_f32) add_row<float>   (&val, "f32");
     }
     
     // Continue refresh values inside Scanner output
     conn = Glib::signal_timeout().connect
-            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
+            (sigc::bind(sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), data_type), REFRESH_RATE);
 }
 
 
@@ -352,12 +352,12 @@ ScanWindow::on_button_next_scan()
     if(!row) return;
     
     
-    scan_data_type_t data_type = row[columns_scan_type.m_col_scan_type];
-    uservalue_t uservalue[2];
-    scan_match_type_t match_type;
+    RE::Edata_type data_type = row[columns_scan_type.m_col_scan_type];
+    RE::Cuservalue uservalue[2];
+    RE::Ematch_type match_type;
     try {
         globals.scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
-    } catch (bad_uservalue_cast &e) {
+    } catch (RE::bad_uservalue_cast &e) {
         clog<<e.what()<<endl;
         return;
     }
@@ -402,23 +402,23 @@ ScanWindow::on_button_next_scan()
     
     // For each address, that scanner found, add row to tree_output
     for(int i = 0; i < globals.scans.last->size(); i++) {
-        match_t val = globals.scans.last->nth_match(i);
-        if      (val.flags & flag_i64) add_row<int64_t> (&val, "i64");
-        else if (val.flags & flag_i32) add_row<int32_t> (&val, "i32");
-        else if (val.flags & flag_i16) add_row<int16_t> (&val, "i16");
-        else if (val.flags & flag_i8)  add_row<int8_t>  (&val, "i8");
-        else if (val.flags & flag_u64) add_row<uint64_t>(&val, "u64");
-        else if (val.flags & flag_u32) add_row<uint32_t>(&val, "u32");
-        else if (val.flags & flag_u16) add_row<uint16_t>(&val, "u16");
-        else if (val.flags & flag_u8)  add_row<uint8_t> (&val, "u8");
-        else if (val.flags & flag_f64) add_row<double>  (&val, "f64");
-        else if (val.flags & flag_f32) add_row<float>   (&val, "f32");
+        RE::match_t val = globals.scans.last->get(i, data_type);
+        if      (val.flags & RE::flag_i64) add_row<int64_t> (&val, "i64");
+        else if (val.flags & RE::flag_i32) add_row<int32_t> (&val, "i32");
+        else if (val.flags & RE::flag_i16) add_row<int16_t> (&val, "i16");
+        else if (val.flags & RE::flag_i8)  add_row<int8_t>  (&val, "i8");
+        else if (val.flags & RE::flag_u64) add_row<uint64_t>(&val, "u64");
+        else if (val.flags & RE::flag_u32) add_row<uint32_t>(&val, "u32");
+        else if (val.flags & RE::flag_u16) add_row<uint16_t>(&val, "u16");
+        else if (val.flags & RE::flag_u8)  add_row<uint8_t> (&val, "u8");
+        else if (val.flags & RE::flag_f64) add_row<double>  (&val, "f64");
+        else if (val.flags & RE::flag_f32) add_row<float>   (&val, "f32");
     }
     
     
     // Continue refresh values inside Scanner output
     conn = Glib::signal_timeout().connect
-            (sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), REFRESH_RATE);
+            (sigc::bind(sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), data_type), REFRESH_RATE);
 }
 
 
@@ -432,23 +432,23 @@ ScanWindow::on_button_next_scan()
 
 
 bool
-ScanWindow::on_timer_refresh()
+ScanWindow::on_timer_refresh(RE::Edata_type data_type)
 {
     auto ref_child = ref_tree_output->children();
-    for(int i = 0; i < globals.scans.last->size(); i++) {
-        match_t val = globals.scans.last->nth_match(i);
+    for(size_t i = 0; i < globals.scans.last->size(); i++) {
+        RE::match_t val = globals.scans.last->get(i, data_type);
         Gtk::TreeModel::Row row = *ref_child[i];
 
-        if      (val.flags & flag_i64) refresh_row<int64_t> (&val, "i64",  row);
-        else if (val.flags & flag_i32) refresh_row<int32_t> (&val, "i32",  row);
-        else if (val.flags & flag_i16) refresh_row<int16_t> (&val, "i16",  row);
-        else if (val.flags & flag_i8)  refresh_row<int8_t>  (&val, "i8",   row);
-        else if (val.flags & flag_u64) refresh_row<uint64_t>(&val, "u64", row);
-        else if (val.flags & flag_u32) refresh_row<uint32_t>(&val, "u32", row);
-        else if (val.flags & flag_u16) refresh_row<uint16_t>(&val, "u16", row);
-        else if (val.flags & flag_u8)  refresh_row<uint8_t> (&val, "u8",  row);
-        else if (val.flags & flag_f64) refresh_row<double>  (&val, "f64", row);
-        else if (val.flags & flag_f32) refresh_row<float>   (&val, "f32",  row);
+        if      (val.flags & RE::flag_i64) refresh_row<int64_t> (&val, "i64",  row);
+        else if (val.flags & RE::flag_i32) refresh_row<int32_t> (&val, "i32",  row);
+        else if (val.flags & RE::flag_i16) refresh_row<int16_t> (&val, "i16",  row);
+        else if (val.flags & RE::flag_i8)  refresh_row<int8_t>  (&val, "i8",   row);
+        else if (val.flags & RE::flag_u64) refresh_row<uint64_t>(&val, "u64", row);
+        else if (val.flags & RE::flag_u32) refresh_row<uint32_t>(&val, "u32", row);
+        else if (val.flags & RE::flag_u16) refresh_row<uint16_t>(&val, "u16", row);
+        else if (val.flags & RE::flag_u8)  refresh_row<uint8_t> (&val, "u8",  row);
+        else if (val.flags & RE::flag_f64) refresh_row<double>  (&val, "f64", row);
+        else if (val.flags & RE::flag_f32) refresh_row<float>   (&val, "f32",  row);
     }
     return true;
 }

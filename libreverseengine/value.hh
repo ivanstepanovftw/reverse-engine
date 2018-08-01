@@ -49,18 +49,22 @@
 # define UNLIKELY(x)   (x)
 #endif
 
+
+namespace RE {
+
+/** @arg what: any number
+ * @return: number representer */
 template <typename T>
 std::string HEX(T&& what)
 {
-    using namespace std;
-    stringstream ss;
-    ss<<"0x"<<hex<<setw(sizeof(T))<<setfill('0')<<noshowbase<<what<<dec;
+    std::stringstream ss;
+    ss<<std::hex<<std::setw(sizeof(T))<<std::setfill('0')<<std::showbase<<what;
 //    ss<<hex<<showbase<<what<<dec;
     return ss.str();
 }
 
 
-enum region_mode_t : uint8_t
+enum Eregion_mode : uint8_t
 {
     readable   = 1u<<0u,
     writable   = 1u<<1u,
@@ -68,14 +72,14 @@ enum region_mode_t : uint8_t
     shared     = 1u<<3u,
 };
 
-class region_t
+class Cregion
 {
 public:
     uintptr_t address;
     uintptr_t size;
-    
+
     uint8_t flags;
-    
+
     /// File data
     uintptr_t offset;
     char deviceMajor;
@@ -83,13 +87,13 @@ public:
     unsigned long inodeFileNumber;
     std::string pathname;
     std::string filename;
-    
+
     void serialize()
     {
         // TODO 334. Problem [high]: size dependent. Solution: [low] make serialization.
     }
-    
-    friend std::ostream& operator<<(std::ostream& outputStream, const region_t& region)
+
+    friend std::ostream& operator<<(std::ostream& outputStream, const Cregion& region)
     {
         return outputStream<<"{"
                            <<"filename: '"<<region.filename
@@ -100,7 +104,7 @@ public:
     }
 };
 
-enum scan_data_type_t
+enum class Edata_type : uint16_t
 {
     ANYNUMBER,              /* ANYINTEGER or ANYFLOAT */
     ANYINTEGER,             /* INTEGER of whatever width */
@@ -115,7 +119,7 @@ enum scan_data_type_t
     STRING
 };
 
-enum scan_match_type_t
+enum class Ematch_type
 {
     MATCHANY,                /* for snapshot */
     /* following: compare with a given value */
@@ -144,7 +148,8 @@ enum scan_match_type_t
  * valid for both endians, as the flags are ordered from smaller to bigger.
  * NAMING: Primitive, single-bit flags are called `flag_*`, while aggregates,
  * defined for convenience, are called `flags_*`*/
-//todo fit in 1 byte
+//todo[low]: fit in 1 byte
+//todo[low]: enum class. Performance will be affected for -O0, but not for -O3.
 enum match_flags : uint16_t
 {
     flags_empty = 0,
@@ -182,25 +187,43 @@ enum match_flags : uint16_t
 /* Possible flags per scan data type: if an incoming uservalue has none of the
  * listed flags we're sure it's not going to be matched by the scan,
  * so we reject it without even trying */
-static uint16_t scan_data_type_to_flags[] = {
-        [ANYNUMBER]  = flags_all,
-        [ANYINTEGER] = flags_integer,
-        [ANYFLOAT]   = flags_float,
-        [INTEGER8]   = flags_i8b,
-        [INTEGER16]  = flags_i16b,
-        [INTEGER32]  = flags_i32b,
-        [INTEGER64]  = flags_i64b,
-        [FLOAT32]    = flag_f32,
-        [FLOAT64]    = flag_f64,
-        [BYTEARRAY]  = flags_max,
-        [STRING]     = flags_max
+static uint16_t data_type_to_flags[] = {
+        [(uint16_t) Edata_type::ANYNUMBER]  = flags_all,
+        [(uint16_t) Edata_type::ANYINTEGER] = flags_integer,
+        [(uint16_t) Edata_type::ANYFLOAT]   = flags_float,
+        [(uint16_t) Edata_type::INTEGER8]   = flags_i8b,
+        [(uint16_t) Edata_type::INTEGER16]  = flags_i16b,
+        [(uint16_t) Edata_type::INTEGER32]  = flags_i32b,
+        [(uint16_t) Edata_type::INTEGER64]  = flags_i64b,
+        [(uint16_t) Edata_type::FLOAT32]    = flag_f32,
+        [(uint16_t) Edata_type::FLOAT64]    = flag_f64,
+        [(uint16_t) Edata_type::BYTEARRAY]  = flags_max,
+        [(uint16_t) Edata_type::STRING]     = flags_max
 };
 
-static inline size_t flags_to_memlength(scan_data_type_t scan_data_type, uint16_t flags)
+static inline
+size_t
+flags_to_memlength(Edata_type scan_data_type, uint16_t flags)
 {
     switch (scan_data_type) {
-        case BYTEARRAY:
-        case STRING:
+        case Edata_type::BYTEARRAY:
+        case Edata_type::STRING:
+            return flags;
+        default: /* NUMBER */
+            return (flags & flags_64b) ? 8 :
+                   (flags & flags_32b) ? 4 :
+                   (flags & flags_16b) ? 2 :
+                   (flags & flags_8b ) ? 1 : 0;
+    }
+}
+
+static inline
+size_t
+flags_to_type(Edata_type scan_data_type, uint16_t flags)
+{
+    switch (scan_data_type) {
+        case Edata_type::BYTEARRAY:
+        case Edata_type::STRING:
             return flags;
         default: /* NUMBER */
             return (flags & flags_64b) ? 8 :
@@ -245,7 +268,7 @@ enum wildcard_t
 };
 
 /* this struct describes values provided by users */
-struct uservalue_t
+struct Cuservalue
 {
     int8_t   i8;
     uint8_t  u8;
@@ -270,14 +293,17 @@ struct uservalue_t
     uint16_t flags;
 };
 
-size_t parse_uservalue_int(const std::string& text, uservalue_t *uservalue);
+size_t parse_uservalue_int(const std::string& text, Cuservalue *uservalue);
 
-size_t parse_uservalue_float(const std::string& text, uservalue_t *uservalue);
+size_t parse_uservalue_float(const std::string& text, Cuservalue *uservalue);
 
-size_t parse_uservalue_number(const std::string& text, uservalue_t *uservalue);     // parse int or float
+/* parse int or float */
+size_t parse_uservalue_number(const std::string& text, Cuservalue *uservalue);
 
-size_t parse_uservalue_bytearray(const std::string& text, uservalue_t *uservalue);
+size_t parse_uservalue_bytearray(const std::string& text, Cuservalue *uservalue);
 
-size_t parse_uservalue_string(const std::string& text, uservalue_t *uservalue);
+size_t parse_uservalue_string(const std::string& text, Cuservalue *uservalue);
+
+} // namespace RE
 
 #endif //RE_VALUE_HH

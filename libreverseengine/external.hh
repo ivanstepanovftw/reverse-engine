@@ -29,6 +29,8 @@
 #include <cstdint>
 
 
+namespace RE {
+
 /** 
  * Retrieve a summary of tokens, no more than max_tokens size.
  * 
@@ -36,7 +38,7 @@
  *   @arg text: "  \t This is   a very long string"
  *   @arg delims: "\t "
  *   @arg max_tokens_count: 3
- *   @return { "This", "is", "a very\t long string" }
+ *   @return { "This", "is", "a very long string" }
  */
 static
 std::vector<std::string>
@@ -155,5 +157,7 @@ get_mem_free()
 {
     return get_mem_total(2) + get_mem_total(3);
 }
+
+} //namespace RE
 
 #endif //RE_EXTERNAL_HH

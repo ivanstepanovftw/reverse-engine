@@ -24,6 +24,7 @@
 
 #include "scanroutines.hh"
 #include "value.hh"
+#include "fix_enum.hh"
 
 
 //todo 1005 move to another header
@@ -85,16 +86,16 @@ static inline void swap_bytes_var(void *p, size_t num)
     return;
 }
 
-static inline void fix_endianness(value_t *data_value, bool reverse_endianness)
+static inline void fix_endianness(RE::value_t *data_value, bool reverse_endianness)
 {
     if (!reverse_endianness) {
         return;
     }
-    if (data_value->flags & flags_64b) {
+    if (data_value->flags & RE::flags_64b) {
         data_value->u64 = swap_bytes64(data_value->u64);
-    } else if (data_value->flags & flags_32b) {
+    } else if (data_value->flags & RE::flags_32b) {
         data_value->u32 = swap_bytes32(data_value->u32);
-    } else if (data_value->flags & flags_16b) {
+    } else if (data_value->flags & RE::flags_16b) {
         data_value->u16 = swap_bytes16(data_value->u16);
     }
     return;
@@ -104,10 +105,10 @@ static inline void fix_endianness(value_t *data_value, bool reverse_endianness)
 
 //todo 0905 fit below in templates if possible, inline any macro
 /* for convenience */
-#define SCAN_ROUTINE_ARGUMENTS (const mem64_t *memory_ptr,size_t memlength, const value_t *old_value, const uservalue_t *user_value, uint16_t& saveflags)
-unsigned int (*sm_scan_routine) SCAN_ROUTINE_ARGUMENTS;
+#define SCAN_ROUTINE_ARGUMENTS (const RE::mem64_t *memory_ptr, size_t memlength, const RE::value_t *old_value, const RE::Cuservalue *user_value, RE::match_flags& saveflags)
+unsigned int (*RE::sm_scan_routine) SCAN_ROUTINE_ARGUMENTS;
 
-#define MEMORY_COMP(value,field,op)  ((value)->flags & flag_##field && (memory_ptr-> field) op (value)-> field)
+#define MEMORY_COMP(value,field,op)  ((value)->flags & RE::flag_##field && (memory_ptr-> field) op (value)-> field)
 
 
 /********************/
@@ -119,8 +120,8 @@ unsigned int (*sm_scan_routine) SCAN_ROUTINE_ARGUMENTS;
     extern inline unsigned int scan_routine_INTEGER##DATAWIDTH##_ANY SCAN_ROUTINE_ARGUMENTS \
     { \
         if (memlength >= (DATAWIDTH)/8) { \
-            saveflags |= flag_i##DATAWIDTH; \
-            saveflags |= flag_u##DATAWIDTH; \
+            saveflags |= RE::flag_i##DATAWIDTH; \
+            saveflags |= RE::flag_u##DATAWIDTH; \
             return (DATAWIDTH)/8; \
         } \
         else { \
@@ -139,8 +140,8 @@ DEFINE_INTEGER_MATCHANY_ROUTINE(64)
     { \
         if (memlength < (DATAWIDTH)/8) return 0; \
         int ret = 0; \
-        if (old_value->flags & flag_i##DATAWIDTH) { ret = (DATAWIDTH)/8; saveflags |= flag_i##DATAWIDTH; } \
-        if (old_value->flags & flag_u##DATAWIDTH) { ret = (DATAWIDTH)/8; saveflags |= flag_u##DATAWIDTH; } \
+        if (old_value->flags & RE::flag_i##DATAWIDTH) { ret = (DATAWIDTH)/8; saveflags |= RE::flag_i##DATAWIDTH; } \
+        if (old_value->flags & RE::flag_u##DATAWIDTH) { ret = (DATAWIDTH)/8; saveflags |= RE::flag_u##DATAWIDTH; } \
         return ret; \
     }
 
@@ -155,17 +156,17 @@ DEFINE_INTEGER_MATCHUPDATE_ROUTINE(64)
     { \
         if (memlength < (DATAWIDTH)/8) return 0; \
         int ret = 0; \
-        mem64_t val; \
+        RE::mem64_t val; \
         if (REVENDIAN) { \
             val.u##DATAWIDTH = swap_bytes##DATAWIDTH (memory_ptr->u##DATAWIDTH); \
             memory_ptr = &val; \
         } \
         if (MEMORY_COMP(VALUE_TO_COMPARE_WITH, i##DATAWIDTH, MATCHTYPE)) { \
-            saveflags |= flag_i##DATAWIDTH; \
+            saveflags |= RE::flag_i##DATAWIDTH; \
             ret = (DATAWIDTH)/8; \
         } \
         if (MEMORY_COMP(VALUE_TO_COMPARE_WITH, u##DATAWIDTH, MATCHTYPE)) { \
-            saveflags |= flag_u##DATAWIDTH; \
+            saveflags |= RE::flag_u##DATAWIDTH; \
             ret = (DATAWIDTH)/8; \
         } \
         return ret; \
@@ -204,7 +205,7 @@ DEFINE_INTEGER_ROUTINE_FOR_ALL_INTEGER_TYPES(DECREASED, <, old_value)
     extern inline unsigned int scan_routine_FLOAT##DATAWIDTH##_ANY SCAN_ROUTINE_ARGUMENTS \
     { \
         if (memlength >= (DATAWIDTH)/8) { \
-            saveflags |= flag_f##DATAWIDTH; \
+            saveflags |= RE::flag_f##DATAWIDTH; \
             return (DATAWIDTH)/8; \
         } \
         else { \
@@ -221,7 +222,7 @@ DEFINE_FLOAT_MATCHANY_ROUTINE(64)
     { \
         if (memlength < (DATAWIDTH)/8) return 0; \
         int ret = 0; \
-        if (old_value->flags & flag_f##DATAWIDTH) { ret = (DATAWIDTH)/8; saveflags |= flag_f##DATAWIDTH; } \
+        if (old_value->flags & RE::flag_f##DATAWIDTH) { ret = (DATAWIDTH)/8; saveflags |= RE::flag_f##DATAWIDTH; } \
         return ret; \
     }
 
@@ -234,13 +235,13 @@ DEFINE_FLOAT_MATCHUPDATE_ROUTINE(64)
     { \
         if (memlength < (DATAWIDTH)/8) return 0; \
         int ret = 0; \
-        mem64_t val; \
+        RE::mem64_t val; \
         if (REVENDIAN) { \
             val.u##DATAWIDTH = swap_bytes##DATAWIDTH (memory_ptr->u##DATAWIDTH); \
             memory_ptr = &val; \
         } \
         if (MEMORY_COMP(VALUE_TO_COMPARE_WITH, f##DATAWIDTH, MATCHTYPE)) { \
-            saveflags |= flag_f##DATAWIDTH; \
+            saveflags |= RE::flag_f##DATAWIDTH; \
             ret = (DATAWIDTH)/8; \
         } \
         return ret; \
@@ -275,12 +276,12 @@ DEFINE_FLOAT_ROUTINE_FOR_ALL_FLOAT_TYPES(DECREASED, <, old_value, 0, )
     { \
         if (memlength < (DATAWIDTH)/8) return 0; \
         int ret = 0; \
-        if (old_value->flags & flag_i##DATAWIDTH && user_value->flags & flag_i##DATAWIDTH \
+        if (old_value->flags & RE::flag_i##DATAWIDTH && user_value->flags & RE::flag_i##DATAWIDTH \
         &&  memory_ptr->i##DATAWIDTH == old_value->i##DATAWIDTH OP user_value->i##DATAWIDTH) \
-            { ret = (DATAWIDTH)/8; saveflags |= flag_i##DATAWIDTH; } \
-        if (old_value->flags & flag_u##DATAWIDTH && user_value->flags & flag_u##DATAWIDTH \
+            { ret = (DATAWIDTH)/8; saveflags |= RE::flag_i##DATAWIDTH; } \
+        if (old_value->flags & RE::flag_u##DATAWIDTH && user_value->flags & RE::flag_u##DATAWIDTH \
         &&  memory_ptr->u##DATAWIDTH == old_value->u##DATAWIDTH OP user_value->u##DATAWIDTH) \
-            { ret = (DATAWIDTH)/8; saveflags |= flag_u##DATAWIDTH; } \
+            { ret = (DATAWIDTH)/8; saveflags |= RE::flag_u##DATAWIDTH; } \
         return ret; \
     }
 
@@ -298,9 +299,9 @@ DEFINE_INTEGER_INCREASEDBY_DECREASEDBY_ROUTINE(64)
     { \
         if (memlength < (DATAWIDTH)/8) return 0; \
         int ret = 0; \
-        if (old_value->flags & flag_f##DATAWIDTH && user_value->flags & flag_f##DATAWIDTH \
+        if (old_value->flags & RE::flag_f##DATAWIDTH && user_value->flags & RE::flag_f##DATAWIDTH \
         &&  memory_ptr->f##DATAWIDTH == old_value->f##DATAWIDTH OP user_value->f##DATAWIDTH) \
-            { ret = (DATAWIDTH)/8; saveflags |= flag_f##DATAWIDTH; } \
+            { ret = (DATAWIDTH)/8; saveflags |= RE::flag_f##DATAWIDTH; } \
         return ret; \
     }
 
@@ -319,21 +320,21 @@ DEFINE_FLOAT_INCREASEDBY_DECREASEDBY_ROUTINE(64)
     extern inline unsigned int scan_routine_INTEGER##DATAWIDTH##_RANGE##REVEND_STR SCAN_ROUTINE_ARGUMENTS \
     { \
         int ret = 0; \
-        mem64_t val; \
+        RE::mem64_t val; \
         if (REVENDIAN) { \
             val.u##DATAWIDTH = swap_bytes##DATAWIDTH (memory_ptr->u##DATAWIDTH); \
             memory_ptr = &val; \
         } \
         if ((memlength >= (DATAWIDTH)/8) \
-                && (user_value[0].flags & flag_i##DATAWIDTH) \
+                && (user_value[0].flags & RE::flag_i##DATAWIDTH) \
                 && (memory_ptr->i##DATAWIDTH >= user_value[0].i##DATAWIDTH) \
                 && (memory_ptr->i##DATAWIDTH <= user_value[1].i##DATAWIDTH)) \
-            { ret = (DATAWIDTH)/8; saveflags |= flag_i##DATAWIDTH; } \
+            { ret = (DATAWIDTH)/8; saveflags |= RE::flag_i##DATAWIDTH; } \
         if ((memlength >= (DATAWIDTH)/8) \
-                && (user_value[0].flags & flag_u##DATAWIDTH) \
+                && (user_value[0].flags & RE::flag_u##DATAWIDTH) \
                 && (memory_ptr->u##DATAWIDTH >= user_value[0].u##DATAWIDTH) \
                 && (memory_ptr->u##DATAWIDTH <= user_value[1].u##DATAWIDTH)) \
-            { ret = (DATAWIDTH)/8; saveflags |= flag_u##DATAWIDTH; } \
+            { ret = (DATAWIDTH)/8; saveflags |= RE::flag_u##DATAWIDTH; } \
         return ret; \
     }
 
@@ -349,16 +350,16 @@ DEFINE_INTEGER_RANGE_ROUTINE(64, 1, _REVENDIAN)
     extern inline unsigned int scan_routine_FLOAT##DATAWIDTH##_RANGE##REVEND_STR SCAN_ROUTINE_ARGUMENTS \
     { \
         int ret = 0; \
-        mem64_t val; \
+        RE::mem64_t val; \
         if (REVENDIAN) { \
             val.u##DATAWIDTH = swap_bytes##DATAWIDTH (memory_ptr->u##DATAWIDTH); \
             memory_ptr = &val; \
         } \
         if ((memlength >= (DATAWIDTH)/8) \
-                && (user_value[0].flags & flag_f##DATAWIDTH) \
+                && (user_value[0].flags & RE::flag_f##DATAWIDTH) \
                 && (memory_ptr->f##DATAWIDTH >= user_value[0].f##DATAWIDTH) \
                 && (memory_ptr->f##DATAWIDTH <= user_value[1].f##DATAWIDTH)) \
-            { ret = (DATAWIDTH)/8; saveflags |= flag_f##DATAWIDTH; } \
+            { ret = (DATAWIDTH)/8; saveflags |= RE::flag_f##DATAWIDTH; } \
         return ret; \
     }
 
@@ -423,13 +424,13 @@ DEFINE_ANYTYPE_ROUTINE(RANGE, _REVENDIAN)
 
 extern inline unsigned int scan_routine_VLT_ANY SCAN_ROUTINE_ARGUMENTS
 {
-   return saveflags = MIN(memlength, (uint16_t)(-1));
+   return saveflags = static_cast<RE::match_flags>(MIN(memlength, (uint16_t)(-1)));
 }
 
 extern inline unsigned int scan_routine_VLT_UPDATE SCAN_ROUTINE_ARGUMENTS
 {
     /* memlength here is already MIN(memlength, old_value->flags.length) */
-   return saveflags = memlength;
+   return saveflags = static_cast<RE::match_flags>(memlength);
 }
 
 /*---------------*/
@@ -440,7 +441,7 @@ extern inline unsigned int scan_routine_VLT_UPDATE SCAN_ROUTINE_ARGUMENTS
 extern inline unsigned int scan_routine_BYTEARRAY_EQUALTO SCAN_ROUTINE_ARGUMENTS
 {
     const uint8_t *bytes_array = user_value->bytearray_value;
-    const wildcard_t *wildcards_array = user_value->wildcard_value;
+    const RE::wildcard_t *wildcards_array = user_value->wildcard_value;
     uint length = user_value->flags;
     if (memlength < length ||
         *((uint64_t*)bytes_array) != (memory_ptr->u64 & *((uint64_t*)wildcards_array)))
@@ -452,7 +453,7 @@ extern inline unsigned int scan_routine_BYTEARRAY_EQUALTO SCAN_ROUTINE_ARGUMENTS
     unsigned int i, j;
     for(i = sizeof(uint64_t); i + sizeof(uint64_t) <= length; i += sizeof(uint64_t))
     {
-        if (*((uint64_t*)(bytes_array+i)) != (((mem64_t*)(memory_ptr->bytes+i))->u64 & *((uint64_t*)(wildcards_array+i))))
+        if (*((uint64_t*)(bytes_array+i)) != (((RE::mem64_t*)(memory_ptr->bytes+i))->u64 & *((uint64_t*)(wildcards_array+i))))
         {
             /* not matched */
             return 0;
@@ -465,7 +466,7 @@ extern inline unsigned int scan_routine_BYTEARRAY_EQUALTO SCAN_ROUTINE_ARGUMENTS
     {
         for(j = 0; j < length - i; ++j)
         {
-            if ((bytes_array+i)[j] != (((mem64_t*)(memory_ptr->bytes+i))->bytes[j] & (wildcards_array+i)[j]))
+            if ((bytes_array+i)[j] != (((RE::mem64_t*)(memory_ptr->bytes+i))->bytes[j] & (wildcards_array+i)[j]))
             {
                 /* not matched */
                 return 0;
@@ -474,7 +475,7 @@ extern inline unsigned int scan_routine_BYTEARRAY_EQUALTO SCAN_ROUTINE_ARGUMENTS
     }
 
     /* matched */
-    saveflags = length;
+    saveflags = static_cast<RE::match_flags>(length);
 
     return length;
 }
@@ -490,7 +491,7 @@ extern inline unsigned int scan_routine_BYTEARRAY_EQUALTO SCAN_ROUTINE_ARGUMENTS
               == *(uint##WIDTH##_t*)(user_value->bytearray_value))) \
         { \
             /* matched */ \
-            saveflags = (WIDTH)/8; \
+            saveflags = static_cast<RE::match_flags>((WIDTH)/8); \
             return (WIDTH)/8; \
         } \
         else \
@@ -514,7 +515,7 @@ DEFINE_BYTEARRAY_POW2_EQUALTO_ROUTINE(64)
             return 0; \
         } \
         const uint8_t *bytes_array = user_value->bytearray_value; \
-        const wildcard_t *wildcards_array = user_value->wildcard_value; \
+        const RE::wildcard_t *wildcards_array = user_value->wildcard_value; \
         int i; \
         for(i = 0; i < (WIDTH)/8; ++i) \
         { \
@@ -525,7 +526,7 @@ DEFINE_BYTEARRAY_POW2_EQUALTO_ROUTINE(64)
             } \
         } \
         /* matched */ \
-        saveflags = (WIDTH)/8; \
+        saveflags = static_cast<RE::match_flags>((WIDTH)/8); \
         return (WIDTH)/8; \
     }
 
@@ -553,7 +554,7 @@ extern inline unsigned int scan_routine_STRING_EQUALTO SCAN_ROUTINE_ARGUMENTS
     unsigned int i, j;
     for(i = sizeof(int64_t); i + sizeof(int64_t) <= length; i += sizeof(int64_t))
     {
-        if(((mem64_t*)(memory_ptr->chars+i))->i64 != *((int64_t*)(scan_string+i)))
+        if(((RE::mem64_t*)(memory_ptr->chars+i))->i64 != *((int64_t*)(scan_string+i)))
         {
             /* not matched */
             return 0;
@@ -565,7 +566,7 @@ extern inline unsigned int scan_routine_STRING_EQUALTO SCAN_ROUTINE_ARGUMENTS
     {
         for(j = 0; j < length - i; ++j)
         {
-            if(((mem64_t*)(memory_ptr->chars+i))->chars[j] != (scan_string+i)[j])
+            if(((RE::mem64_t*)(memory_ptr->chars+i))->chars[j] != (scan_string+i)[j])
             {
                 /* not matched */
                 return 0;
@@ -574,7 +575,7 @@ extern inline unsigned int scan_routine_STRING_EQUALTO SCAN_ROUTINE_ARGUMENTS
     }
     
     /* matched */
-    saveflags = length;
+    saveflags = static_cast<RE::match_flags>(length);
 
     return length;
 }
@@ -589,7 +590,7 @@ extern inline unsigned int scan_routine_STRING_EQUALTO SCAN_ROUTINE_ARGUMENTS
             (memory_ptr->i##WIDTH == *(int##WIDTH##_t*)(user_value->string_value))) \
         { \
             /* matched */ \
-            saveflags = (WIDTH)/8; \
+            saveflags = static_cast<RE::match_flags>((WIDTH)/8); \
             return (WIDTH)/8; \
         } \
         else \
@@ -623,7 +624,7 @@ DEFINE_STRING_POW2_EQUALTO_ROUTINE(64)
             } \
         } \
         /* matched */ \
-        saveflags = (WIDTH)/8; \
+        saveflags = static_cast<RE::match_flags>((WIDTH)/8); \
         return (WIDTH)/8; \
     }
 
@@ -639,13 +640,13 @@ DEFINE_STRING_SMALLOOP_EQUALTO_ROUTINE(56)
 
 
 #define CHOOSE_ROUTINE(SCANDATATYPE, ROUTINEDATATYPENAME, SCANMATCHTYPE, ROUTINEMATCHTYPENAME) \
-    if ((dt == SCANDATATYPE) && (mt == SCANMATCHTYPE)) \
+    if ((dt == RE::Edata_type::SCANDATATYPE) && (mt == RE::Ematch_type::SCANMATCHTYPE)) \
     { \
         return &scan_routine_##ROUTINEDATATYPENAME##_##ROUTINEMATCHTYPENAME; \
     }
 
 #define CHOOSE_ROUTINE_FOR_BOTH_ENDIANS(SCANDATATYPE, ROUTINEDATATYPENAME, SCANMATCHTYPE, ROUTINEMATCHTYPENAME) \
-    if ((dt == SCANDATATYPE) && (mt == SCANMATCHTYPE)) { \
+    if ((dt == RE::Edata_type::SCANDATATYPE) && (mt == RE::Ematch_type::SCANMATCHTYPE)) { \
         if (reverse_endianness) { \
             return &scan_routine_##ROUTINEDATATYPENAME##_##ROUTINEMATCHTYPENAME##_REVENDIAN; \
         } \
@@ -682,7 +683,7 @@ DEFINE_STRING_SMALLOOP_EQUALTO_ROUTINE(56)
         break; \
 
 #define CHOOSE_ROUTINE_VLT(SCANDATATYPE, ROUTINEDATATYPENAME, SCANMATCHTYPE, ROUTINEMATCHTYPENAME, WIDTH) \
-    if ((dt == SCANDATATYPE) && (mt == SCANMATCHTYPE)) \
+    if ((dt == RE::Edata_type::SCANDATATYPE) && (mt == RE::Ematch_type::SCANMATCHTYPE)) \
     { \
         switch (WIDTH) \
         { \
@@ -703,7 +704,7 @@ DEFINE_STRING_SMALLOOP_EQUALTO_ROUTINE(56)
     }
 
 
-scan_routine_t sm_get_scanroutine(scan_data_type_t dt, scan_match_type_t mt, uint16_t uflags, bool reverse_endianness)
+RE::scan_routine_t RE::sm_get_scanroutine(RE::Edata_type dt, RE::Ematch_type mt, uint16_t uflags, bool reverse_endianness)
 {
     CHOOSE_ROUTINE_FOR_ALL_NUMBER_TYPES(MATCHANY, ANY)
     CHOOSE_ROUTINE_FOR_ALL_NUMBER_TYPES(MATCHUPDATE, UPDATE)
@@ -734,42 +735,40 @@ scan_routine_t sm_get_scanroutine(scan_data_type_t dt, scan_match_type_t mt, uin
  * listed flags we're sure it's not going to be matched by the scan,
  * so we reject it without even trying */
 static uint16_t possible_flags_for_scan_data_type[] = {
-    [ANYNUMBER]  = flags_all,
-    [ANYINTEGER] = flags_integer,
-    [ANYFLOAT]   = flags_float,
-    [INTEGER8]   = flags_i8b,
-    [INTEGER16]  = flags_i16b,
-    [INTEGER32]  = flags_i32b,
-    [INTEGER64]  = flags_i64b,
-    [FLOAT32]    = flag_f32,
-    [FLOAT64]    = flag_f64,
-    [BYTEARRAY]  = flags_max,
-    [STRING]     = flags_max
+    [(uint16_t)RE::Edata_type::ANYNUMBER]  = RE::flags_all,
+    [(uint16_t)RE::Edata_type::ANYINTEGER] = RE::flags_integer,
+    [(uint16_t)RE::Edata_type::ANYFLOAT]   = RE::flags_float,
+    [(uint16_t)RE::Edata_type::INTEGER8]   = RE::flags_i8b,
+    [(uint16_t)RE::Edata_type::INTEGER16]  = RE::flags_i16b,
+    [(uint16_t)RE::Edata_type::INTEGER32]  = RE::flags_i32b,
+    [(uint16_t)RE::Edata_type::INTEGER64]  = RE::flags_i64b,
+    [(uint16_t)RE::Edata_type::FLOAT32]    = RE::flag_f32,
+    [(uint16_t)RE::Edata_type::FLOAT64]    = RE::flag_f64,
+    [(uint16_t)RE::Edata_type::BYTEARRAY]  = RE::flags_max,
+    [(uint16_t)RE::Edata_type::STRING]     = RE::flags_max
 };
 
-bool sm_choose_scanroutine(scan_data_type_t dt, scan_match_type_t mt, const uservalue_t* uval, bool reverse_endianness)
+bool RE::sm_choose_scanroutine(RE::Edata_type dt, RE::Ematch_type mt, const RE::Cuservalue* uval, bool reverse_endianness)
 {
-    uint16_t uflags = uval ? uval->flags : flags_empty;
+    uint16_t uflags = uval ? uval->flags : RE::flags_empty;
 
     /* Check scans that need an uservalue */
-    if (mt == MATCHEQUALTO    
-    ||  mt == MATCHNOTEQUALTO 
-    ||  mt == MATCHGREATERTHAN
-    ||  mt == MATCHLESSTHAN   
-    ||  mt == MATCHRANGE      
-    ||  mt == MATCHINCREASEDBY
-    ||  mt == MATCHDECREASEDBY)
+    if (mt == RE::Ematch_type::MATCHEQUALTO
+    ||  mt == RE::Ematch_type::MATCHNOTEQUALTO
+    ||  mt == RE::Ematch_type::MATCHGREATERTHAN
+    ||  mt == RE::Ematch_type::MATCHLESSTHAN
+    ||  mt == RE::Ematch_type::MATCHRANGE
+    ||  mt == RE::Ematch_type::MATCHINCREASEDBY
+    ||  mt == RE::Ematch_type::MATCHDECREASEDBY)
     {
-        uint16_t possible_flags = possible_flags_for_scan_data_type[dt];
-        if ((possible_flags & uflags) == flags_empty) {
+        uint16_t possible_flags = possible_flags_for_scan_data_type[(uint16_t)dt];
+        if ((possible_flags & uflags) == RE::flags_empty) {
             /* There's no possibility to have a match, just abort */
-            sm_scan_routine = nullptr;
+            RE::sm_scan_routine = nullptr;
             return false;
         }
     }
 
-    std::clog<<"sm_choose_scanroutine(dt, mt, "<<uflags<<", "<<reverse_endianness<<")"<<std::endl;
-    sm_scan_routine = sm_get_scanroutine(dt, mt, uflags, reverse_endianness);
-    std::clog<<"got scan_routine at "<<&sm_scan_routine<<std::endl;
-    return (sm_scan_routine != nullptr);
+    RE::sm_scan_routine = sm_get_scanroutine(dt, mt, uflags, reverse_endianness);
+    return (RE::sm_scan_routine != nullptr);
 }

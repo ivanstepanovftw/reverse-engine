@@ -39,20 +39,18 @@
 
 
 //namespace fs = std::filesystem;
+namespace RE {
 
-
-class Handle
-{
+class Handle {
 public:
     /// Variables
     pid_t pid;
     std::string title;
-    std::vector<region_t> regions_ignored;
-    std::vector<region_t> regions;
-    
+    std::vector<Cregion> regions_ignored;
+    std::vector<Cregion> regions;
+
     void
-    attach(pid_t pid)
-    {
+    attach(pid_t pid) {
         using namespace std;
         this->pid = pid;
         string path = get_path();
@@ -60,26 +58,25 @@ public:
             this->pid = 0;
             return;
         }
-        
+
         size_t exe_cursor_end = path.find_last_of('/');
         if (exe_cursor_end == string::npos) {
             this->pid = 0;
             return;
         }
-        
+
         this->title = path.substr(exe_cursor_end + 1);
     }
-    
+
     // FIXME [very low]: incredibly large function
     void
-    attach(const std::string& title)
-    {
+    attach(const std::string& title) {
         using namespace std;
         if (title.empty()) {
             pid = 0;
             return;
         }
-        
+
         struct dirent *dire;
         DIR *dir = opendir("/proc/");
         if (!dir) {
@@ -90,30 +87,30 @@ public:
             if (dire->d_type != DT_DIR)
                 continue;
             string nn(dire->d_name);
-            
+
             string mapsPath = "/proc/" + nn + "/maps";
             if (access(mapsPath.c_str(), F_OK) == -1)
                 continue;
-            
+
             /// Check to see if the string is numeric (no negatives or dec allowed, which makes this function usable)
             if (strspn(nn.c_str(), "0123456789") == nn.size()) {
                 istringstream buffer(nn);
-                buffer>>pid;
+                buffer >> pid;
             } else {
                 pid = 0;
             }
-            
+
             if (!is_good())
                 continue;
-            
+
             string path = get_path();
             if (path.empty())
                 continue;
-            
+
             size_t exe_cursor_end = path.find_last_of('/');
             if (exe_cursor_end == string::npos)
                 continue;
-            
+
             string exe = path.substr(exe_cursor_end + 1);
             if (exe == title) {  /// success
                 this->title = title;
@@ -124,28 +121,24 @@ public:
         closedir(dir);
         pid = 0;
     }
-    
-    
-    Handle()
-    {
+
+
+    Handle() {
         this->pid = 0;
     }
-    
-    explicit Handle(pid_t pid)
-    {
+
+    explicit Handle(pid_t pid) {
         attach(pid);
     }
-    
-    explicit Handle(const std::string& title)
-    {
+
+    explicit Handle(const std::string& title) {
         attach(title);
     }
-    
-    
+
+
     /// Functions
     std::string
-    get_symbolic_link_target(const std::string& target)
-    {
+    get_symbolic_link_target(const std::string& target) {
         static char buf[PATH_MAX];
         static ssize_t len;
         len = readlink(target.c_str(), buf, sizeof(buf) - 1);
@@ -154,45 +147,39 @@ public:
         buf[len] = '\0';
         return std::string(buf);
     }
-    
+
     std::string
-    get_path()
-    {
+    get_path() {
         return get_symbolic_link_target("/proc/" + std::to_string(pid) + "/exe");
     }
-    
+
     std::string
-    get_working_directory()
-    {
+    get_working_directory() {
         return get_symbolic_link_target("/proc/" + std::to_string(pid) + "/cwd");
     }
-    
+
     /// Checking
     bool
-    is_valid()
-    {
+    is_valid() {
         return pid != 0;
     }
-    
+
     bool
-    is_running()
-    {
+    is_running() {
         using namespace std;
-        static struct stat sts{ };
+        static struct stat sts{};
         errno = 0;
         return !(stat(("/proc/" + to_string(pid)).c_str(), &sts) == -1 && errno == ENOENT);
     }
-    
+
     bool
-    is_good()
-    {
+    is_good() {
         return is_valid() && is_running();
     }
-    
+
     /// Read_from/write_to this handle
     ssize_t
-    read(void *out, uintptr_t address, size_t size)
-    {
+    read(void *out, uintptr_t address, size_t size) {
         static struct iovec local[1];
         static struct iovec remote[1];
         local[0].iov_base = out;
@@ -201,10 +188,9 @@ public:
         remote[0].iov_len = size;
         return process_vm_readv(pid, local, 1, remote, 1, 0);
     }
-    
+
     ssize_t
-    write(uintptr_t address, void *in, size_t size)
-    {
+    write(uintptr_t address, void *in, size_t size) {
         static struct iovec local[1];
         static struct iovec remote[1];
         local[0].iov_base = in;
@@ -213,12 +199,11 @@ public:
         remote[0].iov_len = size;
         return process_vm_writev(pid, local, 1, remote, 1, 0);
     }
-    
+
     /// Modules
     // fixme incredibly large function
     void
-    update_regions()
-    {
+    update_regions() {
         using namespace std;
         regions.clear();
         regions_ignored.clear();
@@ -227,16 +212,16 @@ public:
         while (getline(maps, line)) {
             istringstream iss(line);
             string memorySpace, permissions, offset, device, inode;
-            if (iss>>memorySpace>>permissions>>offset>>device>>inode) {
+            if (iss >> memorySpace >> permissions >> offset >> device >> inode) {
                 string pathname;
-                
-                for(size_t ls = 0, i = 0; i < line.length(); i++) {
+
+                for (size_t ls = 0, i = 0; i < line.length(); i++) {
                     if (line.substr(i, 1) == " ") {
                         ls++;
-                        
+
                         if (ls == 5) {
                             size_t begin = line.substr(i, line.size()).find_first_not_of(' ');
-                            
+
                             if (begin != string::npos)
                                 pathname = line.substr(begin + i, line.size());
                             else
@@ -245,55 +230,55 @@ public:
                     }
                 }
                 
-                region_t region;
-                
+                Cregion region;
+
                 size_t memorySplit = memorySpace.find_first_of('-');
                 size_t deviceSplit = device.find_first_of(':');
                 uintptr_t rend;
-                
+
                 stringstream ss;
-                
+
                 if (memorySplit != string::npos) {
-                    ss<<hex<<memorySpace.substr(0, memorySplit);
-                    ss>>region.address;
+                    ss << hex << memorySpace.substr(0, memorySplit);
+                    ss >> region.address;
                     ss.clear();
-                    ss<<hex<<memorySpace.substr(memorySplit + 1, memorySpace.size());
-                    ss>>rend;
+                    ss << hex << memorySpace.substr(memorySplit + 1, memorySpace.size());
+                    ss >> rend;
                     region.size = (region.address < rend) ? (rend - region.address) : 0;
                     ss.clear();
                 }
-                
+
                 if (deviceSplit != string::npos) {
-                    ss<<hex<<device.substr(0, deviceSplit);
-                    ss>>region.deviceMajor;
+                    ss << hex << device.substr(0, deviceSplit);
+                    ss >> region.deviceMajor;
                     ss.clear();
-                    ss<<hex<<device.substr(deviceSplit + 1, device.size());
-                    ss>>region.deviceMinor;
+                    ss << hex << device.substr(deviceSplit + 1, device.size());
+                    ss >> region.deviceMinor;
                     ss.clear();
                 }
-                
-                ss<<hex<<offset;
-                ss>>region.offset;
+
+                ss << hex << offset;
+                ss >> region.offset;
                 ss.clear();
-                ss<<inode;
-                ss>>region.inodeFileNumber;
-                
+                ss << inode;
+                ss >> region.inodeFileNumber;
+
                 region.flags = 0;
                 region.flags |= (permissions[0] == 'r') ? readable : 0;
                 region.flags |= (permissions[1] == 'w') ? writable : 0;
                 region.flags |= (permissions[2] == 'x') ? executable : 0;
                 region.flags |= (permissions[3] == '-') ? shared : 0;
-                
+
                 if (!pathname.empty()) {
                     region.pathname = pathname;
-                    
+
                     size_t fileNameSplit = pathname.find_last_of('/');
-                    
+
                     if (fileNameSplit != string::npos) {
                         region.filename = pathname.substr(fileNameSplit + 1, pathname.size());
                     }
                 }
-                
+
                 if (region.flags & (readable | writable) && !(region.flags & shared) && region.size > 0)
                     regions.push_back(region);
                 else
@@ -301,24 +286,22 @@ public:
             }
         }
     }
-    
-    region_t *
-    get_region_by_name(const std::string& region_name)
-    {
+
+    Cregion *
+    get_region_by_name(const std::string& region_name) {
         using namespace std;
-        for(region_t& region : regions)
+        for (Cregion& region : regions)
             if (region.flags & executable && region.filename == region_name)
                 return &region;
         return nullptr;
     }
-    
-    region_t *
-    get_region_of_address(uintptr_t address)
-    {
+
+    Cregion *
+    get_region_of_address(uintptr_t address) {
         using namespace std;
-        static region_t *last_region;
+        static Cregion *last_region;
         if (last_region && last_region->address <= address && address < last_region->address + last_region->size) {
-            clog<<"returning last region "<<endl;
+            clog << "returning last region " << endl;
             return last_region;
         }
         static size_t first, last, mid;
@@ -326,7 +309,7 @@ public:
         last = regions.size();
         while (first < last) {
             mid = (first + last) / 2;
-            clog<<"mid: "<<mid<<", region: "<<regions[mid]<<endl;
+            clog << "mid: " << mid << ", region: " << regions[mid] << endl;
             if (address < regions[mid].address)
                 last = mid - 1;
             else if (address >= regions[mid].address + regions[mid].size)
@@ -338,31 +321,30 @@ public:
         }
         return nullptr;
     }
-    
+
     // TODO: may be moved to scanner.hh
     bool
-    find_pattern(uintptr_t *out, region_t *region, const char *pattern, const char *mask)
-    {
+    find_pattern(uintptr_t *out, Cregion *region, const char *pattern, const char *mask) {
         char buffer[0x1000];
-        
+
         uintptr_t len = strlen(mask);
         uintptr_t chunksize = sizeof(buffer);
         uintptr_t totalsize = region->size;
         uintptr_t chunknum = 0;
-        
+
         while (totalsize) {
             uintptr_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
             uintptr_t readaddr = region->address + (chunksize * chunknum);
             bzero(buffer, chunksize);
-            
+
             if (this->read(buffer, readaddr, readsize)) {
-                for(uintptr_t b = 0; b < readsize; b++) {
+                for (uintptr_t b = 0; b < readsize; b++) {
                     uintptr_t matches = 0;
-                    
+
                     // если данные совпадают или пропустить
                     while (buffer[b + matches] == pattern[matches] || mask[matches] != 'x') {
                         matches++;
-                        
+
                         if (matches == len) {
                             *out = readaddr + b;
                             return true;
@@ -370,16 +352,15 @@ public:
                     }
                 }
             }
-            
+
             totalsize -= readsize;
             chunknum++;
         }
         return false;
     }
-    
+
     uintptr_t
-    get_call_address(uintptr_t address)
-    {
+    get_call_address(uintptr_t address) {
         static uintptr_t code;
         if (read(&code, address + 1, sizeof(code)) == sizeof(code))
             return code + address + 5;
@@ -407,7 +388,7 @@ Handle::findPointer(void *out, uintptr_t address, std::vector<uintptr_t> offsets
 }
 
 size_t
-Handle::findPattern(vector<uintptr_t> *out, region_t *region, const char *pattern, const char *mask) 
+Handle::findPattern(vector<uintptr_t> *out, Cregion *region, const char *pattern, const char *mask)
 {
     char buffer[0x1000];
 
@@ -446,7 +427,7 @@ Handle::findPattern(vector<uintptr_t> *out, region_t *region, const char *patter
 
 size_t
 Handle::scan_exact(vector<Entry> *out, 
-                   const region_t *region, 
+                   const Cregion *region,
                    vector<Entry> entries, 
                    size_t increment)
 {
@@ -486,5 +467,7 @@ Handle::scan_exact(vector<Entry> *out,
     }
     return found; //size of pushed back values
 }*/
+
+} //namespace RE
 
 #endif //RE_CORE_HH

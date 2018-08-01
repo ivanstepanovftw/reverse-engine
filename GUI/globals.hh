@@ -18,8 +18,8 @@
     You should have received a copy of the GNU Lesser General Public License
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
-#ifndef RE_GLOBALS_HH
-#define RE_GLOBALS_HH
+#ifndef RE_GLOBALS_HEADER
+#define RE_GLOBALS_HEADER
 
 #include <libreverseengine/core.hh>
 #include <libreverseengine/value.hh>
@@ -36,9 +36,9 @@ constexpr size_t REFRESH_RATE = 2000;
 
 class scans_t {
 public:
-    matches_t *first = nullptr;
-    matches_t *prev  = nullptr;
-    matches_t *last  = nullptr;
+    RE::matches_t *first = nullptr;
+    RE::matches_t *prev  = nullptr;
+    RE::matches_t *last  = nullptr;
     
     void scan_new() {
         delete first;
@@ -53,9 +53,9 @@ private:
 
 // fixme [med]: or use it as namespace?
 struct {
-    Handle *handle = nullptr;  //fixme [low]: remove pointer
-    Scanner *scanner = nullptr;  //fixme [low]: remove pointer
+    RE::Handle *handle = nullptr;  //fixme [low]: remove pointer
+    RE::Scanner *scanner = nullptr;  //fixme [low]: remove pointer
     scans_t scans;
 } globals;
 
-#endif //RE_GLOBALS_HH
+#endif //RE_GLOBALS_HEADER

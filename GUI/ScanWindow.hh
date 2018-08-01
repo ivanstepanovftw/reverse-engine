@@ -59,7 +59,7 @@ protected:
     void on_button_next_scan();
     
     sigc::connection conn;
-    bool on_timer_refresh();
+    bool on_timer_refresh(RE::Edata_type data_type);
     
     //Tree model columns:
     class ColumnsSaved : public Gtk::TreeModel::ColumnRecord
@@ -112,7 +112,7 @@ protected:
         { add(m_col_name); add(m_col_scan_type); }
         
         Gtk::TreeModelColumn<Glib::ustring> m_col_name;
-        Gtk::TreeModelColumn<scan_data_type_t> m_col_scan_type;
+        Gtk::TreeModelColumn<RE::Edata_type> m_col_scan_type;
     };
     
     //ComboBox
@@ -164,10 +164,10 @@ private:
     
     // Routine (fixme их ведь так называют?)
     template<typename T>
-    void add_row(match_t *val, const char *type_string);
+    void add_row(RE::match_t *val, const char *type_string);
     
     template<typename T>
-    void refresh_row(match_t *val, const char *type_string, Gtk::TreeModel::Row &row);
+    void refresh_row(RE::match_t *val, const char *type_string, Gtk::TreeModel::Row &row);
 };
 
 #endif //RE_SCANWINDOW_HH

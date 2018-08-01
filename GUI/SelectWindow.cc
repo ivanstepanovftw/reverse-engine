@@ -88,24 +88,24 @@ SelectWindow::on_button_attach()
             int pid = (*iter)[m_Columns.m_col_pid];
             printf("Selected PID: %i\n", pid);
             delete globals.handle;
-            globals.handle = new Handle(pid);
+            globals.handle = new RE::Handle(pid);
             printf("Title: %s\n", globals.handle->title.c_str());
             globals.handle->update_regions();
-            globals.scanner = new Scanner(globals.handle);
+            globals.scanner = new RE::Scanner(globals.handle);
             printf("%-32s%-18s %-18s %s%s%s%s\n",
                    "Region name",
                    "Start",
                    "End",
                    "r","w","x","-");
-            for(const region_t& region : globals.handle->regions) {
+            for(const RE::Cregion& region : globals.handle->regions) {
                 printf("%-32s0x%016lx 0x%016lx %i%i%i%i\n",
                        region.filename.empty()?"misc":region.filename.c_str(),
                        region.address,
                        region.address + region.size - 1,
-                       (bool)region.flags & readable,
-                       (bool)region.flags & writable,
-                       (bool)region.flags & executable,
-                       (bool)region.flags & shared);
+                       (bool)region.flags & RE::readable,
+                       (bool)region.flags & RE::writable,
+                       (bool)region.flags & RE::executable,
+                       (bool)region.flags & RE::shared);
             }
             cout<<"Regions enumeration is done!"<<endl;
             hide();
@@ -146,7 +146,7 @@ SelectWindow::tree_refresh()
         return;
     }
 
-    vector<process_t> processes = getProcesses();
+    vector<RE::process_t> processes = RE::getProcesses();
     
     int r_counted=0;
     for(int i=0; i<processes.size(); i++) {

@@ -27,6 +27,7 @@
 
 #include "value.hh"
 
+namespace RE {
 
 /* Matches a memory area given by `memory_ptr` and `memlength` against `user_value` or `old_value`
  * (or both, depending on the matching type), stores the result into saveflags.
@@ -59,25 +60,27 @@ typedef struct {
 //    value->u8;
 //}
 
-typedef unsigned int (*scan_routine_t)(const mem64_t *memory_ptr,
+typedef unsigned int (*scan_routine_t)(const RE::mem64_t *memory_ptr,
                                        size_t memlength,
-                                       const value_t *old_value,
-                                       const uservalue_t *user_value,
-                                       uint16_t& saveflags);
+                                       const RE::value_t *old_value,
+                                       const RE::Cuservalue *user_value,
+                                       RE::match_flags& saveflags);
 extern scan_routine_t sm_scan_routine;
 
 /* 
  * Choose the global scanroutine according to the given parameters, sm_scan_routine will be set.
  * Returns whether a proper routine has been found.
  */
-bool sm_choose_scanroutine(scan_data_type_t dt,
-                           scan_match_type_t mt,
-                           const uservalue_t* uval,
+bool sm_choose_scanroutine(RE::Edata_type dt,
+                           RE::Ematch_type mt,
+                           const RE::Cuservalue* uval,
                            bool reverse_endianness);
 
-scan_routine_t sm_get_scanroutine(scan_data_type_t dt,
-                                  scan_match_type_t mt,
+scan_routine_t sm_get_scanroutine(RE::Edata_type dt,
+                                  RE::Ematch_type mt,
                                   uint16_t uflags,
                                   bool reverse_endianness);
+
+} //namespace RE
 
 #endif //RE_SCANNER_HH

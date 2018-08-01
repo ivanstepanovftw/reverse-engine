@@ -42,9 +42,11 @@
 #include "value.hh"
 #include "scanroutines.hh"
 
+
+namespace RE {
+
 namespace bio = boost::iostreams;
 
-// todo[med]: remove using
 using namespace std;
 using namespace std::chrono;
 
@@ -90,7 +92,7 @@ public:
 #pragma pack(push, 1)
 struct byte_with_flags {
     uint8_t byte;
-    uint16_t flags;
+    match_flags flags;
 };
 #pragma pack(pop)
 
@@ -208,7 +210,7 @@ public:
 
     // fixme[low]: slow, because 'new' calls constructor
     void
-    add_element(const uintptr_t& remote_address, const mem64_t *remote_memory, const uint16_t& flags)
+    add_element(const uintptr_t& remote_address, const RE::mem64_t *remote_memory, const RE::match_flags& flags)
     {
         size_t remote_delta = remote_address - swaths[swaths_count-1].remote_back();
         size_t local_delta = remote_delta * sizeof(byte_with_flags);
@@ -284,14 +286,28 @@ public:
         return (match_location) { 0, 0 };
     }
 
-    // todo[critical]: return match_t
+    // todo[critical]: must return match_t
+    // todo[high]: must return full string, not just 8 bytes
+    // todo[med]: must return match with old value
     match_t
-    get(size_t n)
+    get(size_t n, Edata_type dt)
     {
         match_location m = nth_match(n);
-        if (m.swath)
-            return m.swath->data[m.index];
-        return
+        match_t ret;
+        ret.flags = m.swath->data->flags;
+        uint8_t *bytes_beg;
+        if (m.swath) {
+            size_t sz = RE::flags_to_memlength(dt, m.swath->data->flags);
+            bytes_beg = new uint8_t[sz];
+            uint8_t *bytes_end = bytes_beg+sz;
+            uint8_t *bytes = bytes_beg;
+            for(size_t i = m.index; bytes != bytes_end; bytes++, i++) {
+                *bytes = m.swath->data[i].byte;
+            }
+            ret.memory = *reinterpret_cast<RE::mem64_t *>(bytes_beg);
+            delete[] bytes_beg;
+        }
+        return ret;
     }
     
     
@@ -358,7 +374,7 @@ public:
     
     
     
-    std::vector<region_t> regions;
+    std::vector<Cregion>  regions;
     std::string           path;
     bio::mapped_file      snapshot_mf;
     bio::mapped_file      flags_mf;
@@ -374,7 +390,7 @@ public:
         char *snapshot_end = snapshot_begin + snapshot_mf.size();
         char *snapshot = snapshot_begin;
         
-        region_t region;
+        Cregion region;
         while(snapshot < snapshot_end) {
             memcpy(&region,
                    snapshot,
@@ -447,7 +463,7 @@ class Scanner
 {
 public:
     /// Create file for storing matches
-    Handle *handle;
+    RE::Handle *handle;
     volatile bool stop_flag = false;
     double scan_progress = 0;
     uintptr_t step = 1;
@@ -456,26 +472,27 @@ public:
         this->handle = handle;
     }
     
-    void string_to_uservalue(const scan_data_type_t &data_type,
+    void string_to_uservalue(const RE::Edata_type &data_type,
                              const std::string &text,
-                             scan_match_type_t *match_type,
-                             uservalue_t *vals);
+                             RE::Ematch_type *match_type,
+                             RE::Cuservalue *vals);
     
     bio::mapped_file make_snapshot(const std::string &path);
     
-    bool scan(matches_t& matches_sink,
-              const scan_data_type_t& data_type,
-              const uservalue_t *uservalue,
-              const scan_match_type_t& match_type);
+    bool scan(RE::matches_t& matches_sink,
+              const RE::Edata_type& data_type,
+              const RE::Cuservalue *uservalue,
+              const RE::Ematch_type& match_type);
 
-    bool scan_next(const matches_t& matches_source,
-                   matches_t& matches_sink,
-                   const scan_data_type_t& data_type,
-                   const uservalue_t *uservalue,
-                   scan_match_type_t match_type);
+    bool scan_next(const RE::matches_t& matches_source,
+                   RE::matches_t& matches_sink,
+                   const RE::Edata_type& data_type,
+                   const RE::Cuservalue *uservalue,
+                   RE::Ematch_type match_type);
     
     bool scan_reset();
-    
 };
+
+} //namespace RE
 
 #endif //RE_SCANNER_HH

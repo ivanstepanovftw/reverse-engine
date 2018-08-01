@@ -24,7 +24,7 @@
 
 
 /// https://github.com/scanmem/scanmem/blob/master/sets.c
-size_t parse_uservalue_int(const std::string& text, uservalue_t *val)
+size_t RE::parse_uservalue_int(const std::string& text, RE::Cuservalue *val)
 {
     const char *text_c = text.c_str();
     char *endptr;
@@ -44,20 +44,20 @@ size_t parse_uservalue_int(const std::string& text, uservalue_t *val)
         return strlen(text_c) - MAX(strlen(endptr), strlen(endptr2));
     
     /// determine correct flags
-    if (valid_sint && snum >= INT64_MIN && snum <=  INT64_MAX) { val->i64 = static_cast< int64_t>(snum); val->flags |= flag_i64; }
-    if (valid_sint && snum >= INT32_MIN && snum <=  INT32_MAX) { val->i32 = static_cast< int32_t>(snum); val->flags |= flag_i32; }
-    if (valid_sint && snum >= INT16_MIN && snum <=  INT16_MAX) { val->i16 = static_cast< int16_t>(snum); val->flags |= flag_i16; }
-    if (valid_sint && snum >=  INT8_MIN && snum <=   INT8_MAX) { val->i8  = static_cast< int8_t >(snum); val->flags |= flag_i8 ; }
-    if (valid_uint &&                      unum <= UINT64_MAX) { val->u64 = static_cast<uint64_t>(unum); val->flags |= flag_u64; }
-    if (valid_uint &&                      unum <= UINT32_MAX) { val->u32 = static_cast<uint32_t>(unum); val->flags |= flag_u32; }
-    if (valid_uint &&                      unum <= UINT16_MAX) { val->u16 = static_cast<uint16_t>(unum); val->flags |= flag_u16; }
-    if (valid_uint &&                      unum <=  UINT8_MAX) { val->u8  = static_cast<uint8_t >(unum); val->flags |= flag_u8 ; }
+    if (valid_sint && snum >= INT64_MIN && snum <=  INT64_MAX) { val->i64 = static_cast< int64_t>(snum); val->flags |= RE::flag_i64; }
+    if (valid_sint && snum >= INT32_MIN && snum <=  INT32_MAX) { val->i32 = static_cast< int32_t>(snum); val->flags |= RE::flag_i32; }
+    if (valid_sint && snum >= INT16_MIN && snum <=  INT16_MAX) { val->i16 = static_cast< int16_t>(snum); val->flags |= RE::flag_i16; }
+    if (valid_sint && snum >=  INT8_MIN && snum <=   INT8_MAX) { val->i8  = static_cast< int8_t >(snum); val->flags |= RE::flag_i8 ; }
+    if (valid_uint &&                      unum <= UINT64_MAX) { val->u64 = static_cast<uint64_t>(unum); val->flags |= RE::flag_u64; }
+    if (valid_uint &&                      unum <= UINT32_MAX) { val->u32 = static_cast<uint32_t>(unum); val->flags |= RE::flag_u32; }
+    if (valid_uint &&                      unum <= UINT16_MAX) { val->u16 = static_cast<uint16_t>(unum); val->flags |= RE::flag_u16; }
+    if (valid_uint &&                      unum <=  UINT8_MAX) { val->u8  = static_cast<uint8_t >(unum); val->flags |= RE::flag_u8 ; }
     
     /// If signed flag exist and unsigned not exist, fill unsigned value. Used at first_scan() to scan 5% faster.
-    if ((val->flags & flag_i64) && !(val->flags & flag_u64)) { val->u64 = static_cast<uint64_t>(val->i64); }
-    if ((val->flags & flag_i32) && !(val->flags & flag_u32)) { val->u32 = static_cast<uint32_t>(val->i32); }
-    if ((val->flags & flag_i16) && !(val->flags & flag_u16)) { val->u16 = static_cast<uint16_t>(val->i16); }
-    if ((val->flags & flag_i8 ) && !(val->flags & flag_u8 )) { val->u8  = static_cast<uint8_t >(val->i8 ); }
+    if ((val->flags & RE::flag_i64) && !(val->flags & RE::flag_u64)) { val->u64 = static_cast<uint64_t>(val->i64); }
+    if ((val->flags & RE::flag_i32) && !(val->flags & RE::flag_u32)) { val->u32 = static_cast<uint32_t>(val->i32); }
+    if ((val->flags & RE::flag_i16) && !(val->flags & RE::flag_u16)) { val->u16 = static_cast<uint16_t>(val->i16); }
+    if ((val->flags & RE::flag_i8 ) && !(val->flags & RE::flag_u8 )) { val->u8  = static_cast<uint8_t >(val->i8 ); }
     return strlen(text_c);
 }
 
@@ -69,7 +69,7 @@ size_t parse_uservalue_int(const std::string& text, uservalue_t *val)
 //    clog<<"-1./0.  = "<<a<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&a)<<dec<<endl;
 //    clog<<"0./0.   = "<<b<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&b)<<dec<<endl;
 //    clog<<"1./0.   = "<<c<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&c)<<dec<<endl;
-size_t parse_uservalue_float(const std::string& text, uservalue_t *val)
+size_t RE::parse_uservalue_float(const std::string& text, RE::Cuservalue *val)
 {
     char *endptr;
     const char *text_c = text.c_str();
@@ -79,19 +79,19 @@ size_t parse_uservalue_float(const std::string& text, uservalue_t *val)
     if ((errno != 0) || (*endptr != '\0'))
         return strlen(text_c) - strlen(endptr);
     
-    val->flags |= flags_float;
+    val->flags |= RE::flags_float;
     val->f32 = static_cast<float>(num);
     val->f64 = num;
     return strlen(text_c);
 }
 
-size_t parse_uservalue_number(const std::string& text, uservalue_t *val)
+size_t RE::parse_uservalue_number(const std::string& text, RE::Cuservalue *val)
 {
     using namespace std;
     size_t ret;
     if ((ret = parse_uservalue_int(text, val)) && ret == text.size()) {
-        val->flags |= flags_float;
-        if (val->flags & flag_i64) {
+        val->flags |= RE::flags_float;
+        if (val->flags & RE::flag_i64) {
             val->f32 = static_cast<float>(val->i64);
             val->f64 = static_cast<double>(val->i64);
         } else {
@@ -124,11 +124,11 @@ size_t parse_uservalue_number(const std::string& text, uservalue_t *val)
 /* parse bytearray, it will allocate the arrays itself, then needs to be free'd by `free_uservalue()` */
 //TODO create entry for mask, not only for pattern
 //FIXME UNDONE
-size_t parse_uservalue_bytearray(const char *text, uservalue_t *val)
+size_t RE::parse_uservalue_bytearray(const std::string& text_s, RE::Cuservalue *val)
 {
     using namespace std;
     vector<uint8_t> bytes_array;
-    vector<wildcard_t> wildcards_array;
+    vector<RE::wildcard_t> wildcards_array;
     
     /// @see https://stackoverflow.com/questions/7397768/choice-between-vectorresize-and-vectorreserve
     // never saw a pattern of more than 20 bytes in a row
@@ -136,6 +136,7 @@ size_t parse_uservalue_bytearray(const char *text, uservalue_t *val)
     wildcards_array.reserve(32);
     
     /// skip past any whitespace
+    char *text = const_cast<char *>(&text_s[0]);
     while (isspace(*text))
         ++text;
     
@@ -175,11 +176,11 @@ size_t parse_uservalue_bytearray(const char *text, uservalue_t *val)
 }
 
 //FIXME UNDONE
-size_t parse_uservalue_string(const char *text, uservalue_t *val)
+size_t parse_uservalue_string(const char *text, RE::Cuservalue *val)
 {
     using namespace std;
     vector<uint8_t> bytes_array;
-    vector<wildcard_t> wildcards_array;
+    vector<RE::wildcard_t> wildcards_array;
     
     /// @see https://stackoverflow.com/questions/7397768/choice-between-vectorresize-and-vectorreserve
     // never saw a pattern of more than 20 bytes in a row
@@ -202,7 +203,7 @@ size_t parse_uservalue_string(const char *text, uservalue_t *val)
         /// if unknown value
         if ((strcmp(cur_str, "??") == 0)) {
             bytes_array.push_back(0x00);
-            wildcards_array.push_back(WILDCARD);
+            wildcards_array.push_back(RE::WILDCARD);
         } else {
             /// parse as hex integer
             char *endptr;
@@ -211,7 +212,7 @@ size_t parse_uservalue_string(const char *text, uservalue_t *val)
                 return false;
             
             bytes_array.push_back(cur_byte);
-            wildcards_array.push_back(FIXED);
+            wildcards_array.push_back(RE::FIXED);
         }
         
         /// get next byte
@@ -221,6 +222,6 @@ size_t parse_uservalue_string(const char *text, uservalue_t *val)
     /* everything is ok */
     val->wildcard_value = wildcards_array.data();
     val->bytearray_value = bytes_array.data();
-    val->flags = flags_all;
+    val->flags = RE::flags_all;
     return true;
 }

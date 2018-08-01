@@ -31,10 +31,10 @@ namespace bio = boost::iostreams;
 
 
 void
-Scanner::string_to_uservalue(const scan_data_type_t &data_type,
-                             const std::string &text,
-                             scan_match_type_t *match_type,
-                             uservalue_t *uservalue)
+RE::Scanner::string_to_uservalue(const RE::Edata_type &data_type,
+                                 const std::string &text,
+                                 RE::Ematch_type *match_type,
+                                 RE::Cuservalue *uservalue)
 {
     using namespace std;
     
@@ -42,12 +42,12 @@ Scanner::string_to_uservalue(const scan_data_type_t &data_type,
         throw bad_uservalue_cast(text,0);
     
     switch (data_type) {
-        case BYTEARRAY:
+        case RE::Edata_type::BYTEARRAY:
 //            if (!parse_uservalue_bytearray(text, &uservalue[0])) {
 //                return false;
 //            }
             return;
-        case STRING:
+        case RE::Edata_type::STRING:
             uservalue[0].string_value = const_cast<char *>(text.c_str());
             uservalue[0].flags = flags_max;
             return;
@@ -77,7 +77,7 @@ Scanner::string_to_uservalue(const scan_data_type_t &data_type,
                               [](int i) { return (!isspace(i) && i != '_' && i != '\''); });
             pattern.resize(static_cast<size_t>(distance(pattern.begin(), it)));
             
-            auto boilerplate_a = [&](const string &MASK, scan_match_type_t MATCH_TYPE_NO_VALUE) -> bool
+            auto boilerplate_a = [&](const string &MASK, RE::Ematch_type MATCH_TYPE_NO_VALUE) -> bool
             {
                 size_t cursor = pattern.find(MASK);
                 if (cursor == string::npos)  // if mask not found
@@ -88,11 +88,11 @@ Scanner::string_to_uservalue(const scan_data_type_t &data_type,
                 *match_type = MATCH_TYPE_NO_VALUE;
                 return true;
             };
-            if (boilerplate_a("?", MATCHANY))        goto valid_number;  // a1
-            if (boilerplate_a("++", MATCHINCREASED)) goto valid_number;  // a2
-            if (boilerplate_a("--", MATCHDECREASED)) goto valid_number;  // a3
+            if (boilerplate_a("?", RE::Ematch_type::MATCHANY))        goto valid_number;  // a1
+            if (boilerplate_a("++", RE::Ematch_type::MATCHINCREASED)) goto valid_number;  // a2
+            if (boilerplate_a("--", RE::Ematch_type::MATCHDECREASED)) goto valid_number;  // a3
             
-            auto boilerplate_b = [&](const string &MASK, scan_match_type_t MATCH_TYPE, scan_match_type_t MATCH_TYPE_NO_VALUE) -> bool
+            auto boilerplate_b = [&](const string &MASK, RE::Ematch_type MATCH_TYPE, RE::Ematch_type MATCH_TYPE_NO_VALUE) -> bool
             {
                 size_t cursor = pattern.find(MASK);
                 if (cursor == string::npos)  // if mask not found
@@ -109,16 +109,16 @@ Scanner::string_to_uservalue(const scan_data_type_t &data_type,
                 *match_type = MATCH_TYPE;
                 return true;
             };
-            if (boilerplate_b("==", MATCHEQUALTO,     MATCHNOTCHANGED)) goto valid_number; // 1
-            if (boilerplate_b("!=", MATCHNOTEQUALTO,  MATCHCHANGED))    goto valid_number; // 2
-            if (boilerplate_b("+=", MATCHINCREASEDBY, MATCHINCREASED))  goto valid_number; // 3
-            if (boilerplate_b("-=", MATCHDECREASEDBY, MATCHDECREASED))  goto valid_number; // 4
-            if (boilerplate_b(">",  MATCHGREATERTHAN, MATCHINCREASED))  goto valid_number; // 5
-            if (boilerplate_b("<",  MATCHLESSTHAN,    MATCHDECREASED))  goto valid_number; // 6
+            if (boilerplate_b("==", RE::Ematch_type::MATCHEQUALTO,     RE::Ematch_type::MATCHNOTCHANGED)) goto valid_number; // 1
+            if (boilerplate_b("!=", RE::Ematch_type::MATCHNOTEQUALTO,  RE::Ematch_type::MATCHCHANGED))    goto valid_number; // 2
+            if (boilerplate_b("+=", RE::Ematch_type::MATCHINCREASEDBY, RE::Ematch_type::MATCHINCREASED))  goto valid_number; // 3
+            if (boilerplate_b("-=", RE::Ematch_type::MATCHDECREASEDBY, RE::Ematch_type::MATCHDECREASED))  goto valid_number; // 4
+            if (boilerplate_b(">",  RE::Ematch_type::MATCHGREATERTHAN, RE::Ematch_type::MATCHINCREASED))  goto valid_number; // 5
+            if (boilerplate_b("<",  RE::Ematch_type::MATCHLESSTHAN,    RE::Ematch_type::MATCHDECREASED))  goto valid_number; // 6
             
             
             // todo MATCHNOTINRANGE "!= 0..1", MATCHNOTINRANGE / MATCHEXCLUDE
-            auto boilerplate_c = [&](const string &MASK, scan_match_type_t MATCH_TYPE) -> bool
+            auto boilerplate_c = [&](const string &MASK, RE::Ematch_type MATCH_TYPE) -> bool
             {
                 size_t cursor = pattern.find(MASK);
                 if (cursor == string::npos)   // if mask not found
@@ -151,7 +151,7 @@ Scanner::string_to_uservalue(const scan_data_type_t &data_type,
                 *match_type = MATCH_TYPE;
                 return true;
             };
-            if (boilerplate_c("..",  MATCHRANGE)) goto valid_number;
+            if (boilerplate_c("..",  RE::Ematch_type::MATCHRANGE)) goto valid_number;
             
             // ==
             {
@@ -159,20 +159,21 @@ Scanner::string_to_uservalue(const scan_data_type_t &data_type,
                 if (pos != pattern.size()) { // if parse_uservalue_number() not parsed whole possible_number
                     throw bad_uservalue_cast(pattern, pos);
                 }
-                *match_type = MATCHEQUALTO;
+                *match_type = RE::Ematch_type::MATCHEQUALTO;
             }
     }
 
 valid_number:;
-    uservalue[0].flags &= scan_data_type_to_flags[data_type];
-    uservalue[1].flags &= scan_data_type_to_flags[data_type];
+//fixme[high]: data_type_to_flags must be a function
+    uservalue[0].flags &= RE::data_type_to_flags[(uint16_t)data_type];
+    uservalue[1].flags &= RE::data_type_to_flags[(uint16_t)data_type];
     return;
 }
 
 
 
 bio::mapped_file
-Scanner::make_snapshot(const std::string& path)
+RE::Scanner::make_snapshot(const std::string& path)
 {
     using namespace std;
     
@@ -181,7 +182,7 @@ Scanner::make_snapshot(const std::string& path)
         throw invalid_argument("no regions defined");
     
     uintptr_t total_scan_bytes = 0;
-    for(const region_t& region : handle->regions)
+    for(const Cregion& region : handle->regions)
         total_scan_bytes += region.size;
     if (total_scan_bytes == 0)
         throw invalid_argument("zero bytes to scan");
@@ -201,7 +202,7 @@ Scanner::make_snapshot(const std::string& path)
     ssize_t copied;
     
     /// Snapshot goes here
-    for(region_t region : handle->regions) {
+    for(RE::Cregion region : handle->regions) {
         copied = handle->read(snapshot+2*sizeof(uintptr_t), region.address, region.size);
         if (copied < 0) {
 //            clog<<"error: "<<std::strerror(errno)<<", region: "<<region<<endl;
@@ -225,10 +226,10 @@ Scanner::make_snapshot(const std::string& path)
 
 
 bool
-Scanner::scan(matches_t& matches_sink,
-              const scan_data_type_t& data_type,
-              const uservalue_t *uservalue,
-              const scan_match_type_t& match_type)
+RE::Scanner::scan(matches_t& matches_sink,
+                  const Edata_type& data_type,
+                  const Cuservalue *uservalue,
+                  const Ematch_type& match_type)
 {
     using namespace std;
     using namespace std::chrono;
@@ -236,7 +237,7 @@ Scanner::scan(matches_t& matches_sink,
 //    high_resolution_clock::time_point timestamp;
 //    double i_total = 0;
 
-    if (!sm_choose_scanroutine(data_type, match_type, uservalue, false)) {
+    if (!RE::sm_choose_scanroutine(data_type, match_type, uservalue, false)) {
         printf("unsupported scan for current data type.\n");
         return false;
     }
@@ -259,13 +260,13 @@ Scanner::scan(matches_t& matches_sink,
     
     const mem64_t *memory_ptr = nullptr;
     unsigned int match_length;
-    uint16_t checkflags;
+    RE::match_flags checkflags;
     
     ssize_t copied;
     size_t required_extra_bytes_to_record = 0;
     
     /* check every memory region */
-    for(const region_t& region : handle->regions) {
+    for(const RE::Cregion& region : handle->regions) {
         /* For every offset, check if we have a match. */
         size_t memlength = region.size;
         size_t buffer_size = 0;
@@ -328,15 +329,15 @@ Scanner::scan(matches_t& matches_sink,
 
 
 bool
-Scanner::scan_next(const matches_t& matches_source,
-                   matches_t& matches_sink,
-                   const scan_data_type_t& data_type,
-                   const uservalue_t *uservalue,
-                   scan_match_type_t match_type)
+RE::Scanner::scan_next(const matches_t& matches_source,
+                       matches_t& matches_sink,
+                       const RE::Edata_type& data_type,
+                       const RE::Cuservalue *uservalue,
+                       RE::Ematch_type match_type)
 {
     using namespace std;
     
-    if (!sm_choose_scanroutine(data_type, match_type, uservalue, 0)) {
+    if (!RE::sm_choose_scanroutine(data_type, match_type, uservalue, 0)) {
         printf("unsupported scan for current data type.\n");
         return false;
     }
@@ -355,7 +356,7 @@ Scanner::scan_next(const matches_t& matches_source,
             unsigned int match_length = 0;
             mem64_t *memory_ptr;
             size_t memlength;
-            uint16_t checkflags = flags_empty;
+            RE::match_flags checkflags = flags_empty;
 
             uint16_t old_flags = swath.data[reading_iterator].flags;
             size_t old_length = flags_to_memlength(data_type, old_flags);
@@ -403,7 +404,7 @@ Scanner::scan_next(const matches_t& matches_source,
 
 
 bool
-Scanner::scan_reset()
+RE::Scanner::scan_reset()
 {
 //    snapshots.clear();
 //    matches.clear();

@@ -43,7 +43,7 @@ MainWindow::MainWindow()
     ///DEBUG
     m_window_scan = new ScanWindow();
     m_window_scan->show();
-    globals.scanner = new Scanner(globals.handle);
+    globals.scanner = new RE::Scanner(globals.handle);
     ///
 
     this->show_all_children();
