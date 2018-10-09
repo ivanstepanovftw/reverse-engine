@@ -42,8 +42,8 @@
 
 
 #ifdef __GNUC__
-# define LIKELY(x)     __builtin_expect(!!(x), 1)
-# define UNLIKELY(x)   __builtin_expect(!!(x), 0)
+# define LIKELY(x)     (__builtin_expect(!!(x), 1))
+# define UNLIKELY(x)   (__builtin_expect(!!(x), 0))
 #else
 # define LIKELY(x)     (x)
 # define UNLIKELY(x)   (x)
@@ -53,22 +53,21 @@
 namespace RE {
 
 /** @arg what: any number
- * @return: number representer */
+ * @return: string number represented as hex */
 template <typename T>
 std::string HEX(T&& what)
 {
     std::stringstream ss;
-    ss<<std::hex<<std::setw(sizeof(T))<<std::setfill('0')<<std::showbase<<what;
-//    ss<<hex<<showbase<<what<<dec;
+    ss<<"0x"<<std::hex<<std::setw(sizeof(T))<<std::setfill('0')<<std::noshowbase<<+what;
     return ss.str();
 }
 
 
 enum Eregion_mode : uint8_t
 {
-    readable   = 1u<<0u,
+    executable = 1u<<0u,
     writable   = 1u<<1u,
-    executable = 1u<<2u,
+    readable   = 1u<<2u,
     shared     = 1u<<3u,
 };
 
@@ -95,11 +94,17 @@ public:
 
     friend std::ostream& operator<<(std::ostream& outputStream, const Cregion& region)
     {
+
         return outputStream<<"{"
-                           <<"filename: '"<<region.filename
-                           <<"', address: "<<HEX(region.address)
+                           <<"address: "<<HEX(region.address)
+                           <<", end: "<<HEX(region.address+region.size)
+                           <<", flags: "
+                           <<(region.flags&shared?"s":"-")
+                           <<(region.flags&readable?"r":"-")
+                           <<(region.flags&writable?"w":"-")
+                           <<(region.flags&executable?"x":"-")
                            <<", size: "<<HEX(region.size)
-                           <<", flags: "<<std::bitset<4>(region.flags)
+                           <<", filename: "<<region.filename
                            <<"}";
     }
 };
@@ -201,8 +206,11 @@ static uint16_t data_type_to_flags[] = {
         [(uint16_t) Edata_type::STRING]     = flags_max
 };
 
-static inline
 size_t
+static
+inline
+//__attribute__((always_inline))
+//__attribute__((noinline))
 flags_to_memlength(Edata_type scan_data_type, uint16_t flags)
 {
     switch (scan_data_type) {
@@ -217,8 +225,8 @@ flags_to_memlength(Edata_type scan_data_type, uint16_t flags)
     }
 }
 
-static inline
 size_t
+static
 flags_to_type(Edata_type scan_data_type, uint16_t flags)
 {
     switch (scan_data_type) {

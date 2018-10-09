@@ -11,11 +11,6 @@ using namespace std;
 using namespace std::chrono;
 
 int main() {
-
-    char *data;
-    delete[] data;
-
-
     string target = "FakeMem";
     string search_for = "0";
 
@@ -28,7 +23,8 @@ int main() {
 
     high_resolution_clock::time_point timestamp;
 
-    RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
+//    RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
+    RE::Edata_type data_type = RE::Edata_type::INTEGER8;
     RE::Cuservalue uservalue[2];
     RE::Ematch_type match_type;
     try {
@@ -39,37 +35,36 @@ int main() {
         return 0;
     }
 
-    globals.scans.last = new RE::matches_t();
     globals.scans.first = new RE::matches_t();
-
+    globals.scans.prev = new RE::matches_t();
+    globals.scans.last = new RE::matches_t();
 
     timestamp = high_resolution_clock::now();
-    globals.scanner->scan(*globals.scans.last, data_type, uservalue, match_type);
-    clog<<"Scan 1/2 done in: "
+    globals.scanner->scan(*globals.scans.first, data_type, uservalue, match_type);
+    clog<<"Scan 1/3 done in: "
+        <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+        <<" seconds"<<endl;
+    assert(globals.scans.first->size() == globals.scans.first->matches_size);
+    clog<<"size: {counted: "<<globals.scans.first->size()
+            <<", matches_size: "<<globals.scans.first->matches_size<<"}"<<endl;
+//    clog<<"mem_virt: "<<globals.scans.first->mem_virt()<<endl;
+//    clog<<"mem_allo: "<<globals.scans.first->mem_allo()<<endl;
+//    clog<<"swaths.size: "<<globals.scans.first->swaths.size()<<endl;
+//    clog<<"swaths.capacity: "<<globals.scans.first->swaths.capacity()<<endl;
+
+    timestamp = high_resolution_clock::now();
+    globals.scanner->scan_next(*globals.scans.first, *globals.scans.last, data_type, uservalue, match_type);
+    clog<<"Scan 2/3 done in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
 
-
-//    assert(globals.scans.last->size() == globals.scans.last->matches_size);
-    clog<<"globals.scans.last->size(): "<<globals.scans.last->size()<<endl;
-    clog<<"globals.scans.last->matches_size: "<<globals.scans.last->matches_size<<endl;
-    clog<<"swaths_count: "<<globals.scans.last->swaths_count<<endl;
-    clog<<"swaths_allocated: "<<globals.scans.last->swaths_allocated<<endl;
-    clog<<"size: "<<globals.scans.last->size()<<endl;
-    clog<<"virt: "<<globals.scans.last->virt()<<endl;
-    clog<<"allo: "<<globals.scans.last->allo()<<endl;
-
-    timestamp = high_resolution_clock::now();
-    globals.scanner->scan_next(*globals.scans.last, *globals.scans.first, data_type, uservalue, match_type);
-    clog<<"Scan 2/2 done in: "
-        <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
-
-    clog<<"swaths_count: "<<globals.scans.first->swaths_count<<endl;
-    clog<<"swaths_allocated: "<<globals.scans.first->swaths_allocated<<endl;
-    clog<<"size: "<<globals.scans.first->size()<<endl;
-    clog<<"virt: "<<globals.scans.first->virt()<<endl;
-    clog<<"allo: "<<globals.scans.first->allo()<<endl;
+    assert(globals.scans.last->size() == globals.scans.last->matches_size);
+    clog<<"size: {counted: "<<globals.scans.last->size()
+            <<", matches_size: "<<globals.scans.last->matches_size<<"}"<<endl;
+//    clog<<"mem_virt: "<<globals.scans.last->mem_virt()<<endl;
+//    clog<<"mem_allo: "<<globals.scans.last->mem_allo()<<endl;
+//    clog<<"swaths.size: "<<globals.scans.last->swaths.size()<<endl;
+//    clog<<"swaths.capacity: "<<globals.scans.last->swaths.capacity()<<endl;
 
     return 0;
 }

@@ -1,4 +1,4 @@
-# Reverse Engine
+# Reverse Engine (pre-alpha)
 
 Reverse Engine is a reverse engineering tool inspired by Cheat Engine.
 You can also create [trainers](./trainer.cc) for any program.

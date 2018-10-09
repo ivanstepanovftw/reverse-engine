@@ -25,6 +25,7 @@
 #include "scanner.hh"
 #include "value.hh"
 #include "scanroutines.hh"
+#include "fix_enum.hh"
 
 
 namespace bio = boost::iostreams;
@@ -182,7 +183,7 @@ RE::Scanner::make_snapshot(const std::string& path)
         throw invalid_argument("no regions defined");
     
     uintptr_t total_scan_bytes = 0;
-    for(const Cregion& region : handle->regions)
+    for(const RE::Cregion& region : handle->regions)
         total_scan_bytes += region.size;
     if (total_scan_bytes == 0)
         throw invalid_argument("zero bytes to scan");
@@ -241,52 +242,51 @@ RE::Scanner::scan(matches_t& matches_sink,
         printf("unsupported scan for current data type.\n");
         return false;
     }
-    
+
     scan_progress = 0.0;
     stop_flag = false;
-    
+
     /* The maximum logical size is a comfortable 1MiB (increasing it does not help).
      * The actual allocation is that plus the rounded size of the maximum possible VLT.
      * This is needed because the last byte might be scanned as max size VLT,
      * thus need 2^16 - 2 extra bytes after it */
-    constexpr size_t MAX_BUFFER_SIZE = 1 * 1024 * 1024;        // 32 MiB = 0x2000000
-//    constexpr size_t MAX_BUFFER_SIZE = 1u<<20u;
-    constexpr size_t MAX_ALLOC_SIZE = MAX_BUFFER_SIZE + (1u<<16u);
-    
+    constexpr size_t MAX_BUFFER_SIZE = 128_KiB;
+    constexpr size_t MAX_ALLOC_SIZE = MAX_BUFFER_SIZE+64_KiB;
+
     /* allocate data array */
     uint8_t *buffer = new uint8_t[MAX_ALLOC_SIZE];
     uint8_t *buf_pos = buffer;
     uintptr_t reg_pos;
-    
+
     const mem64_t *memory_ptr = nullptr;
     unsigned int match_length;
     RE::match_flags checkflags;
-    
+
     ssize_t copied;
     size_t required_extra_bytes_to_record = 0;
-    
+
     /* check every memory region */
     for(const RE::Cregion& region : handle->regions) {
         /* For every offset, check if we have a match. */
         size_t memlength = region.size;
         size_t buffer_size = 0;
         reg_pos = region.address;
-        
+
         for ( ; ; memlength--, buffer_size--, reg_pos++, buf_pos++) {
             /* check if the buffer is finished (or we just started) */
-            if (UNLIKELY(buffer_size == 0)) {
+            if UNLIKELY(buffer_size == 0) {
                 /* the whole region is finished */
                 if (memlength == 0) break;
-                
+
                 /* stop scanning if asked to */
                 if (stop_flag) break;
-                
+
                 /* load the next buffer block */
                 size_t alloc_size = MIN(memlength, MAX_ALLOC_SIZE);
                 copied = handle->read(buffer, reg_pos, alloc_size);
-                if (UNLIKELY(copied < 0))
+                if UNLIKELY(copied < 0)
                     break;
-                else if (UNLIKELY(copied < alloc_size)) {
+                else if UNLIKELY(copied < alloc_size) {
                     /* the region ends here, update `memlength` */
                     memlength = copied;
                     bzero(buffer + copied, MAX_ALLOC_SIZE - copied);
@@ -298,24 +298,22 @@ RE::Scanner::scan(matches_t& matches_sink,
                 buffer_size = memlength <= MAX_ALLOC_SIZE ? memlength : MAX_BUFFER_SIZE;
                 buf_pos = buffer;
             }
-    
+
             memory_ptr = reinterpret_cast<mem64_t *>(buf_pos);
             checkflags = flags_empty;
-            
+
             /* check if we have a match */
-//            timestamp = high_resolution_clock::now();
-            match_length = (*sm_scan_routine)(memory_ptr, memlength, NULL, uservalue, checkflags);
-            if (UNLIKELY(match_length > 0)) {
+            match_length = (*sm_scan_routine)(memory_ptr, memlength, nullptr, uservalue, checkflags);
+//            if UNLIKELY(match_length > 0) {
+            if (match_length > 0) {
                 assert(match_length <= memlength);
                 matches_sink.add_element(reg_pos, memory_ptr, checkflags);
-                matches_sink.matches_size++;
                 required_extra_bytes_to_record = match_length - 1;
             }
-            else if (required_extra_bytes_to_record) {
+            else if (required_extra_bytes_to_record > 0) {
                 matches_sink.add_element(reg_pos, memory_ptr, flags_empty);
                 required_extra_bytes_to_record--;
             }
-//            i_total += duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count();
         }
         if (stop_flag)
             break;
@@ -329,33 +327,34 @@ RE::Scanner::scan(matches_t& matches_sink,
 
 
 bool
-RE::Scanner::scan_next(const matches_t& matches_source,
+RE::Scanner::scan_next(matches_t& matches_source,
                        matches_t& matches_sink,
                        const RE::Edata_type& data_type,
                        const RE::Cuservalue *uservalue,
                        RE::Ematch_type match_type)
 {
     using namespace std;
-    
-    if (!RE::sm_choose_scanroutine(data_type, match_type, uservalue, 0)) {
+
+    if (!RE::sm_choose_scanroutine(data_type, match_type, uservalue, false)) {
         printf("unsupported scan for current data type.\n");
         return false;
     }
-    
-    size_t reading_iterator = 0;
+
     size_t required_extra_bytes_to_record = 0;
-    matches_sink.matches_size = 0;
-    delete[] matches_sink.swaths;
-    scan_progress = 0.0;
-    stop_flag = false;
+//    scan_progress = 0.0;
+//    stop_flag = false;
+
+//    for(int i=0; i<2; i++)
+//        clog<<"--------------------"<<endl;
+
+    mem64_t memory_ptr{};
 
     for(size_t s = 0; s < matches_source.swaths_count; s++) {
-        const swath_t& swath = matches_source.swaths[s];
+        swath_t& swath = matches_source.swaths[s];
         size_t bytes_remain = swath.data_count;
+        size_t reading_iterator = 0;
         while(bytes_remain) {
             unsigned int match_length = 0;
-            mem64_t *memory_ptr;
-            size_t memlength;
             RE::match_flags checkflags = flags_empty;
 
             uint16_t old_flags = swath.data[reading_iterator].flags;
@@ -363,38 +362,161 @@ RE::Scanner::scan_next(const matches_t& matches_source,
             uintptr_t address = swath.base_address + reading_iterator;
 
             /* read value from this address */
-            if (UNLIKELY(handle->read(memory_ptr, address, old_length) < 0)) {
+//2406215 3400198
+            ssize_t memlength = handle->cached.read(&memory_ptr, address, old_length);
+            if UNLIKELY(memlength < 0) {
                 /* If we can't look at the data here, just abort the whole recording, something bad happened */
                 required_extra_bytes_to_record = 0;
             }
             /* Test only valid old matches */
             else if (old_flags != flags_empty)  {
-                value_t old_val = swath.data_to_val_aux(reading_iterator, swath.data_count);
+                value_t old_val;
+                old_val = swath.data_to_val_aux(reading_iterator, swath.data_count);
+#ifdef inlined_
+                size_t max_bytes = swath.data_count - reading_iterator;
+
+                /* Init all possible flags in a single go.
+                 * Also init length to the maximum possible value */
+                old_val.flags = flags_max;
+
+                /* NOTE: This does the right thing for VLT because the flags are in
+                 * the same order as the number representation (for both endians), so
+                 * that the zeroing of a flag does not change useful bits of `length`. */
+                if (max_bytes > 8)
+                    max_bytes = 8;
+                if (max_bytes < 8) old_val.flags &= ~flags_64b;
+                if (max_bytes < 4) old_val.flags &= ~flags_32b;
+                if (max_bytes < 2) old_val.flags &= ~flags_16b;
+                if (max_bytes < 1) old_val.flags = flags_empty;
+
+                /* Unrolling this will improve performance by 40% for gcc.
+                 * TODO to investigate */
+#ifdef loop_
+//                #pragma unroll(8)
+//                #pragma GCC ivdep
+                #pragma GCC unroll 8
+                for(uint8_t i = 0; i < max_bytes; i++) {
+                    /* Both uint8_t, no explicit casting needed */
+                    old_val.bytes[i] = swath.data[reading_iterator + i].byte;
+                }
+#endif
+#ifdef unrolled1_
+                if (max_bytes > 0) { old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                if (max_bytes > 1) { old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
+                if (max_bytes > 2) { old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
+                if (max_bytes > 3) { old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
+                if (max_bytes > 4) { old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
+                if (max_bytes > 5) { old_val.bytes[5] = swath.data[reading_iterator + 5].byte;
+                if (max_bytes > 6) { old_val.bytes[6] = swath.data[reading_iterator + 6].byte;
+                if (max_bytes > 7) { old_val.bytes[7] = swath.data[reading_iterator + 7].byte;
+                }}}}}}}}
+#endif
+#ifdef unrolled2_
+                switch (max_bytes) {
+                    case 8:
+                        old_val.bytes[7] = swath.data[reading_iterator + 7].byte;
+                    case 7:
+                        old_val.bytes[6] = swath.data[reading_iterator + 6].byte;
+                    case 6:
+                        old_val.bytes[5] = swath.data[reading_iterator + 5].byte;
+                    case 5:
+                        old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
+                    case 4:
+                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
+                    case 3:
+                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
+                    case 2:
+                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
+                    case 1:
+                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                }
+#endif
+#ifdef unrolled3_
+                switch (max_bytes) {
+                    case 1:
+                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                        break;
+                    case 2:
+                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
+                        break;
+                    case 3:
+                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
+                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
+                        break;
+                    case 4:
+                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
+                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
+                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
+                        break;
+                    case 5:
+                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
+                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
+                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
+                        old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
+                        break;
+                    case 6:
+                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
+                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
+                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
+                        old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
+                        old_val.bytes[5] = swath.data[reading_iterator + 5].byte;
+                        break;
+                    case 7:
+                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
+                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
+                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
+                        old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
+                        old_val.bytes[5] = swath.data[reading_iterator + 5].byte;
+                        old_val.bytes[6] = swath.data[reading_iterator + 6].byte;
+                        break;
+                    case 8:
+                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
+                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
+                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
+                        old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
+                        old_val.bytes[5] = swath.data[reading_iterator + 5].byte;
+                        old_val.bytes[6] = swath.data[reading_iterator + 6].byte;
+                        old_val.bytes[7] = swath.data[reading_iterator + 7].byte;
+                        break;
+                }
+#endif
+
+                /* Truncate to the old flags, which are stored with the first matched byte */
+                old_val.flags &= swath.data[reading_iterator].flags;
+#endif
+
                 memlength = old_length < memlength ? old_length : memlength;
 
                 checkflags = flags_empty;
 
-                match_length = (*sm_scan_routine)(memory_ptr, memlength, &old_val, uservalue, checkflags);
+                match_length = (*sm_scan_routine)(&memory_ptr, memlength, &old_val, uservalue, checkflags);
             }
 
             if (match_length > 0) {
-                assert(match_length <= memlength);
-
                 /* Still a candidate. Write data.
                    - We can get away with overwriting in the same array because it is guaranteed to take up the same number of bytes or fewer,
                      and because we copied out the reading swath metadata already.
                    - We can get away with assuming that the pointers will stay valid,
                      because as we never add more data to the array than there was before, it will not reallocate. */
-                matches_sink.add_element(address, memory_ptr, checkflags);
+//                clog<<"matches_sink.matches_size: "<<matches_sink.matches_size<<endl;
+                matches_sink.add_element(address, &memory_ptr, checkflags);
                 matches_sink.matches_size++;
                 required_extra_bytes_to_record = match_length - 1;
             }
             else if (required_extra_bytes_to_record) {
-                matches_sink.add_element(address, memory_ptr, flags_empty);
+                matches_sink.add_element(address, &memory_ptr, flags_empty);
                 required_extra_bytes_to_record--;
             }
 
             bytes_remain--;
+            reading_iterator++;
         }
     }
 

@@ -36,6 +36,7 @@
 #include <dirent.h> //#include <filesystem>
 #include "value.hh"
 #include "external.hh"
+#include "fix_enum.hh"
 
 
 //namespace fs = std::filesystem;
@@ -123,15 +124,15 @@ public:
     }
 
 
-    Handle() {
+    Handle() : cached(*this) {
         this->pid = 0;
     }
 
-    explicit Handle(pid_t pid) {
+    explicit Handle(pid_t pid) : cached(*this) {
         attach(pid);
     }
 
-    explicit Handle(const std::string& title) {
+    explicit Handle(const std::string& title) : cached(*this) {
         attach(title);
     }
 
@@ -149,22 +150,26 @@ public:
     }
 
     std::string
+    inline __attribute__((always_inline))
     get_path() {
         return get_symbolic_link_target("/proc/" + std::to_string(pid) + "/exe");
     }
 
     std::string
+    inline __attribute__((always_inline))
     get_working_directory() {
         return get_symbolic_link_target("/proc/" + std::to_string(pid) + "/cwd");
     }
 
     /// Checking
     bool
+    inline __attribute__((always_inline))
     is_valid() {
         return pid != 0;
     }
 
     bool
+    inline __attribute__((always_inline))
     is_running() {
         using namespace std;
         static struct stat sts{};
@@ -173,12 +178,14 @@ public:
     }
 
     bool
+    inline __attribute__((always_inline))
     is_good() {
         return is_valid() && is_running();
     }
 
     /// Read_from/write_to this handle
     ssize_t
+    inline __attribute__((always_inline))
     read(void *out, uintptr_t address, size_t size) {
         static struct iovec local[1];
         static struct iovec remote[1];
@@ -190,6 +197,7 @@ public:
     }
 
     ssize_t
+    inline __attribute__((always_inline))
     write(uintptr_t address, void *in, size_t size) {
         static struct iovec local[1];
         static struct iovec remote[1];
@@ -199,6 +207,121 @@ public:
         remote[0].iov_len = size;
         return process_vm_writev(pid, local, 1, remote, 1, 0);
     }
+
+/* ptrace peek buffer, used by peekdata() as a mirror of the process memory.
+ * Max size is the maximum allowed rounded VLT scan length, aka UINT16_MAX,
+ * plus a `PEEKDATA_CHUNK`, to store a full extra chunk for maneuverability */
+    // FIXME[critical]: not returning negative values
+    /*     1048576 allocated
+     * read, read, PEEKDATA_CHUNK: 1048, MAX_this->SIZE: 6_MiB+PEEKDATA_CHUNK
+     * 1:  2480510
+     * 2:  2160006 2480510-2160006=320504=0x4E3F8
+     * 3:  1963873 2160006-1963873=196133=0x2FE25
+     * cached, read, PEEKDATA_CHUNK: 1048, MAX_this->SIZE: 6_MiB+PEEKDATA_CHUNK
+     * 1:  2492798
+     * 2:  2160006 2492798-2160006=332792=0x513F8
+     * 3:  1963873 2160006-1963873=196133=0x2FE25
+     * read, cached, PEEKDATA_CHUNK: 1048, MAX_this->SIZE: 6_MiB+PEEKDATA_CHUNK
+     * 1:  2480510
+     * 2:  2160013 2480510-2160013=320497=0x4E3F1
+     * 3:  1963885 2160013-1963885=196128=0x2FE20
+     * cached, cached, PEEKDATA_CHUNK: 1048, MAX_this->SIZE: 6_MiB+PEEKDATA_CHUNK
+     * 1:  2492798
+     * 2:  2171333 2492798-2171333=321465=0x4E7B9
+     * 3:  1974076 2171333-1974076=197257=0x30289
+     *
+     */
+
+    class Cached
+    {
+        Handle& _parent;
+        const static size_t PEEKDATA_CHUNK = 2_KiB;
+        const static size_t MAX_PEEKBUF_SIZE = 64_KiB + PEEKDATA_CHUNK;
+    public:
+        uintptr_t base = 0; // base address of cached region
+        std::vector<uint8_t> cache;
+        size_t size; // amount of valid memory stored (in bytes)
+
+        explicit Cached(Handle& parent) : _parent(parent) {
+            cache.resize(MAX_PEEKBUF_SIZE);
+        }
+
+        ssize_t
+        inline
+//        __attribute__((always_inline))
+//        __attribute__((noinline))
+        read(void *out, uintptr_t address, size_t size)
+        {
+            unsigned int i;
+            uintptr_t missing_bytes;
+
+            assert(cache.size() <= MAX_PEEKBUF_SIZE);
+
+            /* check if we have a full cache hit */
+            if (this->base &&
+                address >= this->base &&
+                (unsigned long) (address + size - this->base) <= cache.size())
+            {
+                out = (mem64_t*)&this->cache[address - this->base];
+                return this->base - address + cache.size();
+            }
+            else if (this->base &&
+                     address >= this->base &&
+                     (unsigned long) (address - this->base) < cache.size())
+            {
+                assert(cache.size() != 0);
+
+                /* partial hit, we have some of the data but not all, so remove old entries - shift the frame by as far as is necessary */
+                missing_bytes = (address + size) - (this->base + cache.size());
+                /* round up to the nearest PEEKDATA_CHUNK multiple, that is what could
+                 * potentially be read and we have to fit it all */
+                missing_bytes = PEEKDATA_CHUNK * (1 + (missing_bytes-1) / PEEKDATA_CHUNK);
+
+                /* head shift if necessary */
+                if (cache.size() + missing_bytes > MAX_PEEKBUF_SIZE)
+                {
+                    uintptr_t shift_size = address - this->base;
+                    shift_size = PEEKDATA_CHUNK * (shift_size / PEEKDATA_CHUNK);
+
+                    memmove(&this->cache[0], &this->cache[shift_size], cache.size()-shift_size);
+
+                    cache.resize(cache.size()-shift_size);
+                    this->base += shift_size;
+                }
+            }
+            else {
+                /* cache miss, invalidate the cache */
+                missing_bytes = size;
+                cache.resize(0);
+                this->base = address;
+            }
+
+            /* we need to retrieve memory to complete the request */
+            for (i = 0; i < missing_bytes; i += PEEKDATA_CHUNK)
+            {
+                const uintptr_t target_address = this->base + cache.size();
+                ssize_t len = _parent.read(&this->cache[cache.size()], target_address, PEEKDATA_CHUNK);
+
+                /* check if the read succeeded */
+                if (UNLIKELY(len < PEEKDATA_CHUNK)) {
+                    if (len == 0) {
+                        /* hard failure to retrieve memory */
+                        return 0;
+                    }
+                    /* go ahead with the partial read and stop the gathering process */
+                    cache.resize(cache.size()+len);
+                    break;
+                }
+                /* otherwise, the read worked */
+                cache.resize(cache.size()+PEEKDATA_CHUNK);
+            }
+
+            /* return result to caller */
+            out = (mem64_t*)&this->cache[address - this->base];
+            return this->base - address + cache.size();
+        }
+
+    } cached;
 
     /// Modules
     // fixme incredibly large function
@@ -309,7 +432,6 @@ public:
         last = regions.size();
         while (first < last) {
             mid = (first + last) / 2;
-            clog << "mid: " << mid << ", region: " << regions[mid] << endl;
             if (address < regions[mid].address)
                 last = mid - 1;
             else if (address >= regions[mid].address + regions[mid].size)

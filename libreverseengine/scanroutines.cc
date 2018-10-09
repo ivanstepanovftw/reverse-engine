@@ -274,7 +274,7 @@ DEFINE_FLOAT_ROUTINE_FOR_ALL_FLOAT_TYPES(DECREASED, <, old_value, 0, )
 #define DEFINE_INTEGER_OPERATIONBY_ROUTINE(DATAWIDTH, NAME, OP) \
     extern inline unsigned int scan_routine_INTEGER##DATAWIDTH##_##NAME SCAN_ROUTINE_ARGUMENTS \
     { \
-        if (memlength < (DATAWIDTH)/8) return 0; \
+        if (memlength >= (DATAWIDTH)/8) return 0; \
         int ret = 0; \
         if (old_value->flags & RE::flag_i##DATAWIDTH && user_value->flags & RE::flag_i##DATAWIDTH \
         &&  memory_ptr->i##DATAWIDTH == old_value->i##DATAWIDTH OP user_value->i##DATAWIDTH) \
@@ -748,7 +748,8 @@ static uint16_t possible_flags_for_scan_data_type[] = {
     [(uint16_t)RE::Edata_type::STRING]     = RE::flags_max
 };
 
-bool RE::sm_choose_scanroutine(RE::Edata_type dt, RE::Ematch_type mt, const RE::Cuservalue* uval, bool reverse_endianness)
+bool
+RE::sm_choose_scanroutine(RE::Edata_type dt, RE::Ematch_type mt, const RE::Cuservalue* uval, bool reverse_endianness)
 {
     uint16_t uflags = uval ? uval->flags : RE::flags_empty;
 

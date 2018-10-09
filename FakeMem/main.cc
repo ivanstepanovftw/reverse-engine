@@ -42,8 +42,8 @@ print_help() {
     cout<<"---------------------------------"<<endl;
     cout<<" Command  | Description          "<<endl;
     cout<<"----------+----------------------"<<endl;
-    cout<<" > N      | reallocate N bytes     "<<endl;
-    cout<<" > -N     | reallocate N mebibytes "<<endl;
+    cout<<" > N      | reallocate N bytes   "<<endl;
+    cout<<" > -N     | reallocate N MiB     "<<endl;
     cout<<" > del    | delete an array      "<<endl;
     cout<<" > info   | prints info          "<<endl;
     cout<<" > rand   | turn on/off random   "<<endl;
@@ -69,8 +69,7 @@ print_info() {
 void
 reallocate() {
 //fixme govnocod
-    if (array)
-        delete [] array;
+    delete[] array;
     ssize_t to_allocate = m2b(mib);
     cout<<"to_allocate: "<<to_allocate<<" bytes"<<endl;
     array = new char[to_allocate];

@@ -212,21 +212,12 @@ ScanWindow::create_saved_list()
 
 
 
-template<typename T>
-void ScanWindow::add_row(RE::match_t *val, const char *type_string)
+void ScanWindow::add_row(RE::match_t *val)
 {
-    char *address_string;
-    const uint8_t *b = reinterpret_cast<const uint8_t *>(&val->address);
-    asprintf(&address_string, /*0x*/"%02x%02x%02x%02x%02x%02x", b[5], b[4], b[3], b[2], b[1], b[0]);
-    
-    T value;
-    globals.handle->read
-            (&value, val->address, sizeof(T));
-//    clog<<"address: "<<hex<<mem->address.data<<dec<<", value: "<<value<<endl;
     Gtk::TreeModel::Row row = *(ref_tree_output->append());
-    row[columns_output.m_col_address] = address_string;
-    row[columns_output.m_col_value] = to_string(value);
-    row[columns_output.m_col_value_type] = type_string;
+    row[columns_output.m_col_address] = val->address2str();
+    row[columns_output.m_col_value] = val->val2str();
+    row[columns_output.m_col_value_type] = val->flag2str();
 }
 
 
@@ -285,13 +276,14 @@ ScanWindow::on_button_first_scan()
     }
     
     timestamp = high_resolution_clock::now();
-    globals.scanner->scan(*globals.scans.last, data_type, uservalue, match_type);
+    globals.scans.first = new RE::matches_t();
+    globals.scanner->scan(*globals.scans.first, data_type, uservalue, match_type);
     clog<<"Scan 1/1 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
     
     
     ref_tree_output->clear();
-    ssize_t output_count = globals.scans.last->size();
+    ssize_t output_count = globals.scans.first->size();
     char *label_count_text;
     asprintf(&label_count_text, "Found: %li", output_count);
     label_found->set_text(label_count_text);
@@ -304,19 +296,9 @@ ScanWindow::on_button_first_scan()
     }
     
     // For each address, that scanner found, add row to tree_output
-    for(size_t i = 0; i < globals.scans.last->size(); i++) {
-        RE::match_t val = globals.scans.last->get(i, data_type);
-
-        if      (val.flags & RE::flag_i64) add_row<int64_t> (&val, "i64");
-        else if (val.flags & RE::flag_i32) add_row<int32_t> (&val, "i32");
-        else if (val.flags & RE::flag_i16) add_row<int16_t> (&val, "i16");
-        else if (val.flags & RE::flag_i8)  add_row<int8_t>  (&val, "i8");
-        else if (val.flags & RE::flag_u64) add_row<uint64_t>(&val, "u64");
-        else if (val.flags & RE::flag_u32) add_row<uint32_t>(&val, "u32");
-        else if (val.flags & RE::flag_u16) add_row<uint16_t>(&val, "u16");
-        else if (val.flags & RE::flag_u8)  add_row<uint8_t> (&val, "u8");
-        else if (val.flags & RE::flag_f64) add_row<double>  (&val, "f64");
-        else if (val.flags & RE::flag_f32) add_row<float>   (&val, "f32");
+    for(size_t i = 0; i < globals.scans.first->size(); i++) {
+        RE::match_t val = globals.scans.first->get(i, data_type);
+        add_row(&val);
     }
     
     // Continue refresh values inside Scanner output
@@ -383,6 +365,7 @@ ScanWindow::on_button_next_scan()
 //        <<" seconds"<<endl;
     
     timestamp = high_resolution_clock::now();
+    globals.scans.last = new RE::matches_t();
     globals.scanner->scan_next(*globals.scans.first, *globals.scans.last, data_type, uservalue, match_type);
     clog<<"Scan result: "<<globals.scans.last->size()
         <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
@@ -401,18 +384,9 @@ ScanWindow::on_button_next_scan()
     }
     
     // For each address, that scanner found, add row to tree_output
-    for(int i = 0; i < globals.scans.last->size(); i++) {
+    for(size_t i = 0; i < globals.scans.last->size(); i++) {
         RE::match_t val = globals.scans.last->get(i, data_type);
-        if      (val.flags & RE::flag_i64) add_row<int64_t> (&val, "i64");
-        else if (val.flags & RE::flag_i32) add_row<int32_t> (&val, "i32");
-        else if (val.flags & RE::flag_i16) add_row<int16_t> (&val, "i16");
-        else if (val.flags & RE::flag_i8)  add_row<int8_t>  (&val, "i8");
-        else if (val.flags & RE::flag_u64) add_row<uint64_t>(&val, "u64");
-        else if (val.flags & RE::flag_u32) add_row<uint32_t>(&val, "u32");
-        else if (val.flags & RE::flag_u16) add_row<uint16_t>(&val, "u16");
-        else if (val.flags & RE::flag_u8)  add_row<uint8_t> (&val, "u8");
-        else if (val.flags & RE::flag_f64) add_row<double>  (&val, "f64");
-        else if (val.flags & RE::flag_f32) add_row<float>   (&val, "f32");
+        add_row(&val);
     }
     
     

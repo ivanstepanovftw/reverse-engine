@@ -12,7 +12,7 @@ add_library(libreverseengine
         scanner.hh      scanner.cc
         value.hh        value.cc
         scanroutines.hh scanroutines.cc
-        tests/fakemem.first_search.cc fix_enum.hh)
+        tests/fakemem.first_search.cc fix_enum.hh storage.cc storage.hh)
 
 add_executable(fakemem_first
         tests/fakemem.first_search.cc
