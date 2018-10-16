@@ -20,8 +20,7 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef RE_CORE_HH
-#define RE_CORE_HH
+#pragma once
 
 #include <sys/uio.h>
 #include <iostream>
@@ -150,26 +149,26 @@ public:
     }
 
     std::string
-    inline __attribute__((always_inline))
+    inline
     get_path() {
         return get_symbolic_link_target("/proc/" + std::to_string(pid) + "/exe");
     }
 
     std::string
-    inline __attribute__((always_inline))
+    inline
     get_working_directory() {
         return get_symbolic_link_target("/proc/" + std::to_string(pid) + "/cwd");
     }
 
     /// Checking
     bool
-    inline __attribute__((always_inline))
+    inline
     is_valid() {
         return pid != 0;
     }
 
     bool
-    inline __attribute__((always_inline))
+    inline
     is_running() {
         using namespace std;
         static struct stat sts{};
@@ -178,15 +177,14 @@ public:
     }
 
     bool
-    inline __attribute__((always_inline))
+    inline
     is_good() {
         return is_valid() && is_running();
     }
 
     /// Read_from/write_to this handle
     ssize_t
-    inline __attribute__((always_inline))
-    read(void *out, uintptr_t address, size_t size) {
+    read(uintptr_t address, void *out, size_t size) {
         static struct iovec local[1];
         static struct iovec remote[1];
         local[0].iov_base = out;
@@ -197,7 +195,7 @@ public:
     }
 
     ssize_t
-    inline __attribute__((always_inline))
+    inline
     write(uintptr_t address, void *in, size_t size) {
         static struct iovec local[1];
         static struct iovec remote[1];
@@ -248,9 +246,9 @@ public:
 
         ssize_t
         inline
-//        __attribute__((always_inline))
+//       
 //        __attribute__((noinline))
-        read(void *out, uintptr_t address, size_t size)
+        read(uintptr_t address, void *out, size_t size)
         {
             unsigned int i;
             uintptr_t missing_bytes;
@@ -300,7 +298,7 @@ public:
             for (i = 0; i < missing_bytes; i += PEEKDATA_CHUNK)
             {
                 const uintptr_t target_address = this->base + cache.size();
-                ssize_t len = _parent.read(&this->cache[cache.size()], target_address, PEEKDATA_CHUNK);
+                ssize_t len = _parent.read(target_address, &this->cache[cache.size()], PEEKDATA_CHUNK);
 
                 /* check if the read succeeded */
                 if (UNLIKELY(len < PEEKDATA_CHUNK)) {
@@ -459,7 +457,7 @@ public:
             uintptr_t readaddr = region->address + (chunksize * chunknum);
             bzero(buffer, chunksize);
 
-            if (this->read(buffer, readaddr, readsize)) {
+            if (this->read(readaddr, buffer, readsize)) {
                 for (uintptr_t b = 0; b < readsize; b++) {
                     uintptr_t matches = 0;
 
@@ -483,9 +481,18 @@ public:
 
     uintptr_t
     get_call_address(uintptr_t address) {
-        static uintptr_t code;
-        if (read(&code, address + 1, sizeof(code)) == sizeof(code))
+        uint64_t code = 0;
+        if (read(address + 1, &code, sizeof(uint32_t)) == sizeof(uint32_t))
             return code + address + 5;
+        return 0;
+    }
+
+    uintptr_t
+    get_absolute_address(uintptr_t address, uintptr_t offset, uintptr_t size) {
+        uint64_t code = 0;
+        if (read(address + offset, &code, sizeof(uint32_t)) == sizeof(uint32_t)) {
+            return address + code + size;
+        }
         return 0;
     }
 };
@@ -591,5 +598,3 @@ Handle::scan_exact(vector<Entry> *out,
 }*/
 
 } //namespace RE
-
-#endif //RE_CORE_HH

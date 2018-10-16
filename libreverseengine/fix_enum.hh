@@ -2,8 +2,7 @@
 // Created by root on 31.07.18.
 //
 
-#ifndef REVERSE_ENGINE_FIX_ENUM_HH
-#define REVERSE_ENGINE_FIX_ENUM_HH
+#pragma once
 
 #include <type_traits>
 
@@ -13,7 +12,7 @@
  */
 
 template <typename E, typename U = typename std::underlying_type<E>::type > \
-inline E operator ~(E lhs) { return static_cast<E>(~static_cast<U>(lhs)); };
+inline E operator ~(E lhs) { return static_cast<E>(~static_cast<U>(lhs)); }
 
 //https://softwareengineering.stackexchange.com/questions/194412/using-scoped-enums-for-bit-flags-in-c
 //https://paste.ubuntu.com/23884820/
@@ -68,6 +67,3 @@ constexpr std::size_t operator""_GiB(unsigned long long v) {
 #  warning "Check your compiler"
 # endif
 #endif
-
-
-#endif //REVERSE_ENGINE_FIX_ENUM_HH

@@ -53,14 +53,28 @@ int main() {
 //    clog<<"swaths.capacity: "<<globals.scans.first->swaths.capacity()<<endl;
 
     timestamp = high_resolution_clock::now();
-    globals.scanner->scan_next(*globals.scans.first, *globals.scans.last, data_type, uservalue, match_type);
+    globals.scanner->scan_next(*globals.scans.first, *globals.scans.first, data_type, uservalue, match_type);
     clog<<"Scan 2/3 done in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
 
-    assert(globals.scans.last->size() == globals.scans.last->matches_size);
-    clog<<"size: {counted: "<<globals.scans.last->size()
-            <<", matches_size: "<<globals.scans.last->matches_size<<"}"<<endl;
+    assert(globals.scans.first->size() == globals.scans.first->matches_size);
+    clog<<"size: {counted: "<<globals.scans.first->size()
+            <<", matches_size: "<<globals.scans.first->matches_size<<"}"<<endl;
+//    clog<<"mem_virt: "<<globals.scans.last->mem_virt()<<endl;
+//    clog<<"mem_allo: "<<globals.scans.last->mem_allo()<<endl;
+//    clog<<"swaths.size: "<<globals.scans.last->swaths.size()<<endl;
+//    clog<<"swaths.capacity: "<<globals.scans.last->swaths.capacity()<<endl;
+
+    timestamp = high_resolution_clock::now();
+    globals.scanner->scan_next(*globals.scans.first, *globals.scans.first, data_type, uservalue, match_type);
+    clog<<"Scan 3/3 done in: "
+        <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+        <<" seconds"<<endl;
+
+    assert(globals.scans.first->size() == globals.scans.first->matches_size);
+    clog<<"size: {counted: "<<globals.scans.first->size()
+            <<", matches_size: "<<globals.scans.first->matches_size<<"}"<<endl;
 //    clog<<"mem_virt: "<<globals.scans.last->mem_virt()<<endl;
 //    clog<<"mem_allo: "<<globals.scans.last->mem_allo()<<endl;
 //    clog<<"swaths.size: "<<globals.scans.last->swaths.size()<<endl;

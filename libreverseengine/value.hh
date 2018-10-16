@@ -20,8 +20,7 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef RE_VALUE_HH
-#define RE_VALUE_HH
+#pragma once
 
 #include <cstdint>
 #include <cstdio>
@@ -39,6 +38,7 @@
 #include <sys/param.h>
 #include <bitset>
 #include <cstddef>
+#include "fix_enum.hh"
 
 
 #ifdef __GNUC__
@@ -206,11 +206,13 @@ static uint16_t data_type_to_flags[] = {
         [(uint16_t) Edata_type::STRING]     = flags_max
 };
 
+#if RE_ADJUST_FLAGS_TO_MEMLENGTH_INLINE == 0
+    NEVER_INLINE
+#elif RE_ADJUST_FLAGS_TO_MEMLENGTH_INLINE == 1
+    FORCE_INLINE
+#endif
 size_t
 static
-inline
-//__attribute__((always_inline))
-//__attribute__((noinline))
 flags_to_memlength(Edata_type scan_data_type, uint16_t flags)
 {
     switch (scan_data_type) {
@@ -313,5 +315,3 @@ size_t parse_uservalue_bytearray(const std::string& text, Cuservalue *uservalue)
 size_t parse_uservalue_string(const std::string& text, Cuservalue *uservalue);
 
 } // namespace RE
-
-#endif //RE_VALUE_HH

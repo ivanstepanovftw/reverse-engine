@@ -24,11 +24,13 @@ You can also create [trainers](./trainer.cc) for any program.
 - [x] Pattern scanner
 - [x] Get call address
 - [ ] Resolve pointers
-- [ ] Value scanner with GUI
+- [x] Value scanner
 - [ ] Pointer scanner
 - [ ] Memory view
 - [ ] Watchpoints and Breakpoints
 - [ ] Code injection
+- [ ] CLI support
+- [ ] GUI support
 
 ## Simple trainer showcase
 *Further information:* [Advanced example of trainer](./trainer.cc) 

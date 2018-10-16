@@ -23,8 +23,7 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef RE_SCANNER_HH
-#define RE_SCANNER_HH
+#pragma once
 
 #include <cinttypes>
 #include <memory>
@@ -174,7 +173,7 @@ class swath_t
 public:
     uintptr_t base_address;
     size_t data_allocated;
-    size_t data_count;
+    size_t data_size;
     byte_with_flags *data;
 
     FORCE_INLINE
@@ -182,7 +181,7 @@ public:
     constructor(uintptr_t base_address) {
         this->base_address = base_address;
         this->data_allocated = 1;
-        this->data_count = 0;
+        this->data_size = 0;
         this->data = NULL;
         if ((data = (byte_with_flags *) realloc(data, data_allocated * sizeof(byte_with_flags))) == nullptr) {
             puts("ERROR: constructor(): not allocated");
@@ -190,13 +189,17 @@ public:
         }
     }
 
-
     FORCE_INLINE
     void
     allocate_enough(size_t count) {
         if LIKELY(count >= data_allocated) {
-            while(count >= data_allocated)
+            size_t i = 0;
+            while(count >= data_allocated) {
                 data_allocated *= 2;
+                i++;
+                if (i>10)
+                    clog<<"i: "<<i<<", count: "<<count<<", data_allocated: "<<data_allocated<<endl;
+            }
             if ((data = (byte_with_flags *) realloc(data, data_allocated*sizeof(byte_with_flags))) == nullptr) {
                 puts("allocate_enough(): not allocated");
                 return;
@@ -207,14 +210,18 @@ public:
     FORCE_INLINE
     void
     append(byte_with_flags d) {
-        if UNLIKELY(data_count >= data_allocated) {
-            allocate_enough(data_count);
+        if UNLIKELY(data_size >= data_allocated) {
+            allocate_enough(data_size);
         }
-        data_count++;
-        data[data_count-1] = d;
+        data_size++;
+        data[data_size-1] = d;
     }
 
+#if RE_ADJUST_REMOTE_GET_INLINE == 0
+    NEVER_INLINE
+#elif RE_ADJUST_REMOTE_GET_INLINE == 1
     FORCE_INLINE
+#endif
     uintptr_t
     remote_get(size_t n) {
         return base_address + static_cast<uintptr_t>(n);
@@ -223,64 +230,16 @@ public:
     FORCE_INLINE
     uintptr_t
     remote_back() {
-        return remote_get(this->data_count - 1);
+        return remote_get(this->data_size - 1);
     }
-
-
-/* for printable text representation */
-//    inline
-//    void data_to_printable_string(char *buf,
-//                                  int buf_length,
-//                                  size_t index,
-//                                  int string_length)
-//    {
-//        long swath_length = this->data_size - index;
-//        /* TODO: what if length is too large ? */
-//        long max_length = (swath_length >= string_length) ? string_length : swath_length;
-//        int i;
-//
-//        for(i = 0; i < max_length; i++) {
-//            uint8_t byte = this->data[index + i].byte;
-//            buf[i] = isprint(byte) ? byte : '.';
-//        }
-//        buf[i] = 0; /* null-terminate */
-//    }
-
-
-/* for bytearray representation */
-//    inline
-//    void data_to_bytearray_text(char *buf,
-//                                int buf_length,
-//                                size_t index,
-//                                int bytearray_length)
-//    {
-//        int i;
-//        int bytes_used = 0;
-//        long swath_length = this->data_size - index;
-//
-//        /* TODO: what if length is too large ? */
-//        long max_length = (swath_length >= bytearray_length) ?
-//                          bytearray_length : swath_length;
-//
-//        for(i = 0; i < max_length; i++) {
-//            uint8_t byte = this->data[index + i].byte;
-//
-//            /* TODO: check error here */
-//            snprintf(buf + bytes_used, buf_length - bytes_used,
-//                     (i < max_length - 1) ? "%02x " : "%02x", byte);
-//            bytes_used += 3;
-//        }
-//    }
-
 
 /* only at most sizeof(int64_t) bytes will be read,
    if more bytes are needed (e.g. bytearray),
    read them separately (for performance) */
-#ifdef call_always_
-    FORCE_INLINE
-#endif
-#ifdef call_noinline_
+#if RE_ADJUST_DATA_TO_VAL_INLINE == 0
     NEVER_INLINE
+#elif RE_ADJUST_DATA_TO_VAL_INLINE == 1
+    FORCE_INLINE
 #endif
     value_t
     data_to_val_aux(size_t index, size_t swath_length)
@@ -401,7 +360,7 @@ public:
 #endif
         /* Truncate to the old flags, which are stored with the first matched byte */
         val.flags &= data[index].flags;
-        
+
         return val;
     }
 };
@@ -418,23 +377,22 @@ struct match_location
 class matches_t {
 public:
     size_t matches_size = 0;
-//    std::vector<swath_t> swaths;
     size_t swaths_allocated = 0;
     size_t swaths_count = 0;
     swath_t *swaths = nullptr;
 
     matches_t() {
         clog<<"matches_t()"<<endl;
+#if RE_ADJUST_INIT_FIRST_SWATH == 1
         swaths_allocated = 1;
         swaths_count = 0;
         if ((swaths = (swath_t *) realloc(swaths, swaths_allocated*sizeof(swath_t))) == nullptr) {
             puts("matches_t(): not allocated");
             return;
         }
-#if RE_ADJUST_INIT_FIRST_SWATH == 1
         // Scan 1/3 done in: 2.23431 seconds
         // Scan 2/3 done in: 4.66321 seconds
-        swaths_count = 1;
+        swaths_count++;
         swaths[swaths_count-1].constructor(0);
 #endif
     }
@@ -448,7 +406,7 @@ public:
     void
     add_element(const uintptr_t& remote_address, const mem64_t *remote_memory, const match_flags& flags)
     {
-#if RE_ADJUST_INIT_FIRST_SWATH == 2
+#if RE_ADJUST_INIT_FIRST_SWATH == 0
         // Scan 1/3 done in: 2.23431 seconds
         // Scan 2/3 done in: 4.66321 seconds
         if UNLIKELY(swaths_count == 0) {
@@ -456,90 +414,111 @@ public:
             swaths[swaths_count-1].constructor(remote_address);
         }
 #endif
-        size_t remote_delta = remote_address - swaths[swaths_count-1].remote_back();
-        size_t local_delta = remote_delta * sizeof(byte_with_flags);
+        if (remote_address != 0) {
+            size_t remote_delta = remote_address - swaths[swaths_count - 1].remote_back();
+            size_t local_delta = remote_delta * sizeof(byte_with_flags);
 
-        if (local_delta >= sizeof(swath_t) + sizeof(byte_with_flags)) {
-            // It is more memory-efficient to start a new swath
-//            clog<<"It is more memory-efficient to start a new swath"<<endl;
-            swaths_count++;
-            if UNLIKELY(swaths_count > swaths_allocated) {
-                swaths_allocated *= 2;
-//                clog<<"swaths_count: "<<swaths_count<<endl;
-//                clog<<"swaths_allocated: "<<swaths_allocated<<endl;
-                if ((swaths = (swath_t *) realloc(swaths, swaths_allocated*sizeof(swath_t))) == nullptr) {
-                    puts("add_element(): not allocated");
-                    return;
+            if (local_delta >= sizeof(swath_t) + sizeof(byte_with_flags)) {
+                // It is more memory-efficient to start a new swath
+                swaths_count++;
+                if UNLIKELY(swaths_count > swaths_allocated) {
+                    swaths_allocated *= 2;
+                    if ((swaths = (swath_t *) realloc(swaths, swaths_allocated * sizeof(swath_t))) == nullptr) {
+                        puts("add_element(): not allocated");
+                        return;
+                    }
                 }
-            }
-            swaths[swaths_count-1].constructor(remote_address);
-        } else {
-            // It is more memory-efficient to write over the intervening space with null values
-#if RE_ADJUST_NULL_EMPLACE==1 // primitive
-            // 538229829
-            // Scan 1/3 done in: 2.23351 seconds
-            // Scan 2/3 done in: 4.70711 seconds
-            while (remote_delta-->1)
-                swaths[swaths_count-1].append(byte_with_flags{ 0, flags_empty });
-#elif RE_ADJUST_NULL_EMPLACE==2 // from scanmem (truncated)
-            // 538229829
-            // Scan 1/3 done in: 2.67642 seconds
-            // Scan 2/3 done in: 5.13039 seconds
-            swaths[swaths_count-1].allocate_enough(swaths[swaths_count-1].data_count+remote_delta-1);
-            memset(swaths[swaths_count-1].data + swaths[swaths_count-1].data_count,
-                    0,
-                    local_delta - sizeof(byte_with_flags));
-            swaths[swaths_count-1].data_count += remote_delta-1;
-#elif RE_ADJUST_NULL_EMPLACE==3 // from scanmem
-            // 538229829
-            // Scan 1/3 done in: 2.67642 seconds
-            // Scan 2/3 done in: 5.13039 seconds
-            swaths[swaths_count-1].allocate_enough(swaths[swaths_count-1].data_count+remote_delta-1);
-            switch (local_delta) {
-                case 1:
-                    /* do nothing, the new value is right after the old */
-                    break;
-                case 2:
-                    memset(swaths[swaths_count - 1].data + swaths[swaths_count - 1].data_count,
-                           0,
-                           sizeof(byte_with_flags));
-                    break;
-                default:
-                    memset(swaths[swaths_count - 1].data + swaths[swaths_count - 1].data_count,
-                           0,
-                           local_delta - sizeof(byte_with_flags));
-            }
-            swaths[swaths_count-1].data_count += remote_delta-1;
+                swaths[swaths_count - 1].constructor(remote_address);
+            } else {
+                // It is more memory-efficient to write over the intervening space with null values
+#if RE_ADJUST_NULL_EMPLACE == 1
+                while (remote_delta-- > 1)
+                    swaths[swaths_count - 1].append(byte_with_flags{0, flags_empty});
+#elif RE_ADJUST_NULL_EMPLACE == 2 // from scanmem (truncated)
+                swaths[swaths_count-1].allocate_enough(swaths[swaths_count-1].data_size+remote_delta-1);
+                memset(swaths[swaths_count-1].data + swaths[swaths_count-1].data_size,
+                        0,
+                        local_delta - sizeof(byte_with_flags));
+                swaths[swaths_count-1].data_size += remote_delta-1;
 #endif
+            }
         }
-//        clog<<"add me: "<<swaths_count<<endl;
         swaths[swaths_count-1].append(byte_with_flags{remote_memory->u8, flags});
     }
 
-    size_t
-    mem_allo()
-    {
-        size_t size = 0;
-        for(size_t s = 0; s < swaths_count; s++)
-            size += swaths[s].data_allocated;
-        return size+swaths_allocated*(sizeof(swath_t));
-    }
-
-    size_t
-    mem_virt()
-    {
-        size_t size = 0;
-        for(size_t s = 0; s < swaths_count; s++)
-            size += swaths[s].data_count;
-        return size+swaths_count*(sizeof(swath_t));
-    }
+//    size_t
+//    mem_allo()
+//    {
+//        size_t size = 0;
+//        for(auto& swath : swaths)
+//            size += swath.data.capacity()*sizeof(byte_with_flags)
+//                    + sizeof(swath.data) + sizeof(swaths.back().data); // NOLINT(bugprone-sizeof-container)
+//        return size + swaths.capacity()*sizeof(swath_t) + sizeof(swaths); // NOLINT(bugprone-sizeof-container)
+//    }
+//
+//    size_t
+//    mem_virt()
+//    {
+//        size_t size = 0;
+//        for(auto& swath : swaths)
+//            size += swath.data.size()*sizeof(byte_with_flags);
+//        return size + swaths.size()*sizeof(swath_t);
+//    }
+//
+//    size_t
+//    size()
+//    {
+//        size_t size = 0;
+//        for(auto& swath : swaths)
+//            for(auto& d : swath.data)
+//                if (d.flags > flags_empty)
+//                    size += 1;
+//        return size;
+//    }
+//
+//    match_location
+//    nth_match(size_t n) {
+//        size_t i = 0;
+//        for(auto& swath : swaths) {
+//            /* only actual matches are considered */
+//            size_t i_inside = 0;
+//            for(auto& d : swath.data) {
+//                if (d.flags > flags_empty) {
+//                    if(i == n)
+//                        return match_location{&swaths[i], i_inside};
+//                    i++;
+//                }
+//                i_inside++;
+//            }
+//        }
+//
+//        /* invalid match id */
+//        return match_location{nullptr, 0};
+//    }
+//    size_t
+//    mem_allo()
+//    {
+//        size_t size = 0;
+//        for(size_t s = 0; s < swaths_count; s++)
+//            size += swaths[s].data_allocated;
+//        return size+swaths_allocated*(sizeof(swath_t));
+//    }
+//
+//    size_t
+//    mem_virt()
+//    {
+//        size_t size = 0;
+//        for(size_t s = 0; s < swaths_count; s++)
+//            size += swaths[s].data_size;
+//        return size+swaths_count*(sizeof(swath_t));
+//    }
 
     size_t
     size()
     {
         size_t size = 0;
         for(size_t s = 0; s < swaths_count; s++) {
-            for(size_t d = 0; d < swaths[s].data_count; d++)
+            for(size_t d = 0; d < swaths[s].data_size; d++)
                 if (swaths[s].data[d].flags > flags_empty)
                     size += 1;
         }
@@ -552,7 +531,7 @@ public:
         for(size_t s = 0; s < swaths_count; s++) {
             /* only actual matches are considered */
             size_t i_inside = 0;
-            for(size_t d = 0; d < swaths[s].data_count; d++) {
+            for(size_t d = 0; d < swaths[s].data_size; d++) {
                 if (swaths[s].data[d].flags > flags_empty) {
                     if (i == n)
                         return match_location {&swaths[i], i_inside};
@@ -611,7 +590,7 @@ public:
 //        swath_t *writing_swath_index = this->swaths;
 //
 //        writing_swath_index->base_address = 0;
-//        writing_swath_index->data_count = 0;
+//        writing_swath_index->data_size = 0;
 //
 //        *num_matches = 0;
 //
@@ -642,10 +621,10 @@ public:
 //
 //            /* go on to the next one... */
 //            reading_iterator++;
-//            if (reading_iterator >= reading_swath.data_count) {
+//            if (reading_iterator >= reading_swath.data_size) {
 //
 //                reading_swath_index = (swath_t *)
-//                        (&reading_swath_index->data[reading_swath.data_count]);
+//                        (&reading_swath_index->data[reading_swath.data_size]);
 //
 //                reading_swath = *reading_swath_index;
 //
@@ -996,13 +975,13 @@ public:
     
     bio::mapped_file make_snapshot(const std::string &path);
     
-    bool scan(RE::matches_t& matches_sink,
+    bool scan(RE::matches_t& writing_matches,
               const RE::Edata_type& data_type,
               const RE::Cuservalue *uservalue,
               const RE::Ematch_type& match_type);
 
-    bool scan_next(RE::matches_t& matches_source,
-                   RE::matches_t& matches_sink,
+    bool scan_next(RE::matches_t& reading_matches,
+                   RE::matches_t& writing_matches,
                    const RE::Edata_type& data_type,
                    const RE::Cuservalue *uservalue,
                    RE::Ematch_type match_type);
@@ -1011,5 +990,3 @@ public:
 };
 
 } //namespace RE
-
-#endif //RE_SCANNER_HH

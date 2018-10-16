@@ -20,8 +20,7 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef RE_SCANROUTINES_HEADER
-#define RE_SCANROUTINES_HEADER
+#pragma once
 
 #include <stdbool.h>
 
@@ -82,5 +81,3 @@ scan_routine_t sm_get_scanroutine(RE::Edata_type dt,
                                   bool reverse_endianness);
 
 } //namespace RE
-
-#endif //RE_SCANNER_HH

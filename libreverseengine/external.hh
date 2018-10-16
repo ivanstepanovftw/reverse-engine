@@ -19,8 +19,7 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef RE_EXTERNAL_HH
-#define RE_EXTERNAL_HH
+#pragma once
 
 #include <string>
 #include <fstream>
@@ -159,5 +158,3 @@ get_mem_free()
 }
 
 } //namespace RE
-
-#endif //RE_EXTERNAL_HH

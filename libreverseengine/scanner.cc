@@ -204,7 +204,7 @@ RE::Scanner::make_snapshot(const std::string& path)
     
     /// Snapshot goes here
     for(RE::Cregion region : handle->regions) {
-        copied = handle->read(snapshot+2*sizeof(uintptr_t), region.address, region.size);
+        copied = handle->read(region.address, snapshot+2*sizeof(uintptr_t), region.size);
         if (copied < 0) {
 //            clog<<"error: "<<std::strerror(errno)<<", region: "<<region<<endl;
 //            if (!handle->is_running())
@@ -227,7 +227,7 @@ RE::Scanner::make_snapshot(const std::string& path)
 
 
 bool
-RE::Scanner::scan(matches_t& matches_sink,
+RE::Scanner::scan(matches_t& writing_matches,
                   const Edata_type& data_type,
                   const Cuservalue *uservalue,
                   const Ematch_type& match_type)
@@ -258,8 +258,8 @@ RE::Scanner::scan(matches_t& matches_sink,
     uint8_t *buf_pos = buffer;
     uintptr_t reg_pos;
 
-    const mem64_t *memory_ptr = nullptr;
-    unsigned int match_length;
+    mem64_t *memory_ptr = nullptr;
+    size_t match_length;
     RE::match_flags checkflags;
 
     ssize_t copied;
@@ -283,7 +283,7 @@ RE::Scanner::scan(matches_t& matches_sink,
 
                 /* load the next buffer block */
                 size_t alloc_size = MIN(memlength, MAX_ALLOC_SIZE);
-                copied = handle->read(buffer, reg_pos, alloc_size);
+                copied = handle->read(reg_pos, buffer, alloc_size);
                 if UNLIKELY(copied < 0)
                     break;
                 else if UNLIKELY(copied < alloc_size) {
@@ -304,22 +304,18 @@ RE::Scanner::scan(matches_t& matches_sink,
 
             /* check if we have a match */
             match_length = (*sm_scan_routine)(memory_ptr, memlength, nullptr, uservalue, checkflags);
-//            if UNLIKELY(match_length > 0) {
-            if (match_length > 0) {
-                assert(match_length <= memlength);
-                matches_sink.add_element(reg_pos, memory_ptr, checkflags);
+            if UNLIKELY(match_length > 0) {
+                writing_matches.add_element(reg_pos, memory_ptr, checkflags);
+                writing_matches.matches_size++;
                 required_extra_bytes_to_record = match_length - 1;
             }
-            else if (required_extra_bytes_to_record > 0) {
-                matches_sink.add_element(reg_pos, memory_ptr, flags_empty);
+            else if UNLIKELY(required_extra_bytes_to_record > 0) {
+                writing_matches.add_element(reg_pos, memory_ptr, flags_empty);
                 required_extra_bytes_to_record--;
             }
         }
-        if (stop_flag)
-            break;
     }
     delete[] buffer;
-//    clog<<"internal: "<<i_total<<" sec"<<endl;
     scan_progress = 1.0;
     return true;
 }
@@ -327,8 +323,8 @@ RE::Scanner::scan(matches_t& matches_sink,
 
 
 bool
-RE::Scanner::scan_next(matches_t& matches_source,
-                       matches_t& matches_sink,
+RE::Scanner::scan_next(matches_t& reading_matches,
+                       matches_t& writing_matches,
                        const RE::Edata_type& data_type,
                        const RE::Cuservalue *uservalue,
                        RE::Ematch_type match_type)
@@ -341,162 +337,185 @@ RE::Scanner::scan_next(matches_t& matches_source,
     }
 
     size_t required_extra_bytes_to_record = 0;
-//    scan_progress = 0.0;
-//    stop_flag = false;
-
-//    for(int i=0; i<2; i++)
-//        clog<<"--------------------"<<endl;
+    scan_progress = 0.0;
+    stop_flag = false;
+    writing_matches.matches_size = 0;
 
     mem64_t memory_ptr{};
 
-    for(size_t s = 0; s < matches_source.swaths_count; s++) {
-        swath_t& swath = matches_source.swaths[s];
-        size_t bytes_remain = swath.data_count;
+    size_t swaths_remain = reading_matches.swaths_count;
+    writing_matches.swaths_count = 0;
+    for(size_t s = 0; s < swaths_remain; s++) {
+        writing_matches.swaths_count++;
+        swath_t& swath = reading_matches.swaths[s];
+        size_t bytes_remain = swath.data_size;
+        swath.data_size = 0;
         size_t reading_iterator = 0;
         while(bytes_remain) {
             unsigned int match_length = 0;
             RE::match_flags checkflags = flags_empty;
 
-            uint16_t old_flags = swath.data[reading_iterator].flags;
-            size_t old_length = flags_to_memlength(data_type, old_flags);
-            uintptr_t address = swath.base_address + reading_iterator;
+            uint16_t flags = swath.data[reading_iterator].flags;
+            size_t old_length;
+#if RE_ADJUST_FLAGS_TO_MEMLENGTH_INLINE != 2
+            old_length = flags_to_memlength(data_type, flags);
+#else
+            switch (data_type) {
+                case Edata_type::BYTEARRAY:
+                case Edata_type::STRING:
+                    old_length = flags;
+                default: /* NUMBER */
+                    old_length = (flags & flags_64b) ? 8 :
+                           (flags & flags_32b) ? 4 :
+                           (flags & flags_16b) ? 2 :
+                           (flags & flags_8b ) ? 1 : 0;
+            }
+#endif
+            uintptr_t address;
+#if RE_ADJUST_REMOTE_GET_INLINE != 2
+            address = swath.remote_get(reading_iterator);
+#else
+            address = swath.base_address + static_cast<uintptr_t>(reading_iterator);
+#endif
 
             /* read value from this address */
-//2406215 3400198
-            ssize_t memlength = handle->cached.read(&memory_ptr, address, old_length);
+            ssize_t memlength = handle->cached.read(address, &memory_ptr, old_length);
             if UNLIKELY(memlength < 0) {
                 /* If we can't look at the data here, just abort the whole recording, something bad happened */
                 required_extra_bytes_to_record = 0;
             }
             /* Test only valid old matches */
-            else if (old_flags != flags_empty)  {
-                value_t old_val;
-                old_val = swath.data_to_val_aux(reading_iterator, swath.data_count);
-#ifdef inlined_
-                size_t max_bytes = swath.data_count - reading_iterator;
+            else if (flags != flags_empty)  {
+                value_t val;
+#if RE_ADJUST_DATA_TO_VAL_INLINE != 2
+                val = swath.data_to_val_aux(reading_iterator, swath.data_size);
+#else
+                const auto swath_length = swath.data_size;
+                const auto index = reading_iterator;
+                const auto& data = swath.data;
+
+                size_t max_bytes = swath_length - index;
 
                 /* Init all possible flags in a single go.
                  * Also init length to the maximum possible value */
-                old_val.flags = flags_max;
+                val.flags = flags_max;
 
                 /* NOTE: This does the right thing for VLT because the flags are in
                  * the same order as the number representation (for both endians), so
                  * that the zeroing of a flag does not change useful bits of `length`. */
                 if (max_bytes > 8)
                     max_bytes = 8;
-                if (max_bytes < 8) old_val.flags &= ~flags_64b;
-                if (max_bytes < 4) old_val.flags &= ~flags_32b;
-                if (max_bytes < 2) old_val.flags &= ~flags_16b;
-                if (max_bytes < 1) old_val.flags = flags_empty;
+                if (max_bytes < 8) val.flags &= ~flags_64b;
+                if (max_bytes < 4) val.flags &= ~flags_32b;
+                if (max_bytes < 2) val.flags &= ~flags_16b;
+                if (max_bytes < 1) val.flags = flags_empty;
 
                 /* Unrolling this will improve performance by 40% for gcc.
                  * TODO to investigate */
-#ifdef loop_
-//                #pragma unroll(8)
-//                #pragma GCC ivdep
-                #pragma GCC unroll 8
+#if RE_ADJUST_DATA_TO_VAL_LOOP == 1
+# if RE_ADJUST_DATA_TO_VAL_LOOP_1_UNROLL == -1
+                #pragma nounroll
+# elif RE_ADJUST_DATA_TO_VAL_LOOP_1_UNROLL > 0
+                #pragma unroll(RE_ADJUST_DATA_TO_VAL_LOOP_1_UNROLL)
+#endif
                 for(uint8_t i = 0; i < max_bytes; i++) {
                     /* Both uint8_t, no explicit casting needed */
-                    old_val.bytes[i] = swath.data[reading_iterator + i].byte;
+                    val.bytes[i] = data[index + i].byte;
                 }
-#endif
-#ifdef unrolled1_
-                if (max_bytes > 0) { old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
-                if (max_bytes > 1) { old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
-                if (max_bytes > 2) { old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
-                if (max_bytes > 3) { old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
-                if (max_bytes > 4) { old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
-                if (max_bytes > 5) { old_val.bytes[5] = swath.data[reading_iterator + 5].byte;
-                if (max_bytes > 6) { old_val.bytes[6] = swath.data[reading_iterator + 6].byte;
-                if (max_bytes > 7) { old_val.bytes[7] = swath.data[reading_iterator + 7].byte;
+#elif RE_ADJUST_DATA_TO_VAL_LOOP == 2
+                if (max_bytes > 0) { val.bytes[0] = data[index + 0].byte;
+                if (max_bytes > 1) { val.bytes[1] = data[index + 1].byte;
+                if (max_bytes > 2) { val.bytes[2] = data[index + 2].byte;
+                if (max_bytes > 3) { val.bytes[3] = data[index + 3].byte;
+                if (max_bytes > 4) { val.bytes[4] = data[index + 4].byte;
+                if (max_bytes > 5) { val.bytes[5] = data[index + 5].byte;
+                if (max_bytes > 6) { val.bytes[6] = data[index + 6].byte;
+                if (max_bytes > 7) { val.bytes[7] = data[index + 7].byte;
                 }}}}}}}}
-#endif
-#ifdef unrolled2_
+#elif RE_ADJUST_DATA_TO_VAL_LOOP == 3
                 switch (max_bytes) {
                     case 8:
-                        old_val.bytes[7] = swath.data[reading_iterator + 7].byte;
+                        val.bytes[7] = data[index + 7].byte;
                     case 7:
-                        old_val.bytes[6] = swath.data[reading_iterator + 6].byte;
+                        val.bytes[6] = data[index + 6].byte;
                     case 6:
-                        old_val.bytes[5] = swath.data[reading_iterator + 5].byte;
+                        val.bytes[5] = data[index + 5].byte;
                     case 5:
-                        old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
+                        val.bytes[4] = data[index + 4].byte;
                     case 4:
-                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
+                        val.bytes[3] = data[index + 3].byte;
                     case 3:
-                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
+                        val.bytes[2] = data[index + 2].byte;
                     case 2:
-                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
+                        val.bytes[1] = data[index + 1].byte;
                     case 1:
-                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                        val.bytes[0] = data[index + 0].byte;
                 }
-#endif
-#ifdef unrolled3_
+#elif RE_ADJUST_DATA_TO_VAL_LOOP == 4
                 switch (max_bytes) {
                     case 1:
-                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
+                        val.bytes[0] = data[index + 0].byte;
                         break;
                     case 2:
-                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
-                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
+                        val.bytes[0] = data[index + 0].byte;
+                        val.bytes[1] = data[index + 1].byte;
                         break;
                     case 3:
-                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
-                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
-                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
+                        val.bytes[0] = data[index + 0].byte;
+                        val.bytes[1] = data[index + 1].byte;
+                        val.bytes[2] = data[index + 2].byte;
                         break;
                     case 4:
-                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
-                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
-                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
-                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
+                        val.bytes[0] = data[index + 0].byte;
+                        val.bytes[1] = data[index + 1].byte;
+                        val.bytes[2] = data[index + 2].byte;
+                        val.bytes[3] = data[index + 3].byte;
                         break;
                     case 5:
-                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
-                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
-                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
-                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
-                        old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
+                        val.bytes[0] = data[index + 0].byte;
+                        val.bytes[1] = data[index + 1].byte;
+                        val.bytes[2] = data[index + 2].byte;
+                        val.bytes[3] = data[index + 3].byte;
+                        val.bytes[4] = data[index + 4].byte;
                         break;
                     case 6:
-                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
-                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
-                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
-                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
-                        old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
-                        old_val.bytes[5] = swath.data[reading_iterator + 5].byte;
+                        val.bytes[0] = data[index + 0].byte;
+                        val.bytes[1] = data[index + 1].byte;
+                        val.bytes[2] = data[index + 2].byte;
+                        val.bytes[3] = data[index + 3].byte;
+                        val.bytes[4] = data[index + 4].byte;
+                        val.bytes[5] = data[index + 5].byte;
                         break;
                     case 7:
-                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
-                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
-                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
-                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
-                        old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
-                        old_val.bytes[5] = swath.data[reading_iterator + 5].byte;
-                        old_val.bytes[6] = swath.data[reading_iterator + 6].byte;
+                        val.bytes[0] = data[index + 0].byte;
+                        val.bytes[1] = data[index + 1].byte;
+                        val.bytes[2] = data[index + 2].byte;
+                        val.bytes[3] = data[index + 3].byte;
+                        val.bytes[4] = data[index + 4].byte;
+                        val.bytes[5] = data[index + 5].byte;
+                        val.bytes[6] = data[index + 6].byte;
                         break;
                     case 8:
-                        old_val.bytes[0] = swath.data[reading_iterator + 0].byte;
-                        old_val.bytes[1] = swath.data[reading_iterator + 1].byte;
-                        old_val.bytes[2] = swath.data[reading_iterator + 2].byte;
-                        old_val.bytes[3] = swath.data[reading_iterator + 3].byte;
-                        old_val.bytes[4] = swath.data[reading_iterator + 4].byte;
-                        old_val.bytes[5] = swath.data[reading_iterator + 5].byte;
-                        old_val.bytes[6] = swath.data[reading_iterator + 6].byte;
-                        old_val.bytes[7] = swath.data[reading_iterator + 7].byte;
+                        val.bytes[0] = data[index + 0].byte;
+                        val.bytes[1] = data[index + 1].byte;
+                        val.bytes[2] = data[index + 2].byte;
+                        val.bytes[3] = data[index + 3].byte;
+                        val.bytes[4] = data[index + 4].byte;
+                        val.bytes[5] = data[index + 5].byte;
+                        val.bytes[6] = data[index + 6].byte;
+                        val.bytes[7] = data[index + 7].byte;
                         break;
                 }
 #endif
-
                 /* Truncate to the old flags, which are stored with the first matched byte */
-                old_val.flags &= swath.data[reading_iterator].flags;
+                val.flags &= data[index].flags;
 #endif
 
                 memlength = old_length < memlength ? old_length : memlength;
 
                 checkflags = flags_empty;
 
-                match_length = (*sm_scan_routine)(&memory_ptr, memlength, &old_val, uservalue, checkflags);
+                match_length = (*sm_scan_routine)(&memory_ptr, memlength, &val, uservalue, checkflags);
             }
 
             if (match_length > 0) {
@@ -505,13 +524,12 @@ RE::Scanner::scan_next(matches_t& matches_source,
                      and because we copied out the reading swath metadata already.
                    - We can get away with assuming that the pointers will stay valid,
                      because as we never add more data to the array than there was before, it will not reallocate. */
-//                clog<<"matches_sink.matches_size: "<<matches_sink.matches_size<<endl;
-                matches_sink.add_element(address, &memory_ptr, checkflags);
-                matches_sink.matches_size++;
+                writing_matches.add_element(0, &memory_ptr, checkflags);
+                writing_matches.matches_size++;
                 required_extra_bytes_to_record = match_length - 1;
             }
             else if (required_extra_bytes_to_record) {
-                matches_sink.add_element(address, &memory_ptr, flags_empty);
+                writing_matches.add_element(0, &memory_ptr, flags_empty);
                 required_extra_bytes_to_record--;
             }
 
