@@ -41,7 +41,7 @@
 #include <gtkmm/paned.h>
 #include <glibmm/main.h>
 //
-#include "globals.hh"
+#include <reverseengine/globals.hh>
 
 
 

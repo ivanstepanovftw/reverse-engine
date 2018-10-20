@@ -29,7 +29,7 @@
 #include <gtkmm/box.h>
 #include <gtkmm/button.h>
 //
-#include "globals.hh"
+#include <reverseengine/globals.hh>
 #include "SelectWindow.hh"
 #include "ScanWindow.hh"
 

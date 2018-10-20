@@ -35,8 +35,8 @@
 #include <gtkmm/liststore.h>
 #include <gtkmm/button.h>
 //
-#include "globals.hh"
-#include <libreverseengine/core.hh>
+#include <reverseengine/globals.hh>
+#include <reverseengine/core.hh>
 
 
 

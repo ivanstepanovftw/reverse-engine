@@ -3,8 +3,6 @@
 Reverse Engine is a reverse engineering tool inspired by Cheat Engine.
 You can also create [trainers](./trainer.cc) for any program.
 
-##### Root required!
-
 ## License
 
 <a rel="license" href="https://www.gnu.org/copyleft/lesser.html">
@@ -14,26 +12,26 @@ You can also create [trainers](./trainer.cc) for any program.
 ## Contents
 
    * [Features](#features)
-   * [Simple trainer showcase](#simple-trainer-showcase)
+   * [Cheat example](#cheat-example)
    * [Contacts](#contacts)
 
 ## Features
 
 - [x] Find and attach process by PID or title
 - [x] Access target memory space, read and write any value
-- [x] Pattern scanner
-- [x] Get call address
-- [ ] Resolve pointers
 - [x] Value scanner
+- [ ] Watchpoints and Breakpoints
+- [x] Pattern scanner
+- [ ] Resolve pointers
 - [ ] Pointer scanner
 - [ ] Memory view
-- [ ] Watchpoints and Breakpoints
 - [ ] Code injection
 - [ ] CLI support
 - [ ] GUI support
+- [x] Wrappers: Python support
 
-## Simple trainer showcase
-*Further information:* [Advanced example of trainer](./trainer.cc) 
+## Cheat example
+*Further information:* [Advanced C++ example of CS:GO trainer](./example/csgo_linux64/fix_resources_download/main.cc) 
 
 ```cpp
 Handle h("csgo_linux64");

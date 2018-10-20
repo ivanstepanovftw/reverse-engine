@@ -2,7 +2,7 @@
 // Created by root on 28.07.18.
 //
 
-#include <GUI/globals.hh>
+#include <reverseengine/globals.hh>
 #include <iostream>
 #include <string>
 #include <chrono>

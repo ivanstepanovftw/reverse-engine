@@ -21,9 +21,9 @@
 #ifndef RE_GLOBALS_HEADER
 #define RE_GLOBALS_HEADER
 
-#include <libreverseengine/core.hh>
-#include <libreverseengine/value.hh>
-#include <libreverseengine/scanner.hh>
+#include <reverseengine/core.hh>
+#include <reverseengine/value.hh>
+#include <reverseengine/scanner.hh>
 
 
 // todo[low]: remove namespace
@@ -51,7 +51,6 @@ private:
 };
 
 
-// fixme [med]: or use it as namespace?
 struct {
     RE::Handle *handle = nullptr;  //fixme [low]: remove pointer
     RE::Scanner *scanner = nullptr;  //fixme [low]: remove pointer

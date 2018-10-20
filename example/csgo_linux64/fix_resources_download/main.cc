@@ -184,7 +184,7 @@ stage_updating:;
             continue;
 
         if (csgo.read(downloadManager + 2 * 8, &m_queuedRequests_Count, sizeof(unsigned long)) != sizeof(unsigned long))
-            printf("Cannot read 3rd");
+            printf("Cannot read utils");
 
         void** requestList = (void**) malloc((m_queuedRequests_Count + 1) * sizeof(void*));
         *requestList = (void*) m_activeRequest;

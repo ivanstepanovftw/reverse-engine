@@ -20,7 +20,7 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "value.hh"
+#include <reverseengine/value.hh>
 
 
 /// https://github.com/scanmem/scanmem/blob/master/sets.c

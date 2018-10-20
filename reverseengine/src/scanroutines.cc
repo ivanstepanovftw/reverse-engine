@@ -22,9 +22,9 @@
 
 #include <stdbool.h>
 
-#include "scanroutines.hh"
-#include "value.hh"
-#include "fix_enum.hh"
+#include <reverseengine/scanroutines.hh>
+#include <reverseengine/value.hh>
+#include <reverseengine/fix_enum.hh>
 
 
 //todo 1005 move to another header

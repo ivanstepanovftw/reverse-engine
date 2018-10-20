@@ -22,10 +22,10 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "scanner.hh"
-#include "value.hh"
-#include "scanroutines.hh"
-#include "fix_enum.hh"
+#include <reverseengine/scanner.hh>
+#include <reverseengine/value.hh>
+#include <reverseengine/scanroutines.hh>
+#include <reverseengine/fix_enum.hh>
 
 
 namespace bio = boost::iostreams;
