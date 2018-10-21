@@ -1,8 +1,12 @@
 # ┌──────────────────────────────────────────────────────────────────┐
 #
 # └──────────────────────────────────────────────────────────────────┘
-cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.9.0)
+#cmake_minimum_required(VERSION 3.13.0-rc0)
 project("Static library with SWIG example")
+
+set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(missing)
 
 # ┌──────────────────────────────────────────────────────────────────┐
 #   Checks

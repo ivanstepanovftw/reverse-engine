@@ -11,16 +11,21 @@ add_executable(FAKEGAME fakegame.cc)
 
 target_compile_options(FAKEGAME PUBLIC
         -O3
-        -D_FORTIFY_SOURCE=2
-        -fstack-protector
         -fstack-protector-strong
         -pie -fPIE
-        -Wl,-z,relro -Wl,-z,now
+        -static-libgcc
         -Wformat -Werror=format-security
         )
 
+target_compile_definitions(FAKEGAME PUBLIC
+        _FORTIFY_SOURCE=0
+        )
+
+target_link_options(FAKEGAME PUBLIC
+        -z relro -z now
+        )
+
 target_link_libraries(FAKEGAME
-        libreverseengine
         pthread
         boost_iostreams
         )
@@ -40,7 +45,22 @@ target_compile_options(FAKEMEM PUBLIC
 # └──────────────────────────────────────────────────────────────────┘
 add_executable(SEARCH_CC search.cc)
 
-target_link_libraries(SEARCH_CC reverseengine)
+target_compile_options(FAKEGAME PUBLIC
+        -O3
+        -D_FORTIFY_SOURCE=2
+        -fstack-protector-strong
+        -pie -fPIE
+        -Wformat -Werror=format-security
+        )
+
+target_link_options(SEARCH_CC PUBLIC
+        -z relro -z now
+        )
+
+target_link_libraries(SEARCH_CC
+        reverseengine
+        boost_iostreams
+        )
 
 
 # ┌──────────────────────────────────────────────────────────────────┐

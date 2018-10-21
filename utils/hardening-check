@@ -236,7 +236,7 @@ if ($find_libc_functions) {
     }
     exit(0);
 }
-die "List of libc functions not defined!" if (length(%libc) == 1);
+die "List of libc functions not defined!" if (scalar(keys %libc) <= 1);
 
 my $name;
 foreach my $file (@ARGV) {

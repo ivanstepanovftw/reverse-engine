@@ -11,7 +11,7 @@ using namespace std;
 using namespace std::chrono;
 
 int main() {
-    string target = "FakeMem";
+    string target = "FAKEMEM";
     string search_for = "0";
 
     globals.handle = new RE::Handle(target);
@@ -19,7 +19,7 @@ int main() {
     globals.scanner = new RE::Scanner(globals.handle);
 
 
-    clog<<"FakeMem, pid: "<<globals.handle->pid<<endl;
+    clog<<"FAKEMEM, pid: "<<globals.handle->pid<<endl;
 
     high_resolution_clock::time_point timestamp;
 
