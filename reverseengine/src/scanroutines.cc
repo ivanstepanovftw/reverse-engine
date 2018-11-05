@@ -24,7 +24,7 @@
 
 #include <reverseengine/scanroutines.hh>
 #include <reverseengine/value.hh>
-#include <reverseengine/fix_enum.hh>
+#include <reverseengine/common.hh>
 
 
 //todo 1005 move to another header

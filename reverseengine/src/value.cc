@@ -22,6 +22,34 @@
 
 #include <reverseengine/value.hh>
 
+size_t RE::flags_to_memlength(Edata_type scan_data_type, uint16_t flags)
+{
+    switch (scan_data_type) {
+        case Edata_type::BYTEARRAY:
+        case Edata_type::STRING:
+            return flags;
+        default: /* NUMBER */
+            return (flags & flags_64b) ? 8 :
+                   (flags & flags_32b) ? 4 :
+                   (flags & flags_16b) ? 2 :
+                   (flags & flags_8b) ? 1 : 0;
+    }
+}
+
+
+size_t RE::flags_to_type(Edata_type scan_data_type, uint16_t flags)
+{
+    switch (scan_data_type) {
+        case Edata_type::BYTEARRAY:
+        case Edata_type::STRING:
+            return flags;
+        default: /* NUMBER */
+            return (flags & flags_64b) ? 8 :
+                   (flags & flags_32b) ? 4 :
+                   (flags & flags_16b) ? 2 :
+                   (flags & flags_8b) ? 1 : 0;
+    }
+}
 
 /// https://github.com/scanmem/scanmem/blob/master/sets.c
 size_t RE::parse_uservalue_int(const std::string& text, RE::Cuservalue *val)
@@ -131,7 +159,7 @@ size_t RE::parse_uservalue_bytearray(const std::string& text_s, RE::Cuservalue *
     vector<RE::wildcard_t> wildcards_array;
     
     /// @see https://stackoverflow.com/questions/7397768/choice-between-vectorresize-and-vectorreserve
-    // never saw a pattern of more than 20 bytes in a row
+    // fixme[low]: hardcode
     bytes_array.reserve(32);
     wildcards_array.reserve(32);
     
@@ -175,19 +203,20 @@ size_t RE::parse_uservalue_bytearray(const std::string& text_s, RE::Cuservalue *
     return true;
 }
 
-//FIXME UNDONE
-size_t parse_uservalue_string(const char *text, RE::Cuservalue *val)
+//FIXME[low]: to revision
+size_t RE::parse_uservalue_string(const std::string& text_s, RE::Cuservalue *val)
 {
     using namespace std;
     vector<uint8_t> bytes_array;
     vector<RE::wildcard_t> wildcards_array;
     
     /// @see https://stackoverflow.com/questions/7397768/choice-between-vectorresize-and-vectorreserve
-    // never saw a pattern of more than 20 bytes in a row
+    // fixme[low]: hardcode
     bytes_array.reserve(32);
     wildcards_array.reserve(32);
     
     /// skip past any whitespace
+    char *text = const_cast<char *>(&text_s[0]);
     while (isspace(*text))
         ++text;
     

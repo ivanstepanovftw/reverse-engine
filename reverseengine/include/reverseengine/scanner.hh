@@ -68,12 +68,9 @@ private:
 };
 
 
-namespace RE {
-
 namespace bio = boost::iostreams;
 
-using namespace std;
-using namespace std::chrono;
+namespace RE {
 
 
 class match_t {
@@ -154,7 +151,7 @@ public:
         char *address_string;
         const uint8_t *b = reinterpret_cast<const uint8_t *>(&this->address);
         asprintf(&address_string, /*0x*/"%02x%02x%02x%02x%02x%02x", b[5], b[4], b[3], b[2], b[1], b[0]);
-        return string(address_string);
+        return std::string(address_string);
     }
 };
 
@@ -198,7 +195,7 @@ public:
                 data_allocated *= 2;
                 i++;
                 if (i>10)
-                    clog<<"i: "<<i<<", count: "<<count<<", data_allocated: "<<data_allocated<<endl;
+                    std::clog<<"i: "<<i<<", count: "<<count<<", data_allocated: "<<data_allocated<<std::endl;
             }
             if ((data = (byte_with_flags *) realloc(data, data_allocated*sizeof(byte_with_flags))) == nullptr) {
                 puts("allocate_enough(): not allocated");
@@ -382,7 +379,7 @@ public:
     swath_t *swaths = nullptr;
 
     matches_t() {
-        clog<<"matches_t()"<<endl;
+        std::clog<<"matches_t()"<<std::endl;
 #if RE_ADJUST_INIT_FIRST_SWATH == 1
         swaths_allocated = 1;
         swaths_count = 0;
@@ -398,7 +395,7 @@ public:
     }
 
     ~matches_t() {
-        clog<<"~matches_t()"<<endl;
+        std::clog<<"~matches_t()"<<std::endl;
         free(swaths);
     }
 
@@ -637,56 +634,56 @@ public:
 //
     
 
-    std::vector<Cregion>  regions;
-    std::string           path;
-    bio::mapped_file      snapshot_mf;
-    bio::mapped_file      flags_mf;
-
-
-    explicit matches_t(const bio::mapped_file& snapshot_mapped_file,
-                       const bio::mapped_file& flags_mapped_file)
-    {
-        snapshot_mf = snapshot_mapped_file;
-        flags_mf = flags_mapped_file;
-
-        char *snapshot_begin = snapshot_mf.data();
-        char *snapshot_end = snapshot_begin + snapshot_mf.size();
-        char *snapshot = snapshot_begin;
-
-        Cregion region;
-        while(snapshot < snapshot_end) {
-            memcpy(&region,
-                   snapshot,
-                   2*sizeof(region.address));
-            if (region.size <= 1) break;
-            snapshot += region.size;
-            regions.emplace_back(region);
-        }
-    }
-
-    size_t size(bool a) {
-        char *flags_begin = flags_mf.data();
-        char *flags_end = flags_begin + flags_mf.size();
-        char *flags = flags_begin;
-
-        size_t size = 0;
-        uint16_t flag;
-
-        while (flags < flags_end) {
-            memcpy(&flag,
-                   flags,
-                   sizeof(uint16_t));
-            if (flag)
-                size++;
-            flags += sizeof(uint16_t);
-        }
-
-        return size;
-    }
-
-    bool operator !() const {
-        return !snapshot_mf || !flags_mf;
-    }
+//    std::vector<Cregion>  regions;
+//    std::string           path;
+//    bio::mapped_file      snapshot_mf;
+//    bio::mapped_file      flags_mf;
+//
+//
+//    explicit matches_t(const bio::mapped_file& snapshot_mapped_file,
+//                       const bio::mapped_file& flags_mapped_file)
+//    {
+//        snapshot_mf = snapshot_mapped_file;
+//        flags_mf = flags_mapped_file;
+//
+//        char *snapshot_begin = snapshot_mf.data();
+//        char *snapshot_end = snapshot_begin + snapshot_mf.size();
+//        char *snapshot = snapshot_begin;
+//
+//        Cregion region;
+//        while(snapshot < snapshot_end) {
+//            memcpy(&region,
+//                   snapshot,
+//                   2*sizeof(region.address));
+//            if (region.size <= 1) break;
+//            snapshot += region.size;
+//            regions.emplace_back(region);
+//        }
+//    }
+//
+//    size_t size(bool a) {
+//        char *flags_begin = flags_mf.data();
+//        char *flags_end = flags_begin + flags_mf.size();
+//        char *flags = flags_begin;
+//
+//        size_t size = 0;
+//        uint16_t flag;
+//
+//        while (flags < flags_end) {
+//            memcpy(&flag,
+//                   flags,
+//                   sizeof(uint16_t));
+//            if (flag)
+//                size++;
+//            flags += sizeof(uint16_t);
+//        }
+//
+//        return size;
+//    }
+//
+//    bool operator !() const {
+//        return !snapshot_mf || !flags_mf;
+//    }
 };
 
 
@@ -930,25 +927,25 @@ class bad_uservalue_cast
     size_t _at;     // указывает, на каком символе ошибка
 
 public:
-    bad_uservalue_cast(const std::string &original, const size_t &at) _GLIBCXX_USE_NOEXCEPT {
+    bad_uservalue_cast(const std::string &original, const size_t &at) noexcept {
         _text = original;
         _at = at;
     }
     
     // This declaration is not useless: http://gcc.gnu.org/onlinedocs/gcc-3.0.2/gcc_6.html#SEC118
-    ~bad_uservalue_cast() _GLIBCXX_USE_NOEXCEPT { }
+    ~bad_uservalue_cast() noexcept { }
     
-    const std::string what() const _GLIBCXX_USE_NOEXCEPT {
+    const std::string what() const noexcept {
         return ("bad_uservalue_cast(): \n"
                 + _text + "\n"
                 + std::string(_at, ' ') + "^" + std::string(_text.size() - _at - 1, '~'));
     };
     
-    const std::string text() _GLIBCXX_USE_NOEXCEPT {
+    const std::string text() noexcept {
         return _text;
     };
     
-    size_t at() const _GLIBCXX_USE_NOEXCEPT {
+    size_t at() const noexcept {
         return _at;
     };
 };

@@ -19,8 +19,7 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef RE_SELECTWINDOW_HH
-#define RE_SELECTWINDOW_HH
+#pragma once
 
 #include <iostream>
 #include <regex>
@@ -87,5 +86,3 @@ protected:
     Gtk::Button button_cancel;
     Gtk::Button button_attach;
 };
-
-#endif //RE_SELECTWINDOW_HH

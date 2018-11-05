@@ -38,7 +38,7 @@
 #include <sys/param.h>
 #include <bitset>
 #include <cstddef>
-#include "fix_enum.hh"
+#include <reverseengine/common.hh>
 
 
 #ifdef __GNUC__
@@ -49,7 +49,7 @@
 # define UNLIKELY(x)   (x)
 #endif
 
-
+//TODO[high]: made something like NAMESPACE_BEGIN(PYBIND11_NAMESPACE) instead this:
 namespace RE {
 
 /** @arg what: any number
@@ -58,7 +58,7 @@ template <typename T>
 std::string HEX(T&& what)
 {
     std::stringstream ss;
-    ss<<"0x"<<std::hex<<std::setw(sizeof(T))<<std::setfill('0')<<std::noshowbase<<+what;
+    ss<<"0x"<<std::hex<<std::noshowbase<<std::setfill('0')<<std::setw(sizeof(T))<<static_cast<unsigned>(what);
     return ss.str();
 }
 
@@ -77,24 +77,32 @@ public:
     uintptr_t address;
     uintptr_t size;
 
-    uint8_t flags;
+    uint8_t flags;  // -> RE::Eregion_mode
 
     /// File data
     uintptr_t offset;
-    char deviceMajor;
-    char deviceMinor;
-    unsigned long inodeFileNumber;
-    std::string pathname;
+    char deviceMajor; //fixme char?
+    char deviceMinor; //fixme char?
+    unsigned long inodeFileNumber; //fixme unsigned long?
+    std::string pathname; //fixme pathname?
     std::string filename;
+
+    Cregion() {
+        this->address = 0;
+    }
+
+    bool is_good() {
+        return address != 0;
+    }
 
     void serialize()
     {
-        // TODO 334. Problem [high]: size dependent. Solution: [low] make serialization.
+        // TODO 334[medium]: size dependent. Solution: make serialization.
     }
 
+/*
     friend std::ostream& operator<<(std::ostream& outputStream, const Cregion& region)
     {
-
         return outputStream<<"{"
                            <<"address: "<<HEX(region.address)
                            <<", end: "<<HEX(region.address+region.size)
@@ -107,6 +115,7 @@ public:
                            <<", filename: "<<region.filename
                            <<"}";
     }
+*/
 };
 
 enum class Edata_type : uint16_t
@@ -192,7 +201,8 @@ enum match_flags : uint16_t
 /* Possible flags per scan data type: if an incoming uservalue has none of the
  * listed flags we're sure it's not going to be matched by the scan,
  * so we reject it without even trying */
-static uint16_t data_type_to_flags[] = {
+// fixme: it is c99 feature
+static uint16_t data_type_to_flags[11] = {
         [(uint16_t) Edata_type::ANYNUMBER]  = flags_all,
         [(uint16_t) Edata_type::ANYINTEGER] = flags_integer,
         [(uint16_t) Edata_type::ANYFLOAT]   = flags_float,
@@ -206,42 +216,9 @@ static uint16_t data_type_to_flags[] = {
         [(uint16_t) Edata_type::STRING]     = flags_max
 };
 
-#if RE_ADJUST_FLAGS_TO_MEMLENGTH_INLINE == 0
-    NEVER_INLINE
-#elif RE_ADJUST_FLAGS_TO_MEMLENGTH_INLINE == 1
-    FORCE_INLINE
-#endif
-size_t
-static
-flags_to_memlength(Edata_type scan_data_type, uint16_t flags)
-{
-    switch (scan_data_type) {
-        case Edata_type::BYTEARRAY:
-        case Edata_type::STRING:
-            return flags;
-        default: /* NUMBER */
-            return (flags & flags_64b) ? 8 :
-                   (flags & flags_32b) ? 4 :
-                   (flags & flags_16b) ? 2 :
-                   (flags & flags_8b ) ? 1 : 0;
-    }
-}
+size_t flags_to_memlength(Edata_type scan_data_type, uint16_t flags);
 
-size_t
-static
-flags_to_type(Edata_type scan_data_type, uint16_t flags)
-{
-    switch (scan_data_type) {
-        case Edata_type::BYTEARRAY:
-        case Edata_type::STRING:
-            return flags;
-        default: /* NUMBER */
-            return (flags & flags_64b) ? 8 :
-                   (flags & flags_32b) ? 4 :
-                   (flags & flags_16b) ? 2 :
-                   (flags & flags_8b ) ? 1 : 0;
-    }
-}
+size_t flags_to_type(Edata_type scan_data_type, uint16_t flags);
 
 /* This union describes 8 bytes retrieved from target memory.
  * Pointers to this union are the only ones that are allowed to be unaligned:
@@ -265,7 +242,7 @@ union mem64_t
     float    f32;
     double   f64;
     uint8_t bytes[sizeof(int64_t)];
-    int8_t  chars[sizeof(int64_t)];
+    char    chars[sizeof(int64_t)];
 };
 
 /* bytearray wildcards: they must be uint8_t. They are ANDed with the incoming

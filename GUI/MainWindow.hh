@@ -19,8 +19,7 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef RE_MAINWINDOW_HH
-#define RE_MAINWINDOW_HH
+#pragma once
 
 #include <iostream>
 #include <regex>
@@ -56,5 +55,3 @@ protected:
     SelectWindow *m_window_select;
     ScanWindow *m_window_scan;
 };
-
-#endif //RE_MAINWINDOW_HH

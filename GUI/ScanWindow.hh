@@ -19,8 +19,7 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef RE_SCANWINDOW_HH
-#define RE_SCANWINDOW_HH
+#pragma once
 
 #include <iostream>
 // header
@@ -168,5 +167,3 @@ private:
     template<typename T>
     void refresh_row(RE::match_t *val, const char *type_string, Gtk::TreeModel::Row &row);
 };
-
-#endif //RE_SCANWINDOW_HH

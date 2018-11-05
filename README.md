@@ -1,7 +1,7 @@
 # Reverse Engine (pre-alpha)
 
-Reverse Engine is a reverse engineering tool inspired by Cheat Engine.
-You can also create [trainers](./trainer.cc) for any program.
+Reverse Engine is an another reverse engineering tool inspired by Cheat Engine.
+You can also create [trainers](./trainer.cc). Even with Python.
 
 ## License
 
@@ -28,11 +28,11 @@ You can also create [trainers](./trainer.cc) for any program.
 - [ ] Code injection
 - [ ] CLI support
 - [ ] GUI support
-- [x] Wrappers: Python support
+- [x] Python binding (pybind11)
 
 ## Cheat example
 *Further information:* [Advanced C++ example of CS:GO trainer](./example/csgo_linux64/fix_resources_download/main.cc) 
-
+### Example is a bit out of date, you can check [our testing suites](./reverseengine/test). It is also have example of python executable
 ```cpp
 Handle h("csgo_linux64");
 h.update_regions();

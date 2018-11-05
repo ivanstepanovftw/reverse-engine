@@ -3,6 +3,7 @@
 
     Fix for https://github.com/ValveSoftware/csgo-osx-linux/issues/11
     that allows you to download resources from community servers.
+    UPD: #11 issue fixed by Volvo
 
     Copyright (C) 2017-2018 Ivan Stepanov <ivanstepanovftw@gmail.com>
 
@@ -30,9 +31,9 @@
 #include <cassert>
 #include <sys/wait.h>
 #include <curl/curl.h>
-#include <libreverseengine/core.hh>
-#include <libreverseengine/value.hh>
-#include <libreverseengine/scanner.hh>
+#include <reverseengine/core.hh>
+#include <reverseengine/value.hh>
+#include <reverseengine/scanner.hh>
 
 
 using namespace std;
@@ -86,7 +87,7 @@ main(int argc, char* argv[])
     }
     /// Trainer and scanner example
     RE::Handle csgo;
-    RE::Cregion *engine_client_so = nullptr;
+    RE::Cregion *engine_client_so;
 
 stage_waiting:;
     cout<<"1. Waiting for process."<<endl;
@@ -109,19 +110,18 @@ stage_updating:;
     for(;;) {
         csgo.update_regions();
         engine_client_so = csgo.get_region_by_name("engine_client.so");
-        if (engine_client_so)
+        if (engine_client_so->is_good())
             break;
         if (!csgo.is_running())
             goto stage_waiting;
         usleep(500'000);
     }
     cout<<"Regions added: "<<csgo.regions.size()<<", ignored: "<<csgo.regions_ignored.size()<<endl;
-    cout<<"Found region: "<<*engine_client_so<<endl;
+//    cout<<"Found region: "<<*engine_client_so<<endl;
     cout<<delimeter<<endl;
 
-
-
-    std::string moddir = csgo.get_path().substr(0, csgo.get_path().find_last_of("/\\")) + "/csgo";
+    //fixme[high]: ?????????????????????????
+    std::string moddir = csgo.get_path().string().substr(0, csgo.get_path().string().find_last_of("/\\")) + "/csgo";
     struct stat moddirstat;
     stat(moddir.c_str(), &moddirstat);
 
@@ -129,7 +129,8 @@ stage_updating:;
     if (!csgo.find_pattern(&foundDownloadManagerMov,
                            engine_client_so,
                            DOWNLOADMANAGER_SIGNATURE,
-                           DOWNLOADMANAGER_MASK)) {
+                           DOWNLOADMANAGER_MASK))
+    {
         clog<<"Not found :("<<endl;
         return 1;
     }
@@ -173,7 +174,7 @@ stage_updating:;
 
     while (csgo.is_running()) {
         sleep(1);
-        ssize_t copied = csgo.read(downloadManager + 4u * 8u, &m_activeRequest, sizeof(m_activeRequest));
+        size_t copied = csgo.read(downloadManager + 4u * 8u, &m_activeRequest, sizeof(m_activeRequest));
         if (copied != sizeof(unsigned long)) {
             cout<<"copied: "<<copied<<endl;
             cout << "copy failed: " << std::strerror(errno) << '\n';

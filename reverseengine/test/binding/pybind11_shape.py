@@ -1,21 +1,17 @@
-# file: test.py
-
-# This file illustrates the proxy class C++ interface generated
-# by SWIG.
-
-import reverseengine_swig as shape
+#!/usr/bin/env python
+import master as RE
 
 # ----- Object creation -----
 
 print("Creating some objects:")
-c = shape.Circle(10)
+c = RE.Circle(10)
 print("    Created circle", c)
-s = shape.Square(10)
+s = RE.Square(10)
 print("    Created square", s)
 
 # ----- Access a static member -----
 
-print("\nA total of", shape.cvar.Shape_nshapes, "shapes were created")
+print("\nA total of", RE.Shape.nshapes, "shapes were created")
 
 # ----- Member data access -----
 
@@ -27,9 +23,12 @@ c.y = 30
 s.x = -10
 s.y = 5
 
+# Tell python how to print our C++ Class
+RE.Square.__repr__ = lambda self: repr(str(self.x) + ", " + str(self.y))
+
 print("\nHere is their current position:")
 print("    Circle = (%f, %f)" % (c.x, c.y))
-print("    Square = (%f, %f)" % (s.x, s.y))
+print("    Square = (%s)" % s)
 
 # ----- Call some methods -----
 
@@ -47,5 +46,8 @@ print("\nGuess I'll clean up now")
 del c
 del s
 
-print(shape.cvar.Shape_nshapes, "shapes remain")
+print(RE.Shape.nshapes, "shapes remain")
 print("Goodbye")
+
+if __name__ == '__main__':
+    pass

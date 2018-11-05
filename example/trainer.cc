@@ -27,9 +27,9 @@
 #include <functional>
 #include <cmath>
 #include <cassert>
-#include <libreverseengine/core.hh>
-#include <libreverseengine/value.hh>
-#include <libreverseengine/scanner.hh>
+#include <reverseengine/core.hh>
+#include <reverseengine/value.hh>
+#include <reverseengine/scanner.hh>
 
 
 using namespace std;
@@ -39,7 +39,7 @@ using namespace std::literals;
 
 //const string target = "FakeGame";
 //const string target = "FakeMem";
-const string target = "csgo.x86_64";
+const string target = "csgo_linux64";
 //const string target = "dota2";
 //const pid_t target = 1337;
 
@@ -50,10 +50,10 @@ main()
         cout<<"Warning: running without root"<<endl;
     }
     /// Trainer and scanner example
-    Handle h;
-    region_t *exe = nullptr;
-    region_t *libc = nullptr;
-    region_t *ld = nullptr;
+    RE::Handle h;
+    RE::Cregion *exe = nullptr;
+    RE::Cregion *libc = nullptr;
+    RE::Cregion *ld = nullptr;
     
 stage_waiting:;
     cout<<"Waiting for '"<<target<<"' process"<<endl;
@@ -79,24 +79,24 @@ stage_updating:;
         usleep(500'000);
     }
     cout<<"Regions added: "<<h.regions.size()<<", ignored: "<<h.regions_ignored.size()<<endl;
-    cout<<"Found region: "<<*exe<<endl;
-    cout<<"Found region: "<<*libc<<endl;
-    cout<<"Found region: "<<*ld<<endl;
+    cout<<"Found region: "<<exe->pathname<<endl;
+    cout<<"Found region: "<<libc->pathname<<endl;
+    cout<<"Found->>>region: "<<ld->pathname<<endl;
     cout<<"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"<<endl;
     
     const uintptr_t test_address = exe->address+16;
-    region_t *test_region = h.get_region_of_address(test_address);
+    RE::Cregion *test_region = h.get_region_of_address(test_address);
     if (!test_region) {
-        cout<<"Can't find region of address: address: "<<HEX(test_address)<<endl;
+        cout<<"Can't find region of address: address: "<<RE::HEX(test_address)<<endl;
         return 1;
     }
-    cout<<"Address: "<<HEX(test_address)<<" belongs to "<<*test_region<<endl;
+    cout<<"Address: "<<RE::HEX(test_address)<<" belongs to "<<test_region->pathname<<endl;
     cout<<"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"<<endl;
     
-    cout<<"Lets read 8 bytes to our union from our target address-space: "<<HEX(test_address)<<endl;
-    mem64_t test_memory;  /// it can be any type you need
+    cout<<"Lets read 8 bytes to our union from our target address-space: "<<RE::HEX(test_address)<<endl;
+    RE::mem64_t test_memory;  /// it can be any type you need
     errno = 0;
-    if (h.read(&test_memory, test_address, sizeof(test_memory)) != sizeof(test_memory)) {
+    if (h.read(test_address, &test_memory, sizeof(test_memory)) != sizeof(test_memory)) {
         if (errno) {
             cout<<"Error while reading: "<<strerror(errno)<<endl;
             return 1;
@@ -109,11 +109,11 @@ stage_updating:;
     cout<<"4 bytes unsigned: "<<test_memory.u32<<endl;
     cout<<"8 bytes signed: "<<test_memory.i32<<endl;
     cout<<"8 chars as text: '"<<+test_memory.chars<<"'"<<endl;
-    cout<<"8 chars in hex: "<<HEX(*reinterpret_cast<uint64_t *>(test_memory.bytes))<<endl;
+    cout<<"8 chars in hex: "<<RE::HEX(*reinterpret_cast<uint64_t *>(test_memory.bytes))<<endl;
     cout<<"8 bytes in dec: ";
     cout<<hex<<showbase;
     ostream_iterator<int> out_it(cout, ", ");
-    copy(test_memory.chars, test_memory.chars + sizeof(mem64_t), out_it);
+    copy(test_memory.chars, test_memory.chars + sizeof(RE::mem64_t), out_it);
     cout<<dec<<endl;
     cout<<"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"<<endl;
     
@@ -124,7 +124,7 @@ stage_updating:;
                        "xxxx????")) {
         clog<<"Not found :("<<endl;
     } else
-        clog<<"found: "<<HEX(found)<<endl;
+        clog<<"found: "<<RE::HEX(found)<<endl;
     
     return 0;
 }

@@ -15,11 +15,16 @@ int main() {
     string search_for = "0";
 
     globals.handle = new RE::Handle(target);
+    if (!globals.handle->is_good())
+        throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
     globals.handle->update_regions();
     globals.scanner = new RE::Scanner(globals.handle);
 
 
-    clog<<"FAKEMEM, pid: "<<globals.handle->pid<<endl;
+    clog<<"FAKEMEM, pid: "
+        <<globals.handle->pid
+        <<", title: "<<globals.handle->title
+        <<endl;
 
     high_resolution_clock::time_point timestamp;
 
@@ -68,6 +73,7 @@ int main() {
 
     timestamp = high_resolution_clock::now();
     globals.scanner->scan_next(*globals.scans.first, *globals.scans.first, data_type, uservalue, match_type);
+    //TODO[med]: (TO INVESTIGATE) really interesting result (why second scan is faster?)
     clog<<"Scan 3/3 done in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;

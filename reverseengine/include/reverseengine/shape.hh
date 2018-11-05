@@ -1,5 +1,5 @@
 
-namespace Geometry {
+namespace RE {
     class Shape {
     public:
         Shape() {
@@ -18,20 +18,22 @@ namespace Geometry {
     };
 
     class Circle : public Shape {
-    private:
-        double radius;
     public:
+        using Shape::Shape;
         Circle(double r) : radius(r) {}
         virtual double area();
         virtual double perimeter();
+    private:
+        double radius;
     };
 
     class Square : public Shape {
-    private:
-        double width;
     public:
+        using Shape::Shape;
         Square(double w) : width(w) {}
         virtual double area();
         virtual double perimeter();
+    private:
+        double width;
     };
 }

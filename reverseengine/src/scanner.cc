@@ -25,10 +25,7 @@
 #include <reverseengine/scanner.hh>
 #include <reverseengine/value.hh>
 #include <reverseengine/scanroutines.hh>
-#include <reverseengine/fix_enum.hh>
-
-
-namespace bio = boost::iostreams;
+#include <reverseengine/common.hh>
 
 
 void
@@ -212,7 +209,7 @@ RE::Scanner::make_snapshot(const std::string& path)
             total_scan_bytes -= region.size;
             continue;
         } else if (copied != region.size) {
-            clog<<"warning: region: "<<region<<", requested: "<<HEX(region.size)<<", copied "<<HEX(copied)<<endl;
+//            clog<<"warning: region: "<<region<<", requested: "<<HEX(region.size)<<", copied "<<HEX(copied)<<endl;
             region.size = static_cast<uintptr_t>(copied);
         }
         memcpy(snapshot,
@@ -250,8 +247,8 @@ RE::Scanner::scan(matches_t& writing_matches,
      * The actual allocation is that plus the rounded size of the maximum possible VLT.
      * This is needed because the last byte might be scanned as max size VLT,
      * thus need 2^16 - 2 extra bytes after it */
-    constexpr size_t MAX_BUFFER_SIZE = 128_KiB;
-    constexpr size_t MAX_ALLOC_SIZE = MAX_BUFFER_SIZE+64_KiB;
+    constexpr size_t MAX_BUFFER_SIZE = 128*KiB;
+    constexpr size_t MAX_ALLOC_SIZE = MAX_BUFFER_SIZE+64*KiB;
 
     /* allocate data array */
     uint8_t *buffer = new uint8_t[MAX_ALLOC_SIZE];
@@ -262,7 +259,7 @@ RE::Scanner::scan(matches_t& writing_matches,
     size_t match_length;
     RE::match_flags checkflags;
 
-    ssize_t copied;
+    size_t copied;
     size_t required_extra_bytes_to_record = 0;
 
     /* check every memory region */
@@ -364,6 +361,7 @@ RE::Scanner::scan_next(matches_t& reading_matches,
                 case Edata_type::BYTEARRAY:
                 case Edata_type::STRING:
                     old_length = flags;
+                    [[fallthrough]];
                 default: /* NUMBER */
                     old_length = (flags & flags_64b) ? 8 :
                            (flags & flags_32b) ? 4 :
@@ -379,8 +377,8 @@ RE::Scanner::scan_next(matches_t& reading_matches,
 #endif
 
             /* read value from this address */
-            ssize_t memlength = handle->cached.read(address, &memory_ptr, old_length);
-            if UNLIKELY(memlength < 0) {
+            size_t memlength = handle->read_cached(address, &memory_ptr, old_length);
+            if UNLIKELY(memlength == RE::Handle::npos) {
                 /* If we can't look at the data here, just abort the whole recording, something bad happened */
                 required_extra_bytes_to_record = 0;
             }
@@ -436,20 +434,29 @@ RE::Scanner::scan_next(matches_t& reading_matches,
                 switch (max_bytes) {
                     case 8:
                         val.bytes[7] = data[index + 7].byte;
+                        [[fallthrough]];
                     case 7:
                         val.bytes[6] = data[index + 6].byte;
+                        [[fallthrough]];
                     case 6:
                         val.bytes[5] = data[index + 5].byte;
+                        [[fallthrough]];
                     case 5:
                         val.bytes[4] = data[index + 4].byte;
+                        [[fallthrough]];
                     case 4:
                         val.bytes[3] = data[index + 3].byte;
+                        [[fallthrough]];
                     case 3:
                         val.bytes[2] = data[index + 2].byte;
+                        [[fallthrough]];
                     case 2:
                         val.bytes[1] = data[index + 1].byte;
+                        [[fallthrough]];
                     case 1:
                         val.bytes[0] = data[index + 0].byte;
+                        [[fallthrough]];
+                    default:;
                 }
 #elif RE_ADJUST_DATA_TO_VAL_LOOP == 4
                 switch (max_bytes) {

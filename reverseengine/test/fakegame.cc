@@ -138,14 +138,14 @@ private:
 
 
 int
-main(int, char **argv) {
+main(int argc, char *argv[]) {
     if (getuid() != 0) {
         cerr<<"error: you cannot perform this operation unless you are root."<<endl;
         return 0;
     }
     
     World *w = new World();
-    w->CreateWorld(0);
+    w->CreateWorld(argc);
     Client *c = new Client(w);
     
     clog<<"World created, client ready to use!"<<endl;
@@ -164,7 +164,7 @@ main(int, char **argv) {
     bool loopl = false;
     
 //    fixme[high]: may be variate
-    int kbd = open("/dev/input/by-path/platform-i8042-serio-0-event-kbd", O_RDONLY);
+    int kbd = open("/dev/input/by-path/pci-0000:00:14.0-usb-0:1.1:1.2-event-kbd", O_RDONLY);
     if (kbd == -1) {
         cerr << "error while opening keyboard" << endl;
         return 0;
@@ -174,43 +174,43 @@ main(int, char **argv) {
     input_event ie{};
     while (read(kbd, &ie, sizeof(ie))) {
         if (ie.type == EV_KEY && ie.value == 1) {
-            if (ie.code == KEY_KP1) {
+            if (ie.code == KEY_KP1 || ie.code == KEY_1) {
                 cout<<"1: update world pointer"<<endl;
                 
                 delete w;
                 w = new World();
                 cout << "client isnt working, yea?" << endl;
             }
-            else if (ie.code == KEY_KP2) {
+            else if (ie.code == KEY_KP2 || ie.code == KEY_2) {
                 cout<<"2: update client pointer"<<endl;
                 delete c;
                 c = new Client(w);
             }
-            else if (ie.code == KEY_KP3) {
+            else if (ie.code == KEY_KP3 || ie.code == KEY_3) {
                 cout<<"3: new game"<<endl;
                 w->CreateWorld(0);
             }
-            else if (ie.code == KEY_KP6) {
+            else if (ie.code == KEY_KP6 || ie.code == KEY_6) {
                 cout<<"6: step main loop"<<endl;
                 w->Iterate();
             }
-            else if (ie.code == KEY_KPPLUS) {
+            else if (ie.code == KEY_KPPLUS || ie.code == KEY_EQUAL) {
                 cout<<"+: increase health"<<endl;
                 c->IncHealth();
                 cout<<"health: "<<*c->GetHealth()<<endl;
             }
-            else if (ie.code == KEY_KPMINUS) {
+            else if (ie.code == KEY_KPMINUS || ie.code == KEY_MINUS) {
                 cout<<"-: decrease health"<<endl;
                 c->DecHealth();
                 cout<<"health: "<<*c->GetHealth()<<endl;
             }
-            else if (ie.code == KEY_KP0) {
+            else if (ie.code == KEY_KP0 || ie.code == KEY_0) {
                 cout<<"0: suicide"<<endl;
                 c->Suicide();
                 cout<<"health: "<<*c->GetHealth()<<endl;
                 cout<<"dont forget to step"<<endl;
             }
-            else if (ie.code == KEY_KPASTERISK) {
+            else if (ie.code == KEY_KPASTERISK || ie.code == KEY_8) {
                 cout<<"*: info"<<endl;
                 cout<<"health address at ["<<c->GetHealth()<<"]"<<endl;
                 cout<<"Entry address at ["<<c->GetLocalPlayer()<<"]"<<endl;

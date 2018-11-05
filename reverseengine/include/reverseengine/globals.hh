@@ -26,13 +26,7 @@
 #include <reverseengine/scanner.hh>
 
 
-// todo[low]: remove namespace
-using namespace std;
-using namespace std::chrono;    
-
-
 constexpr size_t REFRESH_RATE = 2000;
-
 
 class scans_t {
 public:
@@ -51,10 +45,13 @@ private:
 };
 
 
-struct {
+class Globals {
+public:
     RE::Handle *handle = nullptr;  //fixme [low]: remove pointer
     RE::Scanner *scanner = nullptr;  //fixme [low]: remove pointer
     scans_t scans;
-} globals;
+};
+
+Globals globals;
 
 #endif //RE_GLOBALS_HEADER

@@ -1,18 +1,18 @@
 # ┌──────────────────────────────────────────────────────────────────┐
-#
+#   Hello, World! This is another reverse engineering tool
+#   inspired by Cheat Engine. Feel free to contribute!
 # └──────────────────────────────────────────────────────────────────┘
-cmake_minimum_required(VERSION 3.9.0)
-#cmake_minimum_required(VERSION 3.13.0-rc0)
-project("Static library with SWIG example")
+cmake_minimum_required(VERSION 3.9.0) # todo[medium]: set lowest possible cmake version
+project("Reverse Engine")
 
-set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-include(missing)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/utils/cmake")
+include(legacy)
 
 # ┌──────────────────────────────────────────────────────────────────┐
 #   Checks
 # └──────────────────────────────────────────────────────────────────┘
 if (NOT EXISTS "/proc/self/maps")
-    message(FATAL_ERROR "This system does not seem to have /proc/pid/maps files.")
+    message(FATAL_ERROR "This system does not seem to have /proc/self/maps files.")
 endif()
 
 # ┌──────────────────────────────────────────────────────────────────┐
@@ -38,4 +38,5 @@ pkg_check_modules(GTKMM gtkmm-3.0)
 add_subdirectory(reverseengine)
 #add_subdirectory(GUI)
 #add_subdirectory(CLI)
-#add_subdirectory(example)
+add_subdirectory(example)
+

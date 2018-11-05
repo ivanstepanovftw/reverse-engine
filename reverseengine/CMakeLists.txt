@@ -21,6 +21,17 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         PRIVATE src)
 
 # ┌──────────────────────────────────────────────────────────────────┐
+#   Linker
+# └──────────────────────────────────────────────────────────────────┘
+link_directories(
+        ${Boost_LIBRARY_DIRS}
+)
+
+include_directories(
+        ${Boost_INCLUDE_DIRS}
+)
+
+# ┌──────────────────────────────────────────────────────────────────┐
 #   Install target
 # └──────────────────────────────────────────────────────────────────┘
 install(TARGETS ${PROJECT_NAME}
@@ -33,20 +44,7 @@ install(TARGETS ${PROJECT_NAME}
 # ┌──────────────────────────────────────────────────────────────────┐
 #   Compilation flags
 # └──────────────────────────────────────────────────────────────────┘
-link_directories(
-        ${Boost_LIBRARY_DIRS}
-)
-
-include_directories(
-        ${Boost_INCLUDE_DIRS}
-)
-
-# ┌──────────────────────────────────────────────────────────────────┐
-#   Compilation flags
-# └──────────────────────────────────────────────────────────────────┘
 # HH=opt && diff -y -t <(gcc -O0 -Q --help=${HH}) <(gcc -O1 -Q --help=${HH}) | grep '| '
-set(CMAKE_CXX_STANDARD 20)
-
 set(ENABLE_ARCH_SPECIFIC_INSTRUCTIONS TRUE)
 set(ENABLE_GOLD TRUE)
 # Profiler-specific
@@ -56,6 +54,8 @@ set(ENABLE_DEBUG TRUE)
 set(PROFILE_GENERATE)
 set(PROFILE_UPDATE)
 set(PROFILE_USE)
+
+set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 
 #TODO[high]: move `below` to target_compile_options
 if (ENABLE_ARCH_SPECIFIC_INSTRUCTIONS)
@@ -71,8 +71,8 @@ if (ENABLE_SHARED_LIBS)
     add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-Wl,-rpath=/opt/intel/compilers_and_libraries/linux/lib/intel64>")
 endif()
 if (ENABLE_DEBUG)
-    #    add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-debug;inline-debug-info;-qopenmp;-qopenmp-link;dynamic>")
-    #    add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-Wl,-rpath=/opt/intel/compilers_and_libraries/linux/lib/intel64>")
+    # add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-debug;inline-debug-info;-qopenmp;-qopenmp-link;dynamic>")
+    # add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-Wl,-rpath=/opt/intel/compilers_and_libraries/linux/lib/intel64>")
     add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},GNU>:-g3>")
     add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Clang>:-g3>")
 endif()
@@ -96,12 +96,17 @@ target_compile_options(${PROJECT_NAME} PUBLIC
         -pipe
         -m64
         -DNDEBUG
-        -fPIC
+#        -fPIC
 #        -fstack-protector-strong
 #        -static-libgcc
 #        -Wformat -Werror=format-security
-#        -Wall -Wextra -Wpedantic -Wno-unused
+        -Wall
+        -Wno-unused
+#        -Wextra
+#        -Wpedantic
         )
+
+set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC
         #[[
@@ -111,7 +116,7 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
         RE_ADJUST_NULL_EMPLACE=1  # 1,2,3
         RE_ADJUST_INIT_FIRST_SWATH=1  # 0,1
         RE_ADJUST_DATA_TO_VAL_INLINE=2  # 0,1,2; 0: never inline, 1: force inline, 2: manual inline
-        RE_ADJUST_FLAGS_TO_MEMLENGTH_INLINE=2  # 0,1,2; 0: never inline, 1: force inline, 2: manual inline
+#        RE_ADJUST_FLAGS_TO_MEMLENGTH_INLINE=2  # 0,1,2; 0: never inline, 1: force inline, 2: manual inline
         RE_ADJUST_REMOTE_GET_INLINE=2  # 0,1,2; 0: never inline, 1: force inline, 2: manual inline
         #[[ gcc             icc         clang
          0: 9.337      (!)  7.978       7.188     (!)
@@ -127,11 +132,13 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
 
 target_link_options(${PROJECT_NAME} PUBLIC
 #        -z relro -z now
+        -z defs
         )
 
 target_link_libraries(${PROJECT_NAME}
         pthread
         boost_iostreams
+        stdc++fs
         )
 
 # Use ld.gold linker by default
@@ -146,10 +153,20 @@ if (ENABLE_GOLD AND UNIX AND NOT APPLE)
     endif()
 endif()
 
+# ┌──────────────────────────────────────────────────────────────────┐
+#   Wrappers
+# └──────────────────────────────────────────────────────────────────┘
+enable_testing()
 
+# Successed:
+#add_subdirectory(boost) # isnt stl friendly
+add_subdirectory(binding) # pip issue https://github.com/pybind/pybind11/issues/1379 https://github.com/pybind/pybind11/issues/1221
+
+# Failures:
+#add_subdirectory(swig) # fuck swig: it made a lot of code reimplementation and it still cannot be properly compiled. but it generates .py file that need to most wrappers autocompletion
+#add_subdirectory(cppyy) # does not even compile
 
 # ┌──────────────────────────────────────────────────────────────────┐
-#   Subdirectories
+#   Test python wrappers
 # └──────────────────────────────────────────────────────────────────┘
-add_subdirectory(swig)
-add_subdirectory(tests)
+add_subdirectory(test)

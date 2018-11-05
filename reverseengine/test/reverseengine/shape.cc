@@ -14,6 +14,7 @@
 int main(int argc, char* argv[])
 {
     using namespace std;
+    using namespace Geometry;
 
     /// ----- Object creation -----
     {
@@ -58,9 +59,10 @@ int main(int argc, char* argv[])
 
         // Note: this invokes the virtual destructor
         delete s;
+        cout<<Shape::nshapes<<" shapes remain"<<endl;
+
         // Note: this also invokes the virtual destructor
     }
 
     cout<<Shape::nshapes<<" shapes remain"<<endl;
-    cout<<"Goodbye"<<endl;
 }

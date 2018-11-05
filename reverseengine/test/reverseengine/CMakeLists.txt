@@ -1,81 +1,54 @@
-project(tests)
+set(TARGET 0)
 
-set(CMAKE_CXX_STANDARD 20)
-
-#include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-
-# ┌──────────────────────────────────────────────────────────────────┐
-#   FAKEGAME
-# └──────────────────────────────────────────────────────────────────┘
-add_executable(FAKEGAME fakegame.cc)
-
-target_compile_options(FAKEGAME PUBLIC
-        -O3
-        -fstack-protector-strong
-        -pie -fPIE
-        -static-libgcc
-        -Wformat -Werror=format-security
-        )
-
-target_compile_definitions(FAKEGAME PUBLIC
-        _FORTIFY_SOURCE=0
-        )
-
-target_link_options(FAKEGAME PUBLIC
-        -z relro -z now
-        )
-
-target_link_libraries(FAKEGAME
-        pthread
-        boost_iostreams
-        )
-
-# ┌──────────────────────────────────────────────────────────────────┐
-#   FAKEMEM
-# └──────────────────────────────────────────────────────────────────┘
-add_executable(FAKEMEM fakemem.cc)
-
-target_compile_options(FAKEMEM PUBLIC
-        -O2
-        -D_FORTIFY_SOURCE=2
-        )
 
 # ┌──────────────────────────────────────────────────────────────────┐
 #   SEARCH_CC
 # └──────────────────────────────────────────────────────────────────┘
-add_executable(SEARCH_CC search.cc)
+set(TARGET SEARCH_CC)
 
-target_compile_options(FAKEGAME PUBLIC
+add_executable(${TARGET} search.cc)
+set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+target_compile_options(${TARGET} PUBLIC
         -O3
         -D_FORTIFY_SOURCE=2
         -fstack-protector-strong
         -pie -fPIE
         -Wformat -Werror=format-security
         )
-
-target_link_options(SEARCH_CC PUBLIC
+target_compile_definitions(${TARGET} PUBLIC
+        )
+target_link_options(${TARGET} PUBLIC
         -z relro -z now
         )
-
-target_link_libraries(SEARCH_CC
+target_link_libraries(${TARGET}
         reverseengine
         boost_iostreams
         )
-
 
 # ┌──────────────────────────────────────────────────────────────────┐
-#   Bindings testing
+#   SHAPE_CC
 # └──────────────────────────────────────────────────────────────────┘
-#[[ SHAPE_CC ]]
-add_executable(SHAPE_CC shape.cc)
-target_compile_options(SHAPE_CC PUBLIC
-        -std=c++2a
-        )
+set(TARGET SHAPE_CC)
 
-target_link_libraries(SHAPE_CC
+add_executable(${TARGET} shape.cc)
+set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+target_compile_options(${TARGET} PUBLIC
+        )
+target_link_libraries(${TARGET}
         reverseengine
         boost_iostreams
         )
 
-#[[ SHAPE_PY ]]
-# Nothing to do here. Just launch shape.py manually
+# ┌──────────────────────────────────────────────────────────────────┐
+#    KNN_CC
+# └──────────────────────────────────────────────────────────────────┘
+set(TARGET KNN_CC)
+
+add_executable(${TARGET} knn.cc)
+set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+target_compile_options(${TARGET} PUBLIC
+        )
+target_link_libraries(${TARGET}
+        reverseengine
+        boost_iostreams
+        )

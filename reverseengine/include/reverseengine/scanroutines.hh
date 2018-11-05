@@ -35,7 +35,8 @@ namespace RE {
  */
 
 /* this struct describes matched values */
-typedef struct {
+class value_t {
+public:
     union {
         int8_t   i8;
         uint8_t  u8;
@@ -52,7 +53,7 @@ typedef struct {
     };
     
     uint16_t flags;
-} value_t;
+};
 
 //int main() {
 //    value_t *value;

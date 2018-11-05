@@ -1,31 +1,56 @@
-# ┌──────────────────────────────────────────────────────────────────┐
-# │  Project settings                                                │
-# └──────────────────────────────────────────────────────────────────┘
-project(example)
+project(test)
+
+set(TARGET 0)
+
 
 # ┌──────────────────────────────────────────────────────────────────┐
-# │  Build executable                                                │
+#   Add more suites
 # └──────────────────────────────────────────────────────────────────┘
-add_executable(trainer trainer.cc)
+add_subdirectory(reverseengine)
+add_subdirectory(binding)
 
-set_property(TARGET trainer PROPERTY CXX_STANDARD 20)
+# ┌──────────────────────────────────────────────────────────────────┐
+#   FAKEGAME
+# └──────────────────────────────────────────────────────────────────┘
+set(TARGET FAKEGAME)
 
-target_link_libraries(trainer
-        reverseengine
+# Another one requirement: it must be secure as hell, so we need to use all compiler/linker methods for hardening
+add_executable(${TARGET} fakegame.cc)
+set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+target_compile_options(${TARGET} PUBLIC
+        -O3
+        -fstack-protector-strong
+        -pie -fPIE
+        -Wall -Wextra -Wpedantic
+        -Wformat -Werror=format-security
+        -Werror=implicit-function-declaration
+        )
+target_compile_definitions(${TARGET} PUBLIC
+        _FORTIFY_SOURCE=2
+        )
+target_link_options(${TARGET} PUBLIC
+        -pie
+        -z relro -z now
+        -z defs
+        -static-libgcc
+        -static-libstdc++
+        )
+target_link_libraries(${TARGET}
         pthread
         boost_iostreams
         )
 
 # ┌──────────────────────────────────────────────────────────────────┐
-# │  Build executable                                                │
+#   FAKEMEM
 # └──────────────────────────────────────────────────────────────────┘
-add_executable(csgo_linux64_fix_resources_download csgo_linux64/fix_resources_download/main.cc)
+set(TARGET FAKEMEM)
 
-set_property(TARGET csgo_linux64_fix_resources_download PROPERTY CXX_STANDARD 20)
-
-target_link_libraries(csgo_linux64_fix_resources_download
-        reverseengine
-        pthread
-        curl
-        boost_iostreams
+add_executable(${TARGET} fakemem.cc)
+set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+target_compile_options(${TARGET} PUBLIC
+        -O2
+        -Wformat -Werror=format-security
+        )
+target_compile_definitions(${TARGET} PUBLIC
+        _FORTIFY_SOURCE=0
         )
