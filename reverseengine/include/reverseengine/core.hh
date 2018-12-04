@@ -133,79 +133,44 @@ namespace RE {
  * plus a `PEEKDATA_CHUNK`, to store a full extra chunk for maneuverability */
         // FIXME[critical]: not returning negative values (possibly done)
 
-        static constexpr size_t PEEKDATA_CHUNK = 2 * KiB;
-        static constexpr size_t MAX_PEEKBUF_SIZE = 64 * KiB + PEEKDATA_CHUNK;
+        static constexpr size_t MAX_PEEKBUF_SIZE = 4 * KiB;
 
         uintptr_t base = 0; // base address of cached region
-        std::vector<uint8_t> cache;
-        size_t size; // amount of valid memory stored (in bytes)
+        size_t cache_size = 0;
+        uint8_t *cache = new uint8_t[MAX_PEEKBUF_SIZE];
 
+        // TODO[medium]: move to CachedReader class
+        /// The cached reader made for reading small values many times to reduce system calls
         size_t
         inline
         read_cached(uintptr_t address, void *out, size_t size) {
-            unsigned int i;
-            uintptr_t missing_bytes;
+            if UNLIKELY(size > MAX_PEEKBUF_SIZE) {
+                return this->read(address, out, size);
+            }
 
-            assert(cache.size() <= MAX_PEEKBUF_SIZE);
-
-            /* check if we have a full cache hit */
-            if (this->base &&
-                address >= this->base &&
-                (unsigned long) (address + size - this->base) <= cache.size())
-            {
-                out = (mem64_t *) &this->cache[address - this->base];
-                return this->base - address + cache.size();
-            } else if (this->base &&
-                       address >= this->base &&
-                       (unsigned long) (address - this->base) < cache.size())
-            {
-                assert(cache.size() != 0);
-
-                /* partial hit, we have some of the data but not all, so remove old entries - shift the frame by as far as is necessary */
-                missing_bytes = (address + size) - (this->base + cache.size());
-                /* round up to the nearest PEEKDATA_CHUNK multiple, that is what could
-                 * potentially be read and we have to fit it all */
-                missing_bytes = PEEKDATA_CHUNK * (1 + (missing_bytes - 1) / PEEKDATA_CHUNK);
-
-                /* head shift if necessary */
-                if (cache.size() + missing_bytes > MAX_PEEKBUF_SIZE) {
-                    uintptr_t shift_size = address - this->base;
-                    shift_size = PEEKDATA_CHUNK * (shift_size / PEEKDATA_CHUNK);
-
-                    memmove(&this->cache[0], &this->cache[shift_size], cache.size() - shift_size);
-
-                    cache.resize(cache.size() - shift_size);
-                    this->base += shift_size;
-                }
-            } else {
-                /* cache miss, invalidate the cache */
-                missing_bytes = size;
-                cache.resize(0);
-                this->base = address;
+            if (base
+            && (address >= base)
+            && (address - base + size) <= cache_size) {
+                /* Full cache hit */
+                memcpy(out, &cache[address - base], size);
+                return size;
             }
 
             /* we need to retrieve memory to complete the request */
-            for (i = 0; i < missing_bytes; i += PEEKDATA_CHUNK) {
-                const uintptr_t target_address = this->base + cache.size();
-                size_t len = this->read(target_address, &this->cache[cache.size()], PEEKDATA_CHUNK);
-
-                /* check if the read succeeded */
-                if (UNLIKELY(len < PEEKDATA_CHUNK)) {
-                    if (len == 0) {
-                        /* hard failure to retrieve memory */
-                        return 0;
-                    }
-                    /* go ahead with the partial read and stop the gathering process */
-                    cache.resize(cache.size() + len);
-                    break;
-                }
-                /* otherwise, the read worked */
-                cache.resize(cache.size() + PEEKDATA_CHUNK);
+            size_t len = this->read(address, &cache[0], MAX_PEEKBUF_SIZE);
+            if (len == npos) {
+                /* hard failure to retrieve memory */
+                base = 0;
+                cache_size = 0;
+                return npos;
             }
 
+            base = address;
+            cache_size = len;
+
             /* return result to caller */
-            out = (mem64_t *) &this->cache[address - this->base];
-            return this->base - address + cache.size();
+            memcpy(out, &cache[0], size);
+            return MIN(size, cache_size);
         }
 
 

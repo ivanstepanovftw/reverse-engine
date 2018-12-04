@@ -93,15 +93,16 @@ endif()
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -prof_use")
 target_compile_options(${PROJECT_NAME} PUBLIC
         -O3
+        -g
         -pipe
         -m64
         -DNDEBUG
-#        -fPIC
+        -fPIC
 #        -fstack-protector-strong
 #        -static-libgcc
 #        -Wformat -Werror=format-security
-        -Wall
-        -Wno-unused
+#        -Wall
+#        -Wno-unused
 #        -Wextra
 #        -Wpedantic
         )
@@ -110,12 +111,12 @@ set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC
         #[[
-        The idea of RE_ADJUST_* is that loop in scan_next cannot fit in processor cache,
+        The idea of RE_ADJUST_* is that loop in rescan cannot fit in processor cache,
         so, by "adjusting" code we can get some performance improvements
         ]]
         RE_ADJUST_NULL_EMPLACE=1  # 1,2,3
         RE_ADJUST_INIT_FIRST_SWATH=1  # 0,1
-        RE_ADJUST_DATA_TO_VAL_INLINE=2  # 0,1,2; 0: never inline, 1: force inline, 2: manual inline
+        RE_ADJUST_DATA_TO_VAL_INLINE=1  # 0,1,2; 0: never inline, 1: force inline, 2: manual inline
 #        RE_ADJUST_FLAGS_TO_MEMLENGTH_INLINE=2  # 0,1,2; 0: never inline, 1: force inline, 2: manual inline
         RE_ADJUST_REMOTE_GET_INLINE=2  # 0,1,2; 0: never inline, 1: force inline, 2: manual inline
         #[[ gcc             icc         clang
@@ -131,7 +132,7 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
         )
 
 target_link_options(${PROJECT_NAME} PUBLIC
-#        -z relro -z now
+        -z relro -z now
         -z defs
         )
 

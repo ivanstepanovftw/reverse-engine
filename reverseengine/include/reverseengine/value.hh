@@ -55,10 +55,10 @@ namespace RE {
 /** @arg what: any number
  * @return: string number represented as hex */
 template <typename T>
-std::string HEX(T&& what)
+std::string HEX(const T& what)
 {
     std::stringstream ss;
-    ss<<"0x"<<std::hex<<std::noshowbase<<std::setfill('0')<<std::setw(sizeof(T))<<static_cast<unsigned>(what);
+    ss<<"0x"<<std::hex<<std::noshowbase<<std::setfill('0')<<std::setw(sizeof(T))<<+what;
     return ss.str();
 }
 

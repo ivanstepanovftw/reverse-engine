@@ -4,10 +4,10 @@
 
 #pragma once
 
-#include <type_traits>
 
 #ifndef _PYBIND11
 
+#include <type_traits>
 /**
  * Description: Enum class now works like enum. Defined for: ~, &, |, ^, &=, |=, ^=.
  * Performance: performance not affected if used -O3 flag, but a bit slower if -O0 used (other flags unchecked).

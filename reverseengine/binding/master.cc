@@ -140,27 +140,27 @@ PYBIND11_MODULE(master, m) {
                 return py::bytes(self.chars, sizeof(self.chars));
             })
             .def("__str__", [](RE::mem64_t& self) -> auto {
-                using namespace std::string_literals;
+                std::ostringstream result;
                 std::ostringstream bytes;
-                bytes<<std::hex<<std::noshowbase<<std::setfill('0');
-                for(auto *cur = self.bytes; cur < self.bytes + sizeof(self.bytes); cur++) {
-                    bytes<<"\\x"<<std::setw(2)<<static_cast<unsigned>(*cur);
+                bytes << std::hex << std::noshowbase << std::setfill('0');
+                for (auto *cur = self.bytes; cur < self.bytes + sizeof(self.bytes); cur++) {
+                    bytes << "\\x" << std::setw(2) << +*cur;
                 }
-                std::string result = "{\n"s
-                                   + "    i8 : "+std::to_string(self.i8 )+"\n"
-                                   + "    u8 : "+std::to_string(self.u8 )+"\n"
-                                   + "    i16: "+std::to_string(self.i16)+"\n"
-                                   + "    u16: "+std::to_string(self.u16)+"\n"
-                                   + "    i32: "+std::to_string(self.i32)+"\n"
-                                   + "    u32: "+std::to_string(self.u32)+"\n"
-                                   + "    i64: "+std::to_string(self.i64)+"\n"
-                                   + "    u64: "+std::to_string(self.u64)+"\n"
-                                   + "    f32: "+std::to_string(self.f32)+"\n"
-                                   + "    f64: "+std::to_string(self.f64)+"\n"
-                                   + "    bytes: "+bytes.str()+"\n"
-                                   + "}";
+                result << "{\n"
+                       << "    i8 : " << std::to_string(self.i8 ) << "\n"
+                       << "    u8 : " << std::to_string(self.u8 ) << "\n"
+                       << "    i16: " << std::to_string(self.i16) << "\n"
+                       << "    u16: " << std::to_string(self.u16) << "\n"
+                       << "    i32: " << std::to_string(self.i32) << "\n"
+                       << "    u32: " << std::to_string(self.u32) << "\n"
+                       << "    i64: " << std::to_string(self.i64) << "\n"
+                       << "    u64: " << std::to_string(self.u64) << "\n"
+                       << "    f32: " << std::to_string(self.f32) << "\n"
+                       << "    f64: " << std::to_string(self.f64) << "\n"
+                       << "    bytes: " << bytes.str() << "\n"
+                       << "}";
                 // std::clog<<"returning "<<result<<std::endl;
-                return result;
+                return result.str();
             })
             .def("_address_", [](RE::mem64_t& self) -> uintptr_t { return reinterpret_cast<uintptr_t>(&self); }, "the base object")
             ;

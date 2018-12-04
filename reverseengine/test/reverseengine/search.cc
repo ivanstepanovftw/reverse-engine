@@ -28,7 +28,7 @@ int main() {
 
     high_resolution_clock::time_point timestamp;
 
-//    RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
+    //RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
     RE::Edata_type data_type = RE::Edata_type::INTEGER8;
     RE::Cuservalue uservalue[2];
     RE::Ematch_type match_type;
@@ -41,8 +41,6 @@ int main() {
     }
 
     globals.scans.first = new RE::matches_t();
-    globals.scans.prev = new RE::matches_t();
-    globals.scans.last = new RE::matches_t();
 
     timestamp = high_resolution_clock::now();
     globals.scanner->scan(*globals.scans.first, data_type, uservalue, match_type);
@@ -54,11 +52,12 @@ int main() {
             <<", matches_size: "<<globals.scans.first->matches_size<<"}"<<endl;
 //    clog<<"mem_virt: "<<globals.scans.first->mem_virt()<<endl;
 //    clog<<"mem_allo: "<<globals.scans.first->mem_allo()<<endl;
-//    clog<<"swaths.size: "<<globals.scans.first->swaths.size()<<endl;
-//    clog<<"swaths.capacity: "<<globals.scans.first->swaths.capacity()<<endl;
+//    clog<<"swaths.size: "<<globals.scans.first->swaths_count<<endl;
+//    clog<<"swaths.capacity: "<<globals.scans.first->swaths_allocated<<endl;
 
     timestamp = high_resolution_clock::now();
-    globals.scanner->scan_next(*globals.scans.first, *globals.scans.first, data_type, uservalue, match_type);
+    globals.scanner->scan_update(*globals.scans.first);
+    globals.scanner->rescan(*globals.scans.first, data_type, uservalue, match_type);
     clog<<"Scan 2/3 done in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
@@ -66,13 +65,12 @@ int main() {
     assert(globals.scans.first->size() == globals.scans.first->matches_size);
     clog<<"size: {counted: "<<globals.scans.first->size()
             <<", matches_size: "<<globals.scans.first->matches_size<<"}"<<endl;
-//    clog<<"mem_virt: "<<globals.scans.last->mem_virt()<<endl;
-//    clog<<"mem_allo: "<<globals.scans.last->mem_allo()<<endl;
-//    clog<<"swaths.size: "<<globals.scans.last->swaths.size()<<endl;
-//    clog<<"swaths.capacity: "<<globals.scans.last->swaths.capacity()<<endl;
+//    clog<<"swaths.size: "<<globals.scans.first->swaths_count<<endl;
+//    clog<<"swaths.capacity: "<<globals.scans.first->swaths_allocated<<endl;
 
     timestamp = high_resolution_clock::now();
-    globals.scanner->scan_next(*globals.scans.first, *globals.scans.first, data_type, uservalue, match_type);
+    globals.scanner->scan_update(*globals.scans.first);
+    globals.scanner->rescan(*globals.scans.first, data_type, uservalue, match_type);
     //TODO[med]: (TO INVESTIGATE) really interesting result (why second scan is faster?)
     clog<<"Scan 3/3 done in: "
         <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
@@ -81,10 +79,8 @@ int main() {
     assert(globals.scans.first->size() == globals.scans.first->matches_size);
     clog<<"size: {counted: "<<globals.scans.first->size()
             <<", matches_size: "<<globals.scans.first->matches_size<<"}"<<endl;
-//    clog<<"mem_virt: "<<globals.scans.last->mem_virt()<<endl;
-//    clog<<"mem_allo: "<<globals.scans.last->mem_allo()<<endl;
-//    clog<<"swaths.size: "<<globals.scans.last->swaths.size()<<endl;
-//    clog<<"swaths.capacity: "<<globals.scans.last->swaths.capacity()<<endl;
+//    clog<<"swaths.size: "<<globals.scans.first->swaths_count<<endl;
+//    clog<<"swaths.capacity: "<<globals.scans.first->swaths_allocated<<endl;
 
     return 0;
 }

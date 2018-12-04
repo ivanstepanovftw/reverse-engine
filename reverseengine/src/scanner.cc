@@ -253,13 +253,7 @@ RE::Scanner::scan(matches_t& writing_matches,
     /* allocate data array */
     uint8_t *buffer = new uint8_t[MAX_ALLOC_SIZE];
     uint8_t *buf_pos = buffer;
-    uintptr_t reg_pos;
 
-    mem64_t *memory_ptr = nullptr;
-    size_t match_length;
-    RE::match_flags checkflags;
-
-    size_t copied;
     size_t required_extra_bytes_to_record = 0;
 
     /* check every memory region */
@@ -267,7 +261,7 @@ RE::Scanner::scan(matches_t& writing_matches,
         /* For every offset, check if we have a match. */
         size_t memlength = region.size;
         size_t buffer_size = 0;
-        reg_pos = region.address;
+        uintptr_t reg_pos = region.address;
 
         for ( ; ; memlength--, buffer_size--, reg_pos++, buf_pos++) {
             /* check if the buffer is finished (or we just started) */
@@ -280,13 +274,13 @@ RE::Scanner::scan(matches_t& writing_matches,
 
                 /* load the next buffer block */
                 size_t alloc_size = MIN(memlength, MAX_ALLOC_SIZE);
-                copied = handle->read(reg_pos, buffer, alloc_size);
-                if UNLIKELY(copied < 0)
+                size_t copied = handle->read(reg_pos, buffer, alloc_size);
+                if UNLIKELY(copied == Handle::npos)
                     break;
                 else if UNLIKELY(copied < alloc_size) {
                     /* the region ends here, update `memlength` */
                     memlength = copied;
-                    bzero(buffer + copied, MAX_ALLOC_SIZE - copied);
+                    memset(buffer + copied, 0, MAX_ALLOC_SIZE - copied);
                 }
                 /* If less than `MAX_ALLOC_SIZE` bytes remain, we have all of them
                  * in the buffer, so go all the way.
@@ -296,11 +290,11 @@ RE::Scanner::scan(matches_t& writing_matches,
                 buf_pos = buffer;
             }
 
-            memory_ptr = reinterpret_cast<mem64_t *>(buf_pos);
-            checkflags = flags_empty;
+            mem64_t *memory_ptr = reinterpret_cast<mem64_t *>(buf_pos);
+            RE::match_flags checkflags = flags_empty;
 
             /* check if we have a match */
-            match_length = (*sm_scan_routine)(memory_ptr, memlength, nullptr, uservalue, checkflags);
+            size_t match_length = (*sm_scan_routine)(memory_ptr, memlength, nullptr, uservalue, checkflags);
             if UNLIKELY(match_length > 0) {
                 writing_matches.add_element(reg_pos, memory_ptr, checkflags);
                 writing_matches.matches_size++;
@@ -318,13 +312,42 @@ RE::Scanner::scan(matches_t& writing_matches,
 }
 
 
+bool RE::Scanner::scan_update(RE::matches_t& writing_matches) {
+    // Invalidate cache to get fresh values
+    handle->base = 0;
+
+    for (swath_t& s : writing_matches.swaths) {
+        size_t copied = handle->read_cached(s.base_address, &s.bytes[0], s.bytes.size());
+        /* check if the read succeeded */
+        if UNLIKELY(copied == Handle::npos) {
+            //cout<<"Resizing swath "<<HEX(s.base_address)<<" from "<<s.bytes.size()<<" to "<<0<<" elements"<<endl;
+            //cout<<"Error: can not read "<<s.bytes.size()<<" bytes from "<<HEX(s.base_address)<<": "<<strerror(errno)<<endl;
+            s.bytes.resize(0);
+            s.flags.resize(0);
+        } else if UNLIKELY(copied < s.bytes.size()) {
+            /* go ahead with the partial read and stop the gathering process */
+            s.bytes.resize(copied);
+            s.flags.resize(copied);
+        }
+        const size_t len = s.flags.size();
+        if (len > 6) s.flags[len-7] &= ~flags_64b;
+        if (len > 5) s.flags[len-6] &= ~flags_64b;
+        if (len > 4) s.flags[len-5] &= ~flags_64b;
+        if (len > 3) s.flags[len-4] &= ~flags_64b;
+        if (len > 2) s.flags[len-3] &= ~flags_32b;
+        if (len > 1) s.flags[len-2] &= ~flags_32b;
+        if (len > 0) s.flags[len-1] &= ~flags_16b;
+    }
+
+    return handle->base != 0;
+}
+
 
 bool
-RE::Scanner::scan_next(matches_t& reading_matches,
-                       matches_t& writing_matches,
-                       const RE::Edata_type& data_type,
-                       const RE::Cuservalue *uservalue,
-                       RE::Ematch_type match_type)
+RE::Scanner::rescan(matches_t& writing_matches,
+                    const RE::Edata_type& data_type,
+                    const RE::Cuservalue *uservalue,
+                    RE::Ematch_type match_type)
 {
     using namespace std;
 
@@ -333,215 +356,33 @@ RE::Scanner::scan_next(matches_t& reading_matches,
         return false;
     }
 
-    size_t required_extra_bytes_to_record = 0;
+    writing_matches.matches_size = 0;
     scan_progress = 0.0;
     stop_flag = false;
-    writing_matches.matches_size = 0;
 
-    mem64_t memory_ptr{};
+    for (swath_t& s : writing_matches.swaths) {
+        for (size_t it = 0; it < s.bytes.size(); it++) {
+            mem64_t *mem = reinterpret_cast<mem64_t *>(&s.bytes[it]);
+            uint16_t flag = s.flags[it];
+            size_t mem_size = flags_to_memlength(data_type, flag);
 
-    size_t swaths_remain = reading_matches.swaths_count;
-    writing_matches.swaths_count = 0;
-    for(size_t s = 0; s < swaths_remain; s++) {
-        writing_matches.swaths_count++;
-        swath_t& swath = reading_matches.swaths[s];
-        size_t bytes_remain = swath.data_size;
-        swath.data_size = 0;
-        size_t reading_iterator = 0;
-        while(bytes_remain) {
-            unsigned int match_length = 0;
             RE::match_flags checkflags = flags_empty;
+            unsigned int match_length = 0;
 
-            uint16_t flags = swath.data[reading_iterator].flags;
-            size_t old_length;
-#if RE_ADJUST_FLAGS_TO_MEMLENGTH_INLINE != 2
-            old_length = flags_to_memlength(data_type, flags);
-#else
-            switch (data_type) {
-                case Edata_type::BYTEARRAY:
-                case Edata_type::STRING:
-                    old_length = flags;
-                    [[fallthrough]];
-                default: /* NUMBER */
-                    old_length = (flags & flags_64b) ? 8 :
-                           (flags & flags_32b) ? 4 :
-                           (flags & flags_16b) ? 2 :
-                           (flags & flags_8b ) ? 1 : 0;
-            }
-#endif
-            uintptr_t address;
-#if RE_ADJUST_REMOTE_GET_INLINE != 2
-            address = swath.remote_get(reading_iterator);
-#else
-            address = swath.base_address + static_cast<uintptr_t>(reading_iterator);
-#endif
-
-            /* read value from this address */
-            size_t memlength = handle->read_cached(address, &memory_ptr, old_length);
-            if UNLIKELY(memlength == RE::Handle::npos) {
-                /* If we can't look at the data here, just abort the whole recording, something bad happened */
-                required_extra_bytes_to_record = 0;
-            }
-            /* Test only valid old matches */
-            else if (flags != flags_empty)  {
+            if (flag != flags_empty) {
+                /* Test only valid old matches */
                 value_t val;
-#if RE_ADJUST_DATA_TO_VAL_INLINE != 2
-                val = swath.data_to_val_aux(reading_iterator, swath.data_size);
-#else
-                const auto swath_length = swath.data_size;
-                const auto index = reading_iterator;
-                const auto& data = swath.data;
+                val = s.data_to_val_aux(it);
 
-                size_t max_bytes = swath_length - index;
-
-                /* Init all possible flags in a single go.
-                 * Also init length to the maximum possible value */
-                val.flags = flags_max;
-
-                /* NOTE: This does the right thing for VLT because the flags are in
-                 * the same order as the number representation (for both endians), so
-                 * that the zeroing of a flag does not change useful bits of `length`. */
-                if (max_bytes > 8)
-                    max_bytes = 8;
-                if (max_bytes < 8) val.flags &= ~flags_64b;
-                if (max_bytes < 4) val.flags &= ~flags_32b;
-                if (max_bytes < 2) val.flags &= ~flags_16b;
-                if (max_bytes < 1) val.flags = flags_empty;
-
-                /* Unrolling this will improve performance by 40% for gcc.
-                 * TODO to investigate */
-#if RE_ADJUST_DATA_TO_VAL_LOOP == 1
-# if RE_ADJUST_DATA_TO_VAL_LOOP_1_UNROLL == -1
-                #pragma nounroll
-# elif RE_ADJUST_DATA_TO_VAL_LOOP_1_UNROLL > 0
-                #pragma unroll(RE_ADJUST_DATA_TO_VAL_LOOP_1_UNROLL)
-#endif
-                for(uint8_t i = 0; i < max_bytes; i++) {
-                    /* Both uint8_t, no explicit casting needed */
-                    val.bytes[i] = data[index + i].byte;
-                }
-#elif RE_ADJUST_DATA_TO_VAL_LOOP == 2
-                if (max_bytes > 0) { val.bytes[0] = data[index + 0].byte;
-                if (max_bytes > 1) { val.bytes[1] = data[index + 1].byte;
-                if (max_bytes > 2) { val.bytes[2] = data[index + 2].byte;
-                if (max_bytes > 3) { val.bytes[3] = data[index + 3].byte;
-                if (max_bytes > 4) { val.bytes[4] = data[index + 4].byte;
-                if (max_bytes > 5) { val.bytes[5] = data[index + 5].byte;
-                if (max_bytes > 6) { val.bytes[6] = data[index + 6].byte;
-                if (max_bytes > 7) { val.bytes[7] = data[index + 7].byte;
-                }}}}}}}}
-#elif RE_ADJUST_DATA_TO_VAL_LOOP == 3
-                switch (max_bytes) {
-                    case 8:
-                        val.bytes[7] = data[index + 7].byte;
-                        [[fallthrough]];
-                    case 7:
-                        val.bytes[6] = data[index + 6].byte;
-                        [[fallthrough]];
-                    case 6:
-                        val.bytes[5] = data[index + 5].byte;
-                        [[fallthrough]];
-                    case 5:
-                        val.bytes[4] = data[index + 4].byte;
-                        [[fallthrough]];
-                    case 4:
-                        val.bytes[3] = data[index + 3].byte;
-                        [[fallthrough]];
-                    case 3:
-                        val.bytes[2] = data[index + 2].byte;
-                        [[fallthrough]];
-                    case 2:
-                        val.bytes[1] = data[index + 1].byte;
-                        [[fallthrough]];
-                    case 1:
-                        val.bytes[0] = data[index + 0].byte;
-                        [[fallthrough]];
-                    default:;
-                }
-#elif RE_ADJUST_DATA_TO_VAL_LOOP == 4
-                switch (max_bytes) {
-                    case 1:
-                        val.bytes[0] = data[index + 0].byte;
-                        break;
-                    case 2:
-                        val.bytes[0] = data[index + 0].byte;
-                        val.bytes[1] = data[index + 1].byte;
-                        break;
-                    case 3:
-                        val.bytes[0] = data[index + 0].byte;
-                        val.bytes[1] = data[index + 1].byte;
-                        val.bytes[2] = data[index + 2].byte;
-                        break;
-                    case 4:
-                        val.bytes[0] = data[index + 0].byte;
-                        val.bytes[1] = data[index + 1].byte;
-                        val.bytes[2] = data[index + 2].byte;
-                        val.bytes[3] = data[index + 3].byte;
-                        break;
-                    case 5:
-                        val.bytes[0] = data[index + 0].byte;
-                        val.bytes[1] = data[index + 1].byte;
-                        val.bytes[2] = data[index + 2].byte;
-                        val.bytes[3] = data[index + 3].byte;
-                        val.bytes[4] = data[index + 4].byte;
-                        break;
-                    case 6:
-                        val.bytes[0] = data[index + 0].byte;
-                        val.bytes[1] = data[index + 1].byte;
-                        val.bytes[2] = data[index + 2].byte;
-                        val.bytes[3] = data[index + 3].byte;
-                        val.bytes[4] = data[index + 4].byte;
-                        val.bytes[5] = data[index + 5].byte;
-                        break;
-                    case 7:
-                        val.bytes[0] = data[index + 0].byte;
-                        val.bytes[1] = data[index + 1].byte;
-                        val.bytes[2] = data[index + 2].byte;
-                        val.bytes[3] = data[index + 3].byte;
-                        val.bytes[4] = data[index + 4].byte;
-                        val.bytes[5] = data[index + 5].byte;
-                        val.bytes[6] = data[index + 6].byte;
-                        break;
-                    case 8:
-                        val.bytes[0] = data[index + 0].byte;
-                        val.bytes[1] = data[index + 1].byte;
-                        val.bytes[2] = data[index + 2].byte;
-                        val.bytes[3] = data[index + 3].byte;
-                        val.bytes[4] = data[index + 4].byte;
-                        val.bytes[5] = data[index + 5].byte;
-                        val.bytes[6] = data[index + 6].byte;
-                        val.bytes[7] = data[index + 7].byte;
-                        break;
-                }
-#endif
-                /* Truncate to the old flags, which are stored with the first matched byte */
-                val.flags &= data[index].flags;
-#endif
-
-                memlength = old_length < memlength ? old_length : memlength;
-
-                checkflags = flags_empty;
-
-                match_length = (*sm_scan_routine)(&memory_ptr, memlength, &val, uservalue, checkflags);
+                match_length = (*sm_scan_routine)(mem, mem_size, &val, uservalue, checkflags);
+                s.flags[it] = checkflags;
             }
 
             if (match_length > 0) {
-                /* Still a candidate. Write data.
-                   - We can get away with overwriting in the same array because it is guaranteed to take up the same number of bytes or fewer,
-                     and because we copied out the reading swath metadata already.
-                   - We can get away with assuming that the pointers will stay valid,
-                     because as we never add more data to the array than there was before, it will not reallocate. */
-                writing_matches.add_element(0, &memory_ptr, checkflags);
                 writing_matches.matches_size++;
-                required_extra_bytes_to_record = match_length - 1;
+            } else {
+                //cout<<"match_length == 0"<<endl;
             }
-            else if (required_extra_bytes_to_record) {
-                writing_matches.add_element(0, &memory_ptr, flags_empty);
-                required_extra_bytes_to_record--;
-            }
-
-            bytes_remain--;
-            reading_iterator++;
         }
     }
 
