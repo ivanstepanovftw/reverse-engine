@@ -1,40 +1,29 @@
 # ┌──────────────────────────────────────────────────────────────────┐
-#   Project settings
+#   This is main RE library.
 # └──────────────────────────────────────────────────────────────────┘
-cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
 project(reverseengine LANGUAGES CXX)
-find_package(PkgConfig)
+set(RE_LIBRARY_NAME "${PROJECT_NAME}" CACHE INTERNAL "")
 
 # ┌──────────────────────────────────────────────────────────────────┐
 #   Create library
 # └──────────────────────────────────────────────────────────────────┘
 file(GLOB SOURCES "src/*.cc")
-add_library(${PROJECT_NAME} SHARED ${SOURCES})
+add_library(${RE_LIBRARY_NAME} SHARED ${SOURCES})
 
 # ┌──────────────────────────────────────────────────────────────────┐
 #   Setup public include directory
 # └──────────────────────────────────────────────────────────────────┘
-set(RE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_include_directories(${PROJECT_NAME} PUBLIC
+set(RE_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include" CACHE INTERNAL "")
+target_include_directories(${RE_LIBRARY_NAME} PUBLIC
         $<BUILD_INTERFACE:${RE_INCLUDE_DIRS}>
         $<INSTALL_INTERFACE:include>
-        PRIVATE src)
-
-# ┌──────────────────────────────────────────────────────────────────┐
-#   Linker
-# └──────────────────────────────────────────────────────────────────┘
-link_directories(
-        ${Boost_LIBRARY_DIRS}
-)
-
-include_directories(
-        ${Boost_INCLUDE_DIRS}
-)
+        PRIVATE src
+        )
 
 # ┌──────────────────────────────────────────────────────────────────┐
 #   Install target
 # └──────────────────────────────────────────────────────────────────┘
-install(TARGETS ${PROJECT_NAME}
+install(TARGETS ${RE_LIBRARY_NAME}
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib/static
@@ -55,61 +44,80 @@ set(PROFILE_GENERATE)
 set(PROFILE_UPDATE)
 set(PROFILE_USE)
 
-set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
+set_property(TARGET ${RE_LIBRARY_NAME} PROPERTY CXX_STANDARD 20)
 
-#TODO[high]: move `below` to target_compile_options
 if (ENABLE_ARCH_SPECIFIC_INSTRUCTIONS)
-    add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},MSVC>:-todo>")
-    add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-mtune=native;-march=native;-xHOST>")
-    add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},GNU>:-mtune=native;-march=native>")
-    add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Clang>:-mtune=native;-march=native>")  # is mtune working?
+    if (${CMAKE_CXX_COMPILER_ID} STREQUAL "MSVC")
+        message(FATAL_ERROR "\${ENABLE_ARCH_SPECIFIC_INSTRUCTIONS} for MSVC compiler is not implemented")
+        # target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},MSVC>:-todo>")
+    endif()
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-mtune=native;-march=native;-xHOST>")
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},GNU>:-mtune=native;-march=native>")
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Clang>:-mtune=native;-march=native>")  # TODO[med] is mtune working?
 endif()
 if (ENABLE_SHARED_LIBS)
     add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},GNU>:-shared-libgcc>")
-
-    add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-shared-intel>")
-    add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-Wl,-rpath=/opt/intel/compilers_and_libraries/linux/lib/intel64>")
+    add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-shared-intel;-Wl,-rpath=/opt/intel/compilers_and_libraries/linux/lib/intel64>")
 endif()
 if (ENABLE_DEBUG)
-    # add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-debug;inline-debug-info;-qopenmp;-qopenmp-link;dynamic>")
-    # add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-Wl,-rpath=/opt/intel/compilers_and_libraries/linux/lib/intel64>")
-    add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},GNU>:-g3>")
-    add_compile_options("$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Clang>:-g3>")
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-g;-debug;-all>")
+    #target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-debug;all;inline-debug-info;-qopenmp;-qopenmp-link;dynamic>")
+    #target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-Wl,-rpath=/opt/intel/compilers_and_libraries/linux/lib/intel64>")
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},GNU>:-g3>")
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Clang>:-g3>")
 endif()
-# ┌──────────────────────────────────────────────────────────────────┐
-# │  Compilation flags - gcc profiling                               │
-# └──────────────────────────────────────────────────────────────────┘
-#execute_process(COMMAND find -name *.gcda -exec rm {} \;)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-generate")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-update=single")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-use")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fbranch-probabilities -fvpt -funroll-loops -fpeel-loops -ftracer -ftree-vectorize -ftree-loop-distribute-patterns") # flags that can be enabled
 
 # ┌──────────────────────────────────────────────────────────────────┐
-# │  Compilation flags - icc profiling                               │
+#   Compilation flags - profiling
 # └──────────────────────────────────────────────────────────────────┘
-#execute_process(COMMAND find -name *.dpi -exec rm {} \;)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -prof_gen")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -prof_use")
-target_compile_options(${PROJECT_NAME} PUBLIC
+if (PROFILE_GENERATE OR PROFILE_UPDATE OR PROFILE_USE)
+    if (${CMAKE_CXX_COMPILER_ID} STREQUAL "MSVC")
+        message(FATAL_ERROR "Profiling for MSVC compiler is not implemented")
+    endif()
+    if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
+        message(FATAL_ERROR "Profiling for Clang compiler is not implemented")
+    endif()
+endif()
+
+if (PROFILE_GENERATE)
+    if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
+        execute_process(COMMAND find ${CMAKE_BINARY_DIR} -name *.dpi -exec rm {} \;)
+    endif()
+    if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
+        execute_process(COMMAND find ${CMAKE_BINARY_DIR} -name *.gcda -exec rm {} \;)
+    endif()
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-prof_gen>")
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},GNU>:-fprofile-generate>")
+endif()
+
+if (PROFILE_UPDATE)
+    if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
+        message(FATAL_ERROR "\${PROFILE_UPDATE} for Intel compiler is not implemented")
+    endif()
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},GNU>:-fprofile-update=single>")
+endif()
+
+if (PROFILE_USE)
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-prof_use>")
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},GNU>:-fprofile-use>")
+endif()
+
+# ┌──────────────────────────────────────────────────────────────────┐
+#   Compilation flags - profiling
+# └──────────────────────────────────────────────────────────────────┘
+target_compile_options(${RE_LIBRARY_NAME} PUBLIC
         -O3
-        -g
         -pipe
         -m64
-        -DNDEBUG
         -fPIC
-#        -fstack-protector-strong
-#        -static-libgcc
+        -fstack-protector-strong
 #        -Wformat -Werror=format-security
-#        -Wall
-#        -Wno-unused
-#        -Wextra
-#        -Wpedantic
+#        -Wall -Wno-unused -Wextra -Wpedantic
         )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(${RE_LIBRARY_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_compile_definitions(${PROJECT_NAME} PUBLIC
+target_compile_definitions(${RE_LIBRARY_NAME} PUBLIC
         #[[
         The idea of RE_ADJUST_* is that loop in rescan cannot fit in processor cache,
         so, by "adjusting" code we can get some performance improvements
@@ -129,30 +137,19 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC
         #RE_ADJUST_DATA_TO_VAL_LOOP_1_UNROLL=-1  # undefined,-1,any
 
         _FORTIFY_SOURCE=2  #TODO[low]: this option somehow speeds up std::vector...
+        NDEBUG
         )
 
-target_link_options(${PROJECT_NAME} PUBLIC
-        -z relro -z now
-        -z defs
+target_link_options(${RE_LIBRARY_NAME} PUBLIC
+        "LINKER:-z,relro,-z,now"
+        "LINKER:-z,defs"
         )
 
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(${RE_LIBRARY_NAME}
         pthread
         boost_iostreams
         stdc++fs
         )
-
-# Use ld.gold linker by default
-if (ENABLE_GOLD AND UNIX AND NOT APPLE)
-    execute_process(COMMAND ${CMAKE_C_COMPILER} -fuse-ld=gold -Wl,--version ERROR_QUIET OUTPUT_VARIABLE ld_version)
-    if ("${ld_version}" MATCHES "GNU gold")
-        message(STATUS "ld.gold found")
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=gold -Wl,--disable-new-dtags")
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=gold -Wl,--disable-new-dtags")
-    else()
-        message(STATUS "ld.gold not found")
-    endif()
-endif()
 
 # ┌──────────────────────────────────────────────────────────────────┐
 #   Wrappers
@@ -161,7 +158,7 @@ enable_testing()
 
 # Successed:
 #add_subdirectory(boost) # isnt stl friendly
-add_subdirectory(binding) # pip issue https://github.com/pybind/pybind11/issues/1379 https://github.com/pybind/pybind11/issues/1221
+#add_subdirectory(binding) # pip issue https://github.com/pybind/pybind11/issues/1379 https://github.com/pybind/pybind11/issues/1221
 
 # Failures:
 #add_subdirectory(swig) # fuck swig: it made a lot of code reimplementation and it still cannot be properly compiled. but it generates .py file that need to most wrappers autocompletion

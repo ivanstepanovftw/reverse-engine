@@ -17,3 +17,5 @@ if(${CMAKE_VERSION} VERSION_LESS "3.13.0-rc2")
         endif()
     endfunction()
 endif()
+
+#TODO target_link_directories and other

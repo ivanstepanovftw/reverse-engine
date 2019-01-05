@@ -107,7 +107,7 @@ SelectWindow::on_button_attach()
                        (bool)region.flags & RE::executable,
                        (bool)region.flags & RE::shared);
             }
-            cout<<"Regions enumeration is done!"<<endl;
+            //cout<<"Regions enumeration is done!"<<endl;
             hide();
         }
     }
@@ -134,6 +134,7 @@ SelectWindow::on_button_cancel()
 void
 SelectWindow::tree_refresh()
 {
+    using namespace std;
     ref_tree_processes->clear();
 
     regex r;
@@ -146,7 +147,7 @@ SelectWindow::tree_refresh()
         return;
     }
 
-    vector<RE::process_t> processes = RE::getProcesses();
+    vector<RE::CProcess> processes = RE::getProcesses();
     
     int r_counted=0;
     for(int i=0; i<processes.size(); i++) {

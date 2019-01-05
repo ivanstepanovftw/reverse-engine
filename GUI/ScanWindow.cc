@@ -242,6 +242,8 @@ void
 ScanWindow::on_button_first_scan()
 // todo[low] THREADS
 {
+    using namespace std;
+    using namespace std::chrono;
     namespace bio = boost::iostreams;
     high_resolution_clock::time_point timestamp,
             timestamp_overall = high_resolution_clock::now();
@@ -311,6 +313,7 @@ ScanWindow::on_button_first_scan()
 void
 ScanWindow::on_button_next_scan() 
 {
+    using namespace std;
     using namespace std::chrono;
     namespace bio = boost::iostreams;
     high_resolution_clock::time_point timestamp,
