@@ -40,11 +40,11 @@ MainWindow::MainWindow()
     m_window_select = nullptr;
     m_window_scan = nullptr;
     
-    ///DEBUG
+    //FIXME[critical] DEBUG
     m_window_scan = new ScanWindow();
     m_window_scan->show();
     globals.scanner = new RE::Scanner(globals.handle);
-    ///
+    //end
 
     this->show_all_children();
 }

@@ -34,163 +34,51 @@
 #include <chrono>
 #include <deque>
 #include <string>
-#include <boost/iostreams/device/mapped_file.hpp>
+//#include <boost/iostreams/device/mapped_file.hpp>
 #include <cstdlib>
 //
 #include "core.hh"
 #include "value.hh"
 #include "scanroutines.hh"
-#include <boost/date_time/posix_time/ptime.hpp>
-#include <boost/date_time/microsec_time_clock.hpp>
 
-class TestTimer
-{
-public:
-    TestTimer(const std::string & name) : name(name),
-                                          start(boost::date_time::microsec_clock<boost::posix_time::ptime>::local_time())
-    {
-    }
+//namespace bio = boost::iostreams;
 
-    ~TestTimer()
-    {
-        using namespace std;
-        using namespace boost;
-        posix_time::ptime now(date_time::microsec_clock<posix_time::ptime>::local_time());
-        posix_time::time_duration d = now - start;
+NAMESPACE_BEGIN(RE)
 
-        cout << fixed<<d.total_nanoseconds() / 1000000000.0 << " seconds "<< name << endl;
-        usleep(1000);
-    }
-
-private:
-    std::string name;
-    boost::posix_time::ptime start;
-};
-
-
-namespace bio = boost::iostreams;
-
-namespace RE {
-
-
-class match_t {
-public:
-    uintptr_t address;
-    union {
-        mem64_t memory;
-        uint8_t *bytes;
-    };
-    uint16_t flags;
-    
-    explicit match_t(uintptr_t address, uint16_t userflag = flags_empty) {
-        this->address = address;
-        this->flags = userflag;
-    }
-
-    explicit match_t(uintptr_t address, mem64_t memory, uint16_t userflag = flags_empty) {
-        this->address = address;
-        this->memory = memory;
-        this->flags = userflag;
-    }
-
-    inline
-    match_flags
-    flag()
-    {
-        if      (this->flags & RE::flag_i64) return RE::flag_i64;
-        else if (this->flags & RE::flag_i32) return RE::flag_i32;
-        else if (this->flags & RE::flag_i16) return RE::flag_i16;
-        else if (this->flags & RE::flag_i8)  return RE::flag_i8;
-        else if (this->flags & RE::flag_u64) return RE::flag_u64;
-        else if (this->flags & RE::flag_u32) return RE::flag_u32;
-        else if (this->flags & RE::flag_u16) return RE::flag_u16;
-        else if (this->flags & RE::flag_u8)  return RE::flag_u8;
-        else if (this->flags & RE::flag_f64) return RE::flag_f64;
-        else if (this->flags & RE::flag_f32) return RE::flag_f32;
-        return RE::flags_empty;
-    }
-
-    inline
-    std::string
-    flag2str()
-    {
-        if      (this->flags & RE::flag_i64) return "i64";
-        else if (this->flags & RE::flag_i32) return "i32";
-        else if (this->flags & RE::flag_i16) return "i16";
-        else if (this->flags & RE::flag_i8)  return "i8";
-        else if (this->flags & RE::flag_u64) return "u64";
-        else if (this->flags & RE::flag_u32) return "u32";
-        else if (this->flags & RE::flag_u16) return "u16";
-        else if (this->flags & RE::flag_u8)  return "u8";
-        else if (this->flags & RE::flag_f64) return "f64";
-        else if (this->flags & RE::flag_f32) return "f32";
-        return "";
-    }
-
-    inline
-    std::string
-    val2str()
-    {
-        if      (this->flags & RE::flag_i64) return std::to_string(this->memory.i64);
-        else if (this->flags & RE::flag_i32) return std::to_string(this->memory.i32);
-        else if (this->flags & RE::flag_i16) return std::to_string(this->memory.i16);
-        else if (this->flags & RE::flag_i8)  return std::to_string(this->memory.i8);
-        else if (this->flags & RE::flag_u64) return std::to_string(this->memory.u64);
-        else if (this->flags & RE::flag_u32) return std::to_string(this->memory.u32);
-        else if (this->flags & RE::flag_u16) return std::to_string(this->memory.u16);
-        else if (this->flags & RE::flag_u8)  return std::to_string(this->memory.u8);
-        else if (this->flags & RE::flag_f64) return std::to_string(this->memory.f64);
-        else if (this->flags & RE::flag_f32) return std::to_string(this->memory.f32);
-        return "";
-    }
-
-    inline
-    std::string
-    address2str()
-    {
-        char *address_string;
-        const uint8_t *b = reinterpret_cast<const uint8_t *>(&this->address);
-        asprintf(&address_string, /*0x*/"%02x%02x%02x%02x%02x%02x", b[5], b[4], b[3], b[2], b[1], b[0]);
-        return std::string(address_string);
-    }
-};
-
-
-/* Single match struct */
-#pragma pack(push, 1)
-struct byte_with_flags {
-    uint8_t byte;
-    match_flags flags;
-};
-#pragma pack(pop)
-
-using std::cout, std::endl;
-
+/**
+ *  Better to have multiple little arrays called 'swath_t', than one large array of bytes and flags.
+ *  E.g. target program have array of uint32_t full of zeros and ones:
+ *      00010010100000100000000000000000010010111111000
+ *  and we wanted to match only '1':
+ *      00010010100000100000000000000000010010111111000
+ *         ^~ ^~~~    ^~                 ^~~~~~~~~~~~
+ *  Using 'swath_t' we will use less memory space.
+ */
 class swath_t
 {
 public:
     uintptr_t base_address;
-    std::vector<uint8_t > bytes;
-    std::vector<match_flags> flags;
+    std::vector<uint8_t> bytes;
+    std::vector<flag> flags;
 
-    swath_t(uintptr_t base_address) {
+    explicit swath_t(uintptr_t base_address) {
         this->base_address = base_address;
     }
 
-    FORCE_INLINE
+    [[gnu::always_inline]]
     void
-    append(uint8_t byte, match_flags flag) {
+    append(uint8_t byte, const flag& flag) {
         bytes.emplace_back(byte);
         flags.emplace_back(flag);
     }
 
-    FORCE_INLINE
+    [[gnu::always_inline]]
     uintptr_t
     remote_get(size_t n) {
         return base_address + static_cast<uintptr_t>(n);
     }
 
-    FORCE_INLINE
+    [[gnu::always_inline]]
     uintptr_t
     remote_back() {
         return remote_get(bytes.size() - 1);
@@ -199,15 +87,14 @@ public:
 /* only at most sizeof(int64_t) bytes will be read,
    if more bytes are needed (e.g. bytearray),
    read them separately (for performance) */
-#if RE_ADJUST_DATA_TO_VAL_INLINE == 0
-    NEVER_INLINE
-#elif RE_ADJUST_DATA_TO_VAL_INLINE == 1
-    FORCE_INLINE
-#endif
+    [[gnu::always_inline]]
     value_t
-    data_to_val_aux(size_t index)
+    to_value(size_t index)
     {
+        //todo[high]: do constructor like value_t(swath_t)
         value_t val;
+
+        val.address = remote_get(index);
 
         /* Truncate to the old flags, which are stored with the first matched byte */
         val.flags = flags[index];
@@ -227,527 +114,172 @@ public:
 };
 
 
-/* Location of a match in a matches_t */
-struct match_location
-{
-    swath_t *swath;
-    size_t index;
-};
-
-
+/**
+ *  Master array of matches array.
+ */
 class matches_t {
 public:
-    [[deprecated("To be removed")]]
-    size_t matches_size = 0;
     std::vector<swath_t> swaths;
 
-    matches_t() {
-        std::clog<<"matches_t()"<<std::endl;
-    }
+    matches_t() { }
 
-    ~matches_t() {
-        std::clog<<"~matches_t()"<<std::endl;
-    }
+    ~matches_t() { }
 
-    FORCE_INLINE
+    [[gnu::always_inline]]
     void
-    add_element(const uintptr_t& remote_address, const mem64_t *remote_memory, const match_flags& flags)
+    add_element(const uintptr_t& remote_address, const mem64_t *remote_memory, const flag& flags)
     {
+        if UNLIKELY(remote_address == 0)
+            throw std::bad_exception();
         if UNLIKELY(swaths.empty()) {
             swaths.emplace_back(remote_address);
         }
 
+        constexpr size_t preallocated_bytes = 1;
+        constexpr size_t size_of_bytes_flags = preallocated_bytes*(sizeof(decltype(swath_t::bytes)::value_type) + sizeof(decltype(swath_t::flags)::value_type));
         size_t remote_delta = remote_address - swaths.back().remote_back();
-        size_t local_delta = remote_delta * sizeof(byte_with_flags);
+        size_t local_delta = remote_delta * size_of_bytes_flags;
 
-        if (local_delta >= sizeof(swath_t) + sizeof(byte_with_flags)) {
+        if (local_delta >= sizeof(swath_t) + size_of_bytes_flags) {
             /* It is more memory-efficient to start a new swath */
             swaths.emplace_back(remote_address);
         } else {
             /* It is more memory-efficient to write over the intervening space with null values */
             while (remote_delta-- > 1)
-                swaths.back().append(0, flags_empty);
+                swaths.back().append(0, RE::flag(RE::flag_t::flags_empty));
         }
         swaths.back().append(remote_memory->u8, flags);
+        assert(swaths.back().flags.size() == swaths.back().bytes.size());
     }
 
-//    size_t
-//    mem_allo()
-//    {
-//        size_t size = 0;
-//        for(auto& swath : swaths)
-//            size += swath.data.capacity()*sizeof(byte_with_flags)
-//                    + sizeof(swath.data) + sizeof(swaths.back().data); // NOLINT(bugprone-sizeof-container)
-//        return size + swaths.capacity()*sizeof(swath_t) + sizeof(swaths); // NOLINT(bugprone-sizeof-container)
-//    }
-//
-//    size_t
-//    mem_virt()
-//    {
-//        size_t size = 0;
-//        for(auto& swath : swaths)
-//            size += swath.data.size()*sizeof(byte_with_flags);
-//        return size + swaths.size()*sizeof(swath_t);
-//    }
-
-    size_t
-    size()
-    {
+    size_t mem_allo() {
         size_t size = 0;
         for(auto& swath : swaths)
-            for(auto& f : swath.flags)
-                if (f != flags_empty)
-                    size += 1;
-        return size;
+            size += swath.bytes.capacity() * sizeof(decltype(swath.bytes)::value_type)
+                    + swath.flags.capacity() * sizeof(decltype(swath.flags)::value_type);
+        return size + swaths.capacity() * sizeof(swath_t);
     }
 
-//    size_t
-//    size()
-//    {
-//        size_t size = 0;
-//        for(size_t s = 0; s < swaths_count; s++) {
-//            for(size_t d = 0; d < swaths[s].data_size; d++)
-//                if (swaths[s].data[d].flags > flags_empty)
-//                    size += 1;
-//        }
-//        return size;
-//    }
+    size_t mem_virt() {
+        size_t size = 0;
+        for(auto& swath : swaths)
+            size += swath.bytes.size() * sizeof(decltype(swath.bytes)::value_type)
+                    + swath.flags.size() * sizeof(decltype(swath.flags)::value_type);
+        return size + swaths.size() * sizeof(swath_t);
+    }
 
-    match_location
-    nth_match(size_t n) {
-        size_t i = 0;
-        for(auto& swath : swaths) {
-            /* only actual matches are considered */
-            size_t i_inside = 0;
-            for(auto& f : swath.flags) {
-                if (f > flags_empty) {
-                    if(i == n)
-                        return match_location{&swaths[i], i_inside};
-                    i++;
+    size_t size() {
+        size_t matches = 0;
+        for(auto& swath : swaths)
+            for(auto& f : swath.flags)
+                matches++;
+        return matches;
+    }
+
+    size_t count() {
+        size_t valid_matches = 0;
+        for(auto& swath : swaths)
+            for(auto& f : swath.flags)
+                if (f != flag_t::flags_empty)
+                    valid_matches++;
+        return valid_matches;
+    }
+
+
+    struct iterator {
+        typedef value_t value_type;
+        typedef value_t& reference_type;
+        typedef value_t* pointer_type;
+        typedef value_t difference_type;
+        typedef std::output_iterator_tag iterator_category;
+
+        iterator& operator++() {
+            using namespace std;
+            value_index++;
+            for(; swath_index < parent->swaths.size(); swath_index++, value_index = 0) {
+                for(; value_index < parent->swaths[swath_index].flags.size(); value_index++) {
+                    if (parent->swaths[swath_index].flags[value_index] != RE::flag_t::flags_empty) {
+                        //cout<<"swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<"), value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<"), ++ is found"<<endl;
+                        return *this;
+                    }
+                    //cout<<"swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<"), value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<"), ++ is skipping"<<endl;
                 }
-                i_inside++;
             }
+            swath_index = parent->swaths.size();
+            value_index = 0;
+            return *this;
         }
 
-        /* invalid match id */
-        return match_location{nullptr, 0};
+        const iterator operator++(int) const {
+            iterator it(parent, swath_index, value_index);
+            ++it;
+            return it;
+        }
+
+        value_type operator*() const {
+            //cout<<"swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<"), value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<"), dereference"<<endl;
+            if (swath_index >= parent->swaths.size() || value_index >= parent->swaths[swath_index].bytes.size()) {
+                throw std::range_error("matches_t: dereference outside of range");
+            }
+            return parent->swaths[swath_index].to_value(value_index);
+        }
+
+        friend void swap(iterator& lhs, iterator& rhs) {
+            std::swap(lhs.parent, rhs.parent);
+            std::swap(lhs.swath_index, rhs.swath_index);
+            std::swap(lhs.value_index, rhs.value_index);
+        }
+
+        friend bool operator==(const iterator& lhs, const iterator& rhs) {
+            return lhs.parent==rhs.parent && lhs.swath_index==rhs.swath_index && lhs.value_index==rhs.value_index;
+        }
+
+        friend bool operator!=(const iterator& lhs, const iterator& rhs) {
+            bool ret = lhs.parent!=rhs.parent || lhs.swath_index!=rhs.swath_index || lhs.value_index!=rhs.value_index;
+            return ret;
+        }
+    private:
+        friend matches_t;
+        matches_t *parent;
+        size_t swath_index;
+        size_t value_index;
+
+        explicit iterator(matches_t* container, size_t swath = 0, size_t value = 0) : parent(container), swath_index(swath), value_index(value) {
+            for (; swath_index < parent->swaths.size(); swath_index++) {
+                for (size_t d = 0; d < parent->swaths[swath_index].flags.size(); d++) {
+                    if (parent->swaths[swath_index].flags[d] == RE::flag_t::flags_empty)
+                        continue;
+                    value_index = d;
+                    //cout<<"swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<"), value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<"), begin iterator"<<endl;
+                    return;
+                }
+            }
+            //cout<<"swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<"), value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<"), end iterator"<<endl;
+        }
+    };
+
+    iterator begin() { return iterator(this); }
+
+    iterator end() { return iterator(this, this->swaths.size()); }
+
+    const value_t operator[](size_t key) {
+        size_t i = 0;
+        for (size_t s = 0; s < swaths.size(); s++) {
+            for (size_t d = 0; d < swaths[s].flags.size(); d++) {
+                if (swaths[s].flags[d] == RE::flag_t::flags_empty)
+                    /* only actual matches are considered */
+                    continue;
+                if (i == key)
+                    /* that's it! */
+                    return this->swaths[s].to_value(d);
+                i++;
+            }
+        }
+        throw std::out_of_range("");
     }
 
-    //match_location
-    //nth_match(size_t n) {
-    //    size_t i = 0;
-    //    for(size_t s = 0; s < swaths_count; s++) {
-    //        /* only actual matches are considered */
-    //        size_t i_inside = 0;
-    //        for(size_t d = 0; d < swaths[s].data_size; d++) {
-    //            if (swaths[s].data[d].flags > flags_empty) {
-    //                if (i == n)
-    //                    return match_location {&swaths[i], i_inside};
-    //                i++;
-    //            }
-    //            i_inside++;
-    //        }
-    //    }
-    //
-    //    /* invalid match id */
-    //    return match_location{nullptr, 0};
-    //}
-
-//    size_t
-//    mem_allo()
-//    {
-//        size_t size = 0;
-//        for(size_t s = 0; s < swaths_count; s++)
-//            size += swaths[s].data_allocated;
-//        return size+swaths_allocated*(sizeof(swath_t));
-//    }
-//
-//    size_t
-//    mem_virt()
-//    {
-//        size_t size = 0;
-//        for(size_t s = 0; s < swaths_count; s++)
-//            size += swaths[s].data_size;
-//        return size+swaths_count*(sizeof(swath_t));
-//    }
-
-
-    // todo[critical]: must return match_t
-    // todo[high]: must return full string, not just 8 bytes
-    // todo[med]: must return match with old value
-    // handlers.c:375
-//    match_t
-//    get(size_t n, Edata_type dt)
-//    {
-//        match_t ret{0, RE::flags_empty};
-//        match_location m = nth_match(n);
-//        if (m.swath) {
-//            ret.flags = m.swath->data[m.index].flags;
-//            switch(dt)
-//            {
-//                case Edata_type::BYTEARRAY:
-////                    break;
-//                case Edata_type::STRING:
-////                    break;
-//                default: /* numbers */
-////                    RE::value_t val = m.swath->data_to_val(m.index);
-//                    for(size_t i = 0; i < RE::flags_to_memlength(dt, ret.flags); i++) {
-//                        /* Both uint8_t, no explicit casting needed */
-//                        ret.bytes[i] = m.swath->data[m.index + i].byte;
-//                    }
-//            }
-//        }
-//        return ret;
-//    }
-    
-    
-    
-    /* deletes matches in [start, end) and resizes the matches array */
-    //todo resolve this
-//    void
-//    delete_in_address_range(unsigned long *num_matches,
-//                            uintptr_t start_address,
-//                            uintptr_t end_address)
-//    {
-//        size_t reading_iterator = 0;
-//        swath_t *reading_swath_index = this->swaths;
-//
-//        swath_t reading_swath = *reading_swath_index;
-//
-//        swath_t *writing_swath_index = this->swaths;
-//
-//        writing_swath_index->base_address = 0;
-//        writing_swath_index->data_size = 0;
-//
-//        *num_matches = 0;
-//
-//        while (reading_swath.base_address) {
-//            uintptr_t address = reading_swath.base_address + reading_iterator;
-//
-//            if (address < start_address || address >= end_address) {
-//                byte_with_flag old_byte;
-//
-//                old_byte = reading_swath_index->data[reading_iterator];
-//
-//                /* Still a candidate. Write data.
-//                    (We can get away with overwriting in the same array because
-//                     it is guaranteed to take up the same number of bytes or fewer,
-//                     and because we copied out the reading swath metadata already.)
-//                    (We can get away with assuming that the pointers will stay
-//                     valid, because as we never add more data to the array than
-//                     there was before, it will not reallocate.) */
-////                writing_swath_index = this->add_element(writing_swath_index, //TODO 12312312
-////                                                        address,
-////                                                        old_byte.old_value,
-////                                                        old_byte.flags);
-//
-//                /* actual matches are recorded */
-//                if (old_byte.flags != flags_empty)
-//                    (*num_matches)++;
-//            }
-//
-//            /* go on to the next one... */
-//            reading_iterator++;
-//            if (reading_iterator >= reading_swath.data_size) {
-//
-//                reading_swath_index = (swath_t *)
-//                        (&reading_swath_index->data[reading_swath.data_size]);
-//
-//                reading_swath = *reading_swath_index;
-//
-//                reading_iterator = 0;
-//            }
-//        }
-//
-//        this->null_terminate(writing_swath_index);
-//    }
-//
-    
-
-//    std::vector<Cregion>  regions;
-//    std::string           path;
-//    bio::mapped_file      snapshot_mf;
-//    bio::mapped_file      flags_mf;
-//
-//
-//    explicit matches_t(const bio::mapped_file& snapshot_mapped_file,
-//                       const bio::mapped_file& flags_mapped_file)
-//    {
-//        snapshot_mf = snapshot_mapped_file;
-//        flags_mf = flags_mapped_file;
-//
-//        char *snapshot_begin = snapshot_mf.data();
-//        char *snapshot_end = snapshot_begin + snapshot_mf.size();
-//        char *snapshot = snapshot_begin;
-//
-//        Cregion region;
-//        while(snapshot < snapshot_end) {
-//            memcpy(&region,
-//                   snapshot,
-//                   2*sizeof(region.address));
-//            if (region.size <= 1) break;
-//            snapshot += region.size;
-//            regions.emplace_back(region);
-//        }
-//    }
-//
-//    size_t size(bool a) {
-//        char *flags_begin = flags_mf.data();
-//        char *flags_end = flags_begin + flags_mf.size();
-//        char *flags = flags_begin;
-//
-//        size_t size = 0;
-//        uint16_t flag;
-//
-//        while (flags < flags_end) {
-//            memcpy(&flag,
-//                   flags,
-//                   sizeof(uint16_t));
-//            if (flag)
-//                size++;
-//            flags += sizeof(uint16_t);
-//        }
-//
-//        return size;
-//    }
-//
-//    bool operator !() const {
-//        return !snapshot_mf || !flags_mf;
-//    }
+    //const value_t operator[](size_t key) const { return this[key]; }
 };
-
-
-
-
-
-
-//class matches_t2 {
-//public:
-//    size_t matches_size = 0;
-//    std::vector<swath_t> swaths;
-//
-//    matches_t2() {
-//        clog<<"matches_t()"<<endl;
-//    }
-//
-//    ~matches_t2() {
-//        clog<<"~matches_t()"<<endl;
-//    }
-//
-//    // fixme[low]: slow, because 'new' calls constructor
-//    void
-//    inline
-////    __attribute__((always_inline))
-//    add_element(const uintptr_t& remote_address, const RE::mem64_t *remote_memory, const RE::match_flags& flags) {
-//        if UNLIKELY(swaths.empty()) {
-//            swaths.emplace_back(remote_address);
-//        } else {
-//            size_t remote_delta = remote_address - swaths.back().remote_back();
-//            size_t local_delta = remote_delta*sizeof(byte_with_flags);
-//            if UNLIKELY(local_delta > sizeof(swath_t) + sizeof(byte_with_flags)) {
-//                // It is more memory-efficient to start a new swath
-//                swaths.emplace_back(remote_address);
-//            } else {
-//                // It is more memory-efficient to write over the intervening space with null values
-//                swaths.back().data.resize(swaths.back().data.size() + remote_delta - 1);
-//            }
-//        }
-//        swaths.back().data.push_back(byte_with_flags{remote_memory->u8, flags});
-//    }
-//
-//    size_t
-//    mem_allo()
-//    {
-//        size_t size = 0;
-//        for(auto& swath : swaths)
-//            size += swath.data.capacity()*sizeof(byte_with_flags)
-//                    + sizeof(swath.data) + sizeof(swaths.back().data); // NOLINT(bugprone-sizeof-container)
-//        return size + swaths.capacity()*sizeof(swath_t) + sizeof(swaths); // NOLINT(bugprone-sizeof-container)
-//    }
-//
-//    size_t
-//    mem_virt()
-//    {
-//        size_t size = 0;
-//        for(auto& swath : swaths)
-//            size += swath.data.size()*sizeof(byte_with_flags);
-//        return size + swaths.size()*sizeof(swath_t);
-//    }
-//
-//    size_t
-//    size()
-//    {
-//        size_t size = 0;
-//        for(auto& swath : swaths)
-//            for(auto& d : swath.data)
-//                if (d.flags > flags_empty)
-//                    size += 1;
-//        return size;
-//    }
-//
-//    match_location
-//    nth_match(size_t n) {
-//        size_t i = 0;
-//        for(auto& swath : swaths) {
-//            /* only actual matches are considered */
-//            size_t i_inside = 0;
-//            for(auto& d : swath.data) {
-//                if (d.flags > flags_empty) {
-//                    if(i == n)
-//                        return match_location{&swaths[i], i_inside};
-//                    i++;
-//                }
-//                i_inside++;
-//            }
-//        }
-//
-//        /* invalid match id */
-//        return match_location{nullptr, 0};
-//    }
-//
-//    // todo[critical]: must return match_t
-//    // todo[high]: must return full string, not just 8 bytes
-//    // todo[med]: must return match with old value
-//    // handlers.c:375
-//    match_t
-//    get(size_t n, Edata_type dt)
-//    {
-//        match_t ret{0, RE::flags_empty};
-//        match_location m = nth_match(n);
-//        if (m.swath) {
-//            ret.flags = m.swath->data[m.index].flags;
-//            switch(dt)
-//            {
-//                case Edata_type::BYTEARRAY:
-////                    break;
-//                case Edata_type::STRING:
-////                    break;
-//                default: /* numbers */
-//                    RE::value_t val = m.swath->data_to_val(m.index);
-//                    for(size_t i = 0; i < RE::flags_to_memlength(dt, ret.flags); i++) {
-//                        /* Both uint8_t, no explicit casting needed */
-//                        ret.bytes[i] = m.swath->data[m.index + i].byte;
-//                    }
-//            }
-//        }
-//        return ret;
-//    }
-//
-//
-//
-//    /* deletes matches in [start, end) and resizes the matches array */
-//    //todo resolve this
-////    void
-////    delete_in_address_range(unsigned long *num_matches,
-////                            uintptr_t start_address,
-////                            uintptr_t end_address)
-////    {
-////        size_t reading_iterator = 0;
-////        swath_t *reading_swath_index = this->swaths;
-////
-////        swath_t reading_swath = *reading_swath_index;
-////
-////        swath_t *writing_swath_index = this->swaths;
-////
-////        writing_swath_index->base_address = 0;
-////        writing_swath_index->data_count = 0;
-////
-////        *num_matches = 0;
-////
-////        while (reading_swath.base_address) {
-////            uintptr_t address = reading_swath.base_address + reading_iterator;
-////
-////            if (address < start_address || address >= end_address) {
-////                byte_with_flag old_byte;
-////
-////                old_byte = reading_swath_index->data[reading_iterator];
-////
-////                /* Still a candidate. Write data.
-////                    (We can get away with overwriting in the same array because
-////                     it is guaranteed to take up the same number of bytes or fewer,
-////                     and because we copied out the reading swath metadata already.)
-////                    (We can get away with assuming that the pointers will stay
-////                     valid, because as we never add more data to the array than
-////                     there was before, it will not reallocate.) */
-//////                writing_swath_index = this->add_element(writing_swath_index, //TODO 12312312
-//////                                                        address,
-//////                                                        old_byte.old_value,
-//////                                                        old_byte.flags);
-////
-////                /* actual matches are recorded */
-////                if (old_byte.flags != flags_empty)
-////                    (*num_matches)++;
-////            }
-////
-////            /* go on to the next one... */
-////            reading_iterator++;
-////            if (reading_iterator >= reading_swath.data_count) {
-////
-////                reading_swath_index = (swath_t *)
-////                        (&reading_swath_index->data[reading_swath.data_count]);
-////
-////                reading_swath = *reading_swath_index;
-////
-////                reading_iterator = 0;
-////            }
-////        }
-////
-////        this->null_terminate(writing_swath_index);
-////    }
-////
-//
-//
-//    std::vector<Cregion>  regions;
-//    std::string           path;
-//    bio::mapped_file      snapshot_mf;
-//    bio::mapped_file      flags_mf;
-//
-//
-//    explicit matches_t2(const bio::mapped_file& snapshot_mapped_file,
-//                       const bio::mapped_file& flags_mapped_file)
-//    {
-//        snapshot_mf = snapshot_mapped_file;
-//        flags_mf = flags_mapped_file;
-//
-//        char *snapshot_begin = snapshot_mf.data();
-//        char *snapshot_end = snapshot_begin + snapshot_mf.size();
-//        char *snapshot = snapshot_begin;
-//
-//        Cregion region;
-//        while(snapshot < snapshot_end) {
-//            memcpy(&region,
-//                   snapshot,
-//                   2*sizeof(region.address));
-//            if (region.size <= 1) break;
-//            snapshot += region.size;
-//            regions.emplace_back(region);
-//        }
-//    }
-//
-//    size_t size(bool a) {
-//        char *flags_begin = flags_mf.data();
-//        char *flags_end = flags_begin + flags_mf.size();
-//        char *flags = flags_begin;
-//
-//        size_t size = 0;
-//        uint16_t flag;
-//
-//        while (flags < flags_end) {
-//            memcpy(&flag,
-//                   flags,
-//                   sizeof(uint16_t));
-//            if (flag)
-//                size++;
-//            flags += sizeof(uint16_t);
-//        }
-//
-//        return size;
-//    }
-//
-//    bool operator !() const {
-//        return !snapshot_mf || !flags_mf;
-//    }
-//};
 
 
 
@@ -787,9 +319,9 @@ class Scanner
 public:
     /// Create file for storing matches
     RE::Handle *handle;
-    bool stop_flag = false;
-    double scan_progress = 0;
-    uintptr_t step = 1;
+    volatile bool stop_flag = false;
+    volatile double scan_progress = 0;
+    volatile uintptr_t step = 1;
     
     explicit Scanner(Handle *handle) {
         this->handle = handle;
@@ -799,22 +331,47 @@ public:
                              const std::string &text,
                              RE::Ematch_type *match_type,
                              RE::Cuservalue *vals);
-    
-    bio::mapped_file make_snapshot(const std::string &path);
-    
-    bool scan(RE::matches_t& writing_matches,
-              const RE::Edata_type& data_type,
-              const RE::Cuservalue *uservalue,
-              const RE::Ematch_type& match_type);
 
+    // FIXME[critical]: оно живое?
+    // TODO[med]: modern snapshots, make scan_* snapshots-friendly (or make RE::Handle snapshots friendly (or make father-class like RE::Handle, and childs like RE::Handle::process RE::Handle::snapshot))
+    // TODO[med]: first scan, next scan, next scan, scan compared to first scan, next scan, undo scan, etc...
+    //bio::mapped_file make_snapshot(const std::string &path);
+
+    /**
+     *  This is used as first scan. It scans for values and allocates memory for each match.
+     *
+     *  Will read process memory and update 'matches_t'
+     */
+    // TODO[critical]: rename to scan_regions, потому что потом скан может быть не только для регионов, а, например, для файла
+    bool scan_regions(RE::matches_t& writing_matches,
+                      const RE::Edata_type& data_type,
+                      const RE::Cuservalue *uservalue,
+                      const RE::Ematch_type& match_type);
+
+    /**
+     *  Update bytes of matches (it does not scan, it just updates value).
+     *  Should be used after scan_regions().
+     *
+     *  Will read process memory and update 'matches_t'
+     */
     bool scan_update(RE::matches_t& writing_matches);
 
-    bool rescan(RE::matches_t& writing_matches,
-                const RE::Edata_type& data_type,
-                const RE::Cuservalue *uservalue,
-                RE::Ematch_type match_type);
-    
-    bool scan_reset();
+    /**
+     *  Remove flag for each byte if value mismatched.
+     *  Should be used after scan_update().
+     *
+     *  Will update 'matches_t'
+     */
+    bool scan_recheck(RE::matches_t& writing_matches,
+                      const RE::Edata_type& data_type,
+                      const RE::Cuservalue *uservalue,
+                      RE::Ematch_type match_type);
+
+private:
+    /**
+     *  Usually used after scan_* methods
+     */
+    bool scan_fit(RE::matches_t& writing_matches);
 };
 
-} //namespace RE
+NAMESPACE_END(RE)

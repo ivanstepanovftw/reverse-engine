@@ -15,7 +15,7 @@ ScanWindow::ScanWindow() :
     delete globals.handle;
 //    globals.handle = new Handle("7DaysToDie.x86_64");
 //    globals.handle = new Handle("csgo_linux");
-    globals.handle = new RE::Handle("FakeMem");
+    globals.handle = new RE::Handle("FAKEMEM");
 //    globals.handle = new Handle("FakeGame");
     globals.handle->update_regions();
     globals.scanner = new RE::Scanner(globals.handle);
@@ -212,7 +212,7 @@ ScanWindow::create_saved_list()
 
 
 
-void ScanWindow::add_row(RE::match_t *val)
+void ScanWindow::add_row(RE::value_t *val)
 {
     Gtk::TreeModel::Row row = *(ref_tree_output->append());
     row[columns_output.m_col_address] = val->address2str();
@@ -223,16 +223,12 @@ void ScanWindow::add_row(RE::match_t *val)
 
 
 template<typename T>
-void ScanWindow::refresh_row(RE::match_t *val, const char *type_string, Gtk::TreeModel::Row &row)
+void ScanWindow::refresh_row(RE::value_t *val, const char *type_string, Gtk::TreeModel::Row &row)
 {
-    char *address_string;
-    const uint8_t *b = reinterpret_cast<const uint8_t *>(&val->address);
-    asprintf(&address_string, /*0x*/"%02x%02x%02x%02x%02x%02x", b[5], b[4], b[3], b[2], b[1], b[0]);
     T value;
-    globals.handle->read
-            (&value, val->address, sizeof(T));
+    globals.handle->read(val->address, &value, sizeof(T));
 
-    row[columns_output.m_col_value] = to_string(value);
+    row[columns_output.m_col_value] = std::to_string(value);
     row[columns_output.m_col_value_type] = type_string;
 }
 
@@ -244,7 +240,7 @@ ScanWindow::on_button_first_scan()
 {
     using namespace std;
     using namespace std::chrono;
-    namespace bio = boost::iostreams;
+
     high_resolution_clock::time_point timestamp,
             timestamp_overall = high_resolution_clock::now();
     
@@ -278,31 +274,42 @@ ScanWindow::on_button_first_scan()
     }
     
     timestamp = high_resolution_clock::now();
-    globals.scans.first = new RE::matches_t();
-    globals.scanner->scan(*globals.scans.first, data_type, uservalue, match_type);
-    clog<<"Scan 1/1 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
+    globals.scans.last = new RE::matches_t();
+    globals.scans.first = globals.scans.last;
+    globals.scanner->scan_regions(*globals.scans.last, data_type, uservalue, match_type);
+    clog<<"Scan 1/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+            <<" seconds"<<endl;
+
+    timestamp = high_resolution_clock::now();
+    globals.scanner->scan_update(*globals.scans.last);
+    clog<<"Scan 2/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+            <<" seconds"<<endl;
     
     
     ref_tree_output->clear();
-    ssize_t output_count = globals.scans.first->size();
+    ssize_t output_count = globals.scans.last->size();
     char *label_count_text;
     asprintf(&label_count_text, "Found: %li", output_count);
     label_found->set_text(label_count_text);
-    if (output_count > 10'000) {
-        // todo[low] FIRST OF ALL - CALCULATE AND ALLOCATE, THEN - ADD TO TABLE!
-        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
-        return;
-    } else {
-        clog<<"SHOWING"<<endl;
-    }
+    //if (output_count > 10'000) {
+    //    // todo[low] FIRST OF ALL - CALCULATE AND ALLOCATE, THEN - ADD TO TABLE!
+    //    clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
+    //    return;
+    //} else {
+    //    clog<<"SHOWING"<<endl;
+    //}
     
     // For each address, that scanner found, add row to tree_output
-    for(size_t i = 0; i < globals.scans.first->size(); i++) {
-        RE::match_t val = globals.scans.first->get(i, data_type);
+    timestamp = high_resolution_clock::now();
+    clog<<"size: globals.scans.last->count(): "<<globals.scans.last->count()<<endl;
+    size_t asdasd = 0;
+    for(RE::value_t val : *globals.scans.last) {
+        if (asdasd++ > 100'000)
+            break;
         add_row(&val);
     }
-    
+    clog<<"done: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+            <<" seconds"<<endl;
     // Continue refresh values inside Scanner output
     conn = Glib::signal_timeout().connect
             (sigc::bind(sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), data_type), REFRESH_RATE);
@@ -315,7 +322,7 @@ ScanWindow::on_button_next_scan()
 {
     using namespace std;
     using namespace std::chrono;
-    namespace bio = boost::iostreams;
+    //namespace bio = boost::iostreams;
     high_resolution_clock::time_point timestamp,
                                       timestamp_overall = high_resolution_clock::now();
     
@@ -363,19 +370,22 @@ ScanWindow::on_button_next_scan()
 //        <<" seconds"<<endl;
 //
 //    timestamp = high_resolution_clock::now();
-//    globals.scanner->scan(scans.last, data_type, uservalue, match_type);
+//    globals.scanner->scan_regions(scans.last, data_type, uservalue, match_type);
 //    clog<<"Scan 1/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
 //        <<" seconds"<<endl;
     
     timestamp = high_resolution_clock::now();
+    delete globals.scans.prev;
+    globals.scans.prev = globals.scans.last;
     globals.scans.last = new RE::matches_t();
-    globals.scanner->scan_next(*globals.scans.first, *globals.scans.last, data_type, uservalue, match_type);
-    clog<<"Scan result: "<<globals.scans.last->size()
+    globals.scanner->scan_update(*globals.scans.last);
+    globals.scanner->scan_recheck(*globals.scans.last, data_type, uservalue, match_type);
+    clog<<"Scan result: "<<globals.scans.last->count()
         <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
     
     ref_tree_output->clear();
-    size_t output_count = globals.scans.last->size();
+    size_t output_count = globals.scans.last->count();
     char *label_count_text;
     asprintf(&label_count_text, "Found: %li", output_count);
     label_found->set_text(label_count_text);
@@ -387,8 +397,7 @@ ScanWindow::on_button_next_scan()
     }
     
     // For each address, that scanner found, add row to tree_output
-    for(size_t i = 0; i < globals.scans.last->size(); i++) {
-        RE::match_t val = globals.scans.last->get(i, data_type);
+    for(RE::value_t val : *globals.scans.last) {
         add_row(&val);
     }
     
@@ -411,21 +420,27 @@ ScanWindow::on_button_next_scan()
 bool
 ScanWindow::on_timer_refresh(RE::Edata_type data_type)
 {
+    using namespace std;
+    clog<<"on_timer_refresh begin"<<endl;
     auto ref_child = ref_tree_output->children();
-    for(size_t i = 0; i < globals.scans.last->size(); i++) {
-        RE::match_t val = globals.scans.last->get(i, data_type);
-        Gtk::TreeModel::Row row = *ref_child[i];
 
-        if      (val.flags & RE::flag_i64) refresh_row<int64_t> (&val, "i64",  row);
-        else if (val.flags & RE::flag_i32) refresh_row<int32_t> (&val, "i32",  row);
-        else if (val.flags & RE::flag_i16) refresh_row<int16_t> (&val, "i16",  row);
-        else if (val.flags & RE::flag_i8)  refresh_row<int8_t>  (&val, "i8",   row);
-        else if (val.flags & RE::flag_u64) refresh_row<uint64_t>(&val, "u64", row);
-        else if (val.flags & RE::flag_u32) refresh_row<uint32_t>(&val, "u32", row);
-        else if (val.flags & RE::flag_u16) refresh_row<uint16_t>(&val, "u16", row);
-        else if (val.flags & RE::flag_u8)  refresh_row<uint8_t> (&val, "u8",  row);
-        else if (val.flags & RE::flag_f64) refresh_row<double>  (&val, "f64", row);
-        else if (val.flags & RE::flag_f32) refresh_row<float>   (&val, "f32",  row);
+    size_t i = 0;
+    for(RE::value_t val : *globals.scans.last) {
+        //add_row(&val);
+
+        Gtk::TreeModel::Row row = *ref_child[i];
+        if      (val.flags & RE::flag_t::flag_i64) refresh_row<int64_t> (&val, "i64", row);
+        else if (val.flags & RE::flag_t::flag_i32) refresh_row<int32_t> (&val, "i32", row);
+        else if (val.flags & RE::flag_t::flag_i16) refresh_row<int16_t> (&val, "i16", row);
+        else if (val.flags & RE::flag_t::flag_i8)  refresh_row<int8_t>  (&val, "i8",  row);
+        else if (val.flags & RE::flag_t::flag_u64) refresh_row<uint64_t>(&val, "u64", row);
+        else if (val.flags & RE::flag_t::flag_u32) refresh_row<uint32_t>(&val, "u32", row);
+        else if (val.flags & RE::flag_t::flag_u16) refresh_row<uint16_t>(&val, "u16", row);
+        else if (val.flags & RE::flag_t::flag_u8)  refresh_row<uint8_t> (&val, "u8",  row);
+        else if (val.flags & RE::flag_t::flag_f64) refresh_row<double>  (&val, "f64", row);
+        else if (val.flags & RE::flag_t::flag_f32) refresh_row<float>   (&val, "f32", row);
+        i++;
     }
+    clog<<"on_timer_refresh end"<<endl;
     return true;
 }

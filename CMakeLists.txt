@@ -6,6 +6,7 @@ cmake_minimum_required(VERSION 3.13.1) # todo[medium]: set lowest possible cmake
 project("Reverse Engine")
 
 find_package(PkgConfig)
+find_package(bitmask)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/utils/cmake")
 include(cheats)
@@ -26,3 +27,15 @@ add_subdirectory(GUI)
 #add_subdirectory(CLI)
 add_subdirectory(example)
 
+if (EXISTS ${CMAKE_SOURCE_DIR}/main.cc)
+    add_executable(MAIN main.cc)
+    set_property(TARGET MAIN PROPERTY CXX_STANDARD 20)
+    target_compile_options(MAIN PUBLIC
+            -O3
+            -g3
+            )
+    find_package(Boost)
+    target_include_directories(MAIN PUBLIC ${Boost_INCLUDE_DIR})
+    target_link_directories(MAIN PUBLIC ${Boost_LIBRARY_DIR})
+    target_link_libraries(MAIN PUBLIC ${Boost_LIBRARIES})
+endif()

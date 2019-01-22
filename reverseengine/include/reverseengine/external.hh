@@ -27,9 +27,10 @@
 #include <cstdio>
 #include <cstdint>
 #include <limits>
+#include "common.hh"
 
 
-namespace RE {
+NAMESPACE_BEGIN(RE)
 
 /** 
  * Retrieve a summary of tokens, no more than max_tokens size.
@@ -159,4 +160,4 @@ get_mem_free()
     return get_mem_total(2) + get_mem_total(3);
 }
 
-} //namespace RE
+NAMESPACE_END(RE)

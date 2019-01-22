@@ -22,37 +22,10 @@
 
 #include <reverseengine/value.hh>
 
-size_t RE::flags_to_memlength(Edata_type scan_data_type, uint16_t flags)
-{
-    switch (scan_data_type) {
-        case Edata_type::BYTEARRAY:
-        case Edata_type::STRING:
-            return flags;
-        default: /* NUMBER */
-            return (flags & flags_64b) ? 8 :
-                   (flags & flags_32b) ? 4 :
-                   (flags & flags_16b) ? 2 :
-                   (flags & flags_8b) ? 1 : 0;
-    }
-}
 
-
-size_t RE::flags_to_type(Edata_type scan_data_type, uint16_t flags)
-{
-    switch (scan_data_type) {
-        case Edata_type::BYTEARRAY:
-        case Edata_type::STRING:
-            return flags;
-        default: /* NUMBER */
-            return (flags & flags_64b) ? 8 :
-                   (flags & flags_32b) ? 4 :
-                   (flags & flags_16b) ? 2 :
-                   (flags & flags_8b) ? 1 : 0;
-    }
-}
 
 /// https://github.com/scanmem/scanmem/blob/master/sets.c
-size_t RE::parse_uservalue_int(const std::string& text, RE::Cuservalue *val)
+size_t RE::Cuservalue::parse_uservalue_int(const std::string& text)
 {
     const char *text_c = text.c_str();
     char *endptr;
@@ -72,20 +45,20 @@ size_t RE::parse_uservalue_int(const std::string& text, RE::Cuservalue *val)
         return strlen(text_c) - MAX(strlen(endptr), strlen(endptr2));
     
     /// determine correct flags
-    if (valid_sint && snum >= INT64_MIN && snum <=  INT64_MAX) { val->i64 = static_cast< int64_t>(snum); val->flags |= RE::flag_i64; }
-    if (valid_sint && snum >= INT32_MIN && snum <=  INT32_MAX) { val->i32 = static_cast< int32_t>(snum); val->flags |= RE::flag_i32; }
-    if (valid_sint && snum >= INT16_MIN && snum <=  INT16_MAX) { val->i16 = static_cast< int16_t>(snum); val->flags |= RE::flag_i16; }
-    if (valid_sint && snum >=  INT8_MIN && snum <=   INT8_MAX) { val->i8  = static_cast< int8_t >(snum); val->flags |= RE::flag_i8 ; }
-    if (valid_uint &&                      unum <= UINT64_MAX) { val->u64 = static_cast<uint64_t>(unum); val->flags |= RE::flag_u64; }
-    if (valid_uint &&                      unum <= UINT32_MAX) { val->u32 = static_cast<uint32_t>(unum); val->flags |= RE::flag_u32; }
-    if (valid_uint &&                      unum <= UINT16_MAX) { val->u16 = static_cast<uint16_t>(unum); val->flags |= RE::flag_u16; }
-    if (valid_uint &&                      unum <=  UINT8_MAX) { val->u8  = static_cast<uint8_t >(unum); val->flags |= RE::flag_u8 ; }
+    if (valid_sint && snum >= INT64_MIN && snum <=  INT64_MAX) { this->i64 = static_cast< int64_t>(snum); this->flags |= flag_t::flag_i64; }
+    if (valid_sint && snum >= INT32_MIN && snum <=  INT32_MAX) { this->i32 = static_cast< int32_t>(snum); this->flags |= flag_t::flag_i32; }
+    if (valid_sint && snum >= INT16_MIN && snum <=  INT16_MAX) { this->i16 = static_cast< int16_t>(snum); this->flags |= flag_t::flag_i16; }
+    if (valid_sint && snum >=  INT8_MIN && snum <=   INT8_MAX) { this->i8  = static_cast< int8_t >(snum); this->flags |= flag_t::flag_i8 ; }
+    if (valid_uint &&                      unum <= UINT64_MAX) { this->u64 = static_cast<uint64_t>(unum); this->flags |= flag_t::flag_u64; }
+    if (valid_uint &&                      unum <= UINT32_MAX) { this->u32 = static_cast<uint32_t>(unum); this->flags |= flag_t::flag_u32; }
+    if (valid_uint &&                      unum <= UINT16_MAX) { this->u16 = static_cast<uint16_t>(unum); this->flags |= flag_t::flag_u16; }
+    if (valid_uint &&                      unum <=  UINT8_MAX) { this->u8  = static_cast<uint8_t >(unum); this->flags |= flag_t::flag_u8 ; }
     
     /// If signed flag exist and unsigned not exist, fill unsigned value. Used at first_scan() to scan 5% faster.
-    if ((val->flags & RE::flag_i64) && !(val->flags & RE::flag_u64)) { val->u64 = static_cast<uint64_t>(val->i64); }
-    if ((val->flags & RE::flag_i32) && !(val->flags & RE::flag_u32)) { val->u32 = static_cast<uint32_t>(val->i32); }
-    if ((val->flags & RE::flag_i16) && !(val->flags & RE::flag_u16)) { val->u16 = static_cast<uint16_t>(val->i16); }
-    if ((val->flags & RE::flag_i8 ) && !(val->flags & RE::flag_u8 )) { val->u8  = static_cast<uint8_t >(val->i8 ); }
+    if ((this->flags & flag_t::flag_i64) && !(this->flags & flag_t::flag_u64)) { this->u64 = static_cast<uint64_t>(this->i64); }
+    if ((this->flags & flag_t::flag_i32) && !(this->flags & flag_t::flag_u32)) { this->u32 = static_cast<uint32_t>(this->i32); }
+    if ((this->flags & flag_t::flag_i16) && !(this->flags & flag_t::flag_u16)) { this->u16 = static_cast<uint16_t>(this->i16); }
+    if ((this->flags & flag_t::flag_i8 ) && !(this->flags & flag_t::flag_u8 )) { this->u8  = static_cast<uint8_t >(this->i8 ); }
     return strlen(text_c);
 }
 
@@ -97,7 +70,7 @@ size_t RE::parse_uservalue_int(const std::string& text, RE::Cuservalue *val)
 //    clog<<"-1./0.  = "<<a<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&a)<<dec<<endl;
 //    clog<<"0./0.   = "<<b<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&b)<<dec<<endl;
 //    clog<<"1./0.   = "<<c<<" = "<<hex<<*reinterpret_cast<uint64_t *>(&c)<<dec<<endl;
-size_t RE::parse_uservalue_float(const std::string& text, RE::Cuservalue *val)
+size_t RE::Cuservalue::parse_uservalue_float(const std::string& text)
 {
     char *endptr;
     const char *text_c = text.c_str();
@@ -107,42 +80,42 @@ size_t RE::parse_uservalue_float(const std::string& text, RE::Cuservalue *val)
     if ((errno != 0) || (*endptr != '\0'))
         return strlen(text_c) - strlen(endptr);
     
-    val->flags |= RE::flags_float;
-    val->f32 = static_cast<float>(num);
-    val->f64 = num;
+    this->flags |= flag_t::flags_float;
+    this->f32 = static_cast<float>(num);
+    this->f64 = num;
     return strlen(text_c);
 }
 
-size_t RE::parse_uservalue_number(const std::string& text, RE::Cuservalue *val)
+size_t RE::Cuservalue::parse_uservalue_number(const std::string& text)
 {
     using namespace std;
     size_t ret;
-    if ((ret = parse_uservalue_int(text, val)) && ret == text.size()) {
-        val->flags |= RE::flags_float;
-        if (val->flags & RE::flag_i64) {
-            val->f32 = static_cast<float>(val->i64);
-            val->f64 = static_cast<double>(val->i64);
+    if ((ret = this->parse_uservalue_int(text)) && ret == text.size()) {
+        this->flags |= flag_t::flags_float;
+        if (this->flags & flag_t::flag_i64) {
+            this->f32 = static_cast<float>(this->i64);
+            this->f64 = static_cast<double>(this->i64);
         } else {
-            val->f32 = static_cast<float>(val->u64);
-            val->f64 = static_cast<double>(val->u64);
+            this->f32 = static_cast<float>(this->u64);
+            this->f64 = static_cast<double>(this->u64);
         }
         return ret;
-    } else if ((ret = parse_uservalue_float(text, val)) && ret == text.size()) {
-        double num = val->f64;
-        if (num >= INT64_MIN && num <=  INT64_MAX) { val->i64 = static_cast< int64_t>(num); val->flags |= flag_i64; }
-        if (num >= INT32_MIN && num <=  INT32_MAX) { val->i32 = static_cast< int32_t>(num); val->flags |= flag_i32; }
-        if (num >= INT16_MIN && num <=  INT16_MAX) { val->i16 = static_cast< int16_t>(num); val->flags |= flag_i16; }
-        if (num >=  INT8_MIN && num <=   INT8_MAX) { val->i8  = static_cast< int8_t >(num); val->flags |= flag_i8 ; }
-        if (num >=         0 && num <= UINT64_MAX) { val->u64 = static_cast<uint64_t>(num); val->flags |= flag_u64; }
-        if (num >=         0 && num <= UINT32_MAX) { val->u32 = static_cast<uint32_t>(num); val->flags |= flag_u32; }
-        if (num >=         0 && num <= UINT16_MAX) { val->u16 = static_cast<uint16_t>(num); val->flags |= flag_u16; }
-        if (num >=         0 && num <=  UINT8_MAX) { val->u8  = static_cast<uint8_t >(num); val->flags |= flag_u8 ; }
+    } else if ((ret = this->parse_uservalue_float(text)) && ret == text.size()) {
+        double num = this->f64;
+        if (num >= INT64_MIN && num <=  INT64_MAX) { this->i64 = static_cast< int64_t>(num); this->flags |= flag_t::flag_i64; }
+        if (num >= INT32_MIN && num <=  INT32_MAX) { this->i32 = static_cast< int32_t>(num); this->flags |= flag_t::flag_i32; }
+        if (num >= INT16_MIN && num <=  INT16_MAX) { this->i16 = static_cast< int16_t>(num); this->flags |= flag_t::flag_i16; }
+        if (num >=  INT8_MIN && num <=   INT8_MAX) { this->i8  = static_cast< int8_t >(num); this->flags |= flag_t::flag_i8 ; }
+        if (num >=         0 && num <= UINT64_MAX) { this->u64 = static_cast<uint64_t>(num); this->flags |= flag_t::flag_u64; }
+        if (num >=         0 && num <= UINT32_MAX) { this->u32 = static_cast<uint32_t>(num); this->flags |= flag_t::flag_u32; }
+        if (num >=         0 && num <= UINT16_MAX) { this->u16 = static_cast<uint16_t>(num); this->flags |= flag_t::flag_u16; }
+        if (num >=         0 && num <=  UINT8_MAX) { this->u8  = static_cast<uint8_t >(num); this->flags |= flag_t::flag_u8 ; }
         
         /// If signed flag exist and unsigned not exist, fill unsigned value. Used at first_scan() to scan 5% faster.
-        if ((val->flags & flag_i64) && !(val->flags & flag_u64)) { val->u64 = static_cast<uint64_t>(val->i64); }
-        if ((val->flags & flag_i32) && !(val->flags & flag_u32)) { val->u32 = static_cast<uint32_t>(val->i32); }
-        if ((val->flags & flag_i16) && !(val->flags & flag_u16)) { val->u16 = static_cast<uint16_t>(val->i16); }
-        if ((val->flags & flag_i8 ) && !(val->flags & flag_u8 )) { val->u8  = static_cast<uint8_t >(val->i8 ); }
+        if ((this->flags & flag_t::flag_i64) && !(this->flags & flag_t::flag_u64)) { this->u64 = static_cast<uint64_t>(this->i64); }
+        if ((this->flags & flag_t::flag_i32) && !(this->flags & flag_t::flag_u32)) { this->u32 = static_cast<uint32_t>(this->i32); }
+        if ((this->flags & flag_t::flag_i16) && !(this->flags & flag_t::flag_u16)) { this->u16 = static_cast<uint16_t>(this->i16); }
+        if ((this->flags & flag_t::flag_i8 ) && !(this->flags & flag_t::flag_u8 )) { this->u8  = static_cast<uint8_t >(this->i8 ); }
         return ret;
     }
     clog<<"parse_uservalue_number(): cannot parse ret: ret: "<<ret<<endl;
@@ -152,7 +125,7 @@ size_t RE::parse_uservalue_number(const std::string& text, RE::Cuservalue *val)
 /* parse bytearray, it will allocate the arrays itself, then needs to be free'd by `free_uservalue()` */
 //TODO create entry for mask, not only for pattern
 //FIXME UNDONE
-size_t RE::parse_uservalue_bytearray(const std::string& text_s, RE::Cuservalue *val)
+size_t RE::Cuservalue::parse_uservalue_bytearray(const std::string& text_s)
 {
     using namespace std;
     vector<uint8_t> bytes_array;
@@ -197,14 +170,14 @@ size_t RE::parse_uservalue_bytearray(const std::string& text_s, RE::Cuservalue *
     }
     
     /* everything is ok */
-    val->wildcard_value = wildcards_array.data();
-    val->bytearray_value = bytes_array.data();
-    val->flags = flags_all;
+    this->wildcard_value = wildcards_array.data();
+    this->bytearray_value = bytes_array.data();
+    this->flags = flag_t::flags_all;
     return true;
 }
 
 //FIXME[low]: to revision
-size_t RE::parse_uservalue_string(const std::string& text_s, RE::Cuservalue *val)
+size_t RE::Cuservalue::parse_uservalue_string(const std::string& text_s)
 {
     using namespace std;
     vector<uint8_t> bytes_array;
@@ -249,8 +222,8 @@ size_t RE::parse_uservalue_string(const std::string& text_s, RE::Cuservalue *val
     }
     
     /* everything is ok */
-    val->wildcard_value = wildcards_array.data();
-    val->bytearray_value = bytes_array.data();
-    val->flags = RE::flags_all;
+    this->wildcard_value = wildcards_array.data();
+    this->bytearray_value = bytes_array.data();
+    this->flags = flag_t::flags_all;
     return true;
 }

@@ -18,8 +18,7 @@
     You should have received a copy of the GNU Lesser General Public License
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
-#ifndef RE_GLOBALS_HEADER
-#define RE_GLOBALS_HEADER
+#pragma once
 
 #include <reverseengine/core.hh>
 #include <reverseengine/value.hh>
@@ -28,30 +27,41 @@
 
 constexpr size_t REFRESH_RATE = 2000;
 
-class scans_t {
+class CScans {
 public:
     RE::matches_t *first = nullptr;
     RE::matches_t *prev  = nullptr;
     RE::matches_t *last  = nullptr;
-    
+
     void scan_new() {
         delete first;
         delete prev;
         delete last;
     }
+
+    void scan_first() {
+        last = new RE::matches_t();
+        first = last;
+    }
+
+    void scan_next() {
+        delete prev;
+        prev = last;
+        last = new RE::matches_t();
+    }
+
+    void scan_undo() {
+        delete last;
+        last = prev;
+    }
     
 private:
-    
 };
 
 
-class Globals {
+class {
 public:
     RE::Handle *handle = nullptr;  //fixme [low]: remove pointer
     RE::Scanner *scanner = nullptr;  //fixme [low]: remove pointer
-    scans_t scans;
-};
-
-Globals globals;
-
-#endif //RE_GLOBALS_HEADER
+    CScans scans;
+} globals;

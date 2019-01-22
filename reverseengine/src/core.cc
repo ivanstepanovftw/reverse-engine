@@ -110,10 +110,10 @@ void RE::Handle::update_regions() {
             ss >> region.inodeFileNumber;
 
             region.flags = 0;
-            region.flags |= (permissions[0] == 'r') ? readable : 0;
-            region.flags |= (permissions[1] == 'w') ? writable : 0;
-            region.flags |= (permissions[2] == 'x') ? executable : 0;
-            region.flags |= (permissions[3] == '-') ? shared : 0;
+            region.flags |= (permissions[0] == 'r') ? region_mode_t::readable : region_mode_t::none;
+            region.flags |= (permissions[1] == 'w') ? region_mode_t::writable : region_mode_t::none;
+            region.flags |= (permissions[2] == 'x') ? region_mode_t::executable : region_mode_t::none;
+            region.flags |= (permissions[3] == '-') ? region_mode_t::shared : region_mode_t::none;
 
             if (!pathname.empty()) {
                 region.pathname = pathname;
@@ -125,7 +125,7 @@ void RE::Handle::update_regions() {
                 }
             }
 
-            if (region.flags & (readable | writable) && !(region.flags & shared) && region.size > 0)
+            if (region.flags & (region_mode_t::readable | region_mode_t::writable) && !(region.flags & region_mode_t::shared) && region.size > 0)
                 regions.push_back(region);
             else
                 regions_ignored.push_back(region);
@@ -134,7 +134,3 @@ void RE::Handle::update_regions() {
     regions.shrink_to_fit();
     regions_ignored.shrink_to_fit();
 }
-
-//#ifdef SWIG
-# undef sfs
-//#endif

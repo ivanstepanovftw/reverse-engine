@@ -27,6 +27,17 @@ target_link_directories(GUI PUBLIC
         #${Boost_LIBRARY_DIRS}
         )
 
+target_compile_options(GUI PUBLIC
+        -O3
+        -pipe
+        -m64
+        -pie
+        -fstack-protector-strong
+        -Wformat -Werror=format-security
+        -Wall -Wno-unused -Wextra -Wpedantic
+        -g3
+        )
+
 target_link_libraries(GUI
         ${GTKMM_LIBRARIES}
         ${GDLMM_LIBRARIES}

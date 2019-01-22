@@ -28,8 +28,8 @@ target_compile_definitions(${TARGET} PUBLIC
         )
 target_link_options(${TARGET} PUBLIC
         -pie
-        -z relro -z now
-        -z defs
+        "LINKER:-z,relro,-z,now"
+        "LINKER:-z,defs"
         -static-libgcc
         -static-libstdc++
         )

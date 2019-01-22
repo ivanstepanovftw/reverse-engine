@@ -29,6 +29,7 @@
 #include <gtkmm/button.h>
 //
 #include <reverseengine/globals.hh>
+//
 #include "SelectWindow.hh"
 #include "ScanWindow.hh"
 

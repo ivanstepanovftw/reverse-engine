@@ -47,7 +47,7 @@ RE::Scanner::string_to_uservalue(const RE::Edata_type &data_type,
             return;
         case RE::Edata_type::STRING:
             uservalue[0].string_value = const_cast<char *>(text.c_str());
-            uservalue[0].flags = flags_max;
+            uservalue[0].flags = flag_t::flags_max;
             return;
         default:
             // ╔════╤════════════╤═══════╤═══════════════════════════╤═════════════════════════════════════╗
@@ -101,7 +101,7 @@ RE::Scanner::string_to_uservalue(const RE::Edata_type &data_type,
                     return true;
                 }
                 const string &possible_number = pattern.substr(cursor);  // slice [cursor:-1]
-                size_t pos = parse_uservalue_number(possible_number, &uservalue[0]);
+                size_t pos = uservalue[0].parse_uservalue_number(possible_number);
                 if (pos != possible_number.size())  // if parse_uservalue_number() not parsed whole possible_number
                     throw bad_uservalue_cast(pattern, cursor + pos);
                 *match_type = MATCH_TYPE;
@@ -127,7 +127,7 @@ RE::Scanner::string_to_uservalue(const RE::Edata_type &data_type,
                 const string &possible_number = pattern.substr(0, cursor-0);  // slice [0:cursor]
                 clog<<"pattern.substr(0, cursor): \""<<pattern.substr(0, cursor)<<"\""<<endl;
                 clog<<"pattern.substr(0, cursor+1): \""<<pattern.substr(0, cursor+1)<<"\""<<endl;
-                size_t pos = parse_uservalue_number(possible_number, &uservalue[0]);
+                size_t pos = uservalue[0].parse_uservalue_number(possible_number);
                 if (pos != possible_number.size())  // if parse_uservalue_number() not parsed whole possible_number
                     throw bad_uservalue_cast(pattern, 0+pos);
                 cursor += MASK.size();
@@ -135,7 +135,7 @@ RE::Scanner::string_to_uservalue(const RE::Edata_type &data_type,
                 /// Parse last number N..M
                 ///                      ^
                 const string &possible_number2 = pattern.substr(cursor);  // slice [cursor:-1]
-                size_t pos2 = parse_uservalue_number(possible_number2, &uservalue[1]);
+                size_t pos2 = uservalue[1].parse_uservalue_number(possible_number2);
                 if (pos2 != possible_number2.size())
                     throw bad_uservalue_cast(pattern, cursor+pos2);
                 
@@ -153,7 +153,7 @@ RE::Scanner::string_to_uservalue(const RE::Edata_type &data_type,
             
             // ==
             {
-                size_t pos = parse_uservalue_number(pattern, &uservalue[0]);
+                size_t pos = uservalue[0].parse_uservalue_number(pattern);
                 if (pos != pattern.size()) { // if parse_uservalue_number() not parsed whole possible_number
                     throw bad_uservalue_cast(pattern, pos);
                 }
@@ -162,72 +162,72 @@ RE::Scanner::string_to_uservalue(const RE::Edata_type &data_type,
     }
 
 valid_number:;
-//fixme[high]: data_type_to_flags must be a function
-    uservalue[0].flags &= RE::data_type_to_flags[(uint16_t)data_type];
-    uservalue[1].flags &= RE::data_type_to_flags[(uint16_t)data_type];
+//fixme[high]: Edata_type_to_match_flags must be a function
+    uservalue[0].flags &= RE::flag::convert(data_type);
+    uservalue[1].flags &= RE::flag::convert(data_type);
     return;
 }
 
 
 
-bio::mapped_file
-RE::Scanner::make_snapshot(const std::string& path)
-{
-    using namespace std;
-    
-    /// Allocate space
-    if (handle->regions.empty())
-        throw invalid_argument("no regions defined");
-    
-    uintptr_t total_scan_bytes = 0;
-    for(const RE::Cregion& region : handle->regions)
-        total_scan_bytes += region.size;
-    if (total_scan_bytes == 0)
-        throw invalid_argument("zero bytes to scan");
-    
-    /// Create mmap
-    bio::mapped_file_params snapshot_mf_(path);
-    snapshot_mf_.flags         = bio::mapped_file::mapmode::readwrite;
-    snapshot_mf_.length        = total_scan_bytes + handle->regions.size()*2*sizeof(uintptr_t);
-    snapshot_mf_.new_file_size = total_scan_bytes + handle->regions.size()*2*sizeof(uintptr_t);
-    
-    bio::mapped_file snapshot_mf(snapshot_mf_);
-    if (!snapshot_mf.is_open())
-        throw invalid_argument("cant open '"+path+"'");
-    
-    char *snapshot_begin = snapshot_mf.data();
-    char *snapshot = snapshot_begin;
-    ssize_t copied;
-    
-    /// Snapshot goes here
-    for(RE::Cregion region : handle->regions) {
-        copied = handle->read(region.address, snapshot+2*sizeof(uintptr_t), region.size);
-        if (copied < 0) {
-//            clog<<"error: "<<std::strerror(errno)<<", region: "<<region<<endl;
-//            if (!handle->is_running())
-//                throw invalid_argument("process not running");
-            total_scan_bytes -= region.size;
-            continue;
-        } else if (copied != region.size) {
-//            clog<<"warning: region: "<<region<<", requested: "<<HEX(region.size)<<", copied "<<HEX(copied)<<endl;
-            region.size = static_cast<uintptr_t>(copied);
-        }
-        memcpy(snapshot,
-               &region.address,
-               2*sizeof(region.address));
-        snapshot += 2*sizeof(region.address) + region.size;
-    }
-    snapshot_mf.resize(snapshot - snapshot_mf.data());
-    
-    return snapshot_mf;
-}
+//bio::mapped_file
+//RE::Scanner::make_snapshot(const std::string& path)
+//{
+//    using namespace std;
+//
+//    /// Allocate space
+//    if (handle->regions.empty())
+//        throw invalid_argument("no regions defined");
+//
+//    uintptr_t total_scan_bytes = 0;
+//    for(const RE::Cregion& region : handle->regions)
+//        total_scan_bytes += region.size;
+//    if (total_scan_bytes == 0)
+//        throw invalid_argument("zero bytes to scan");
+//
+//    /// Create mmap
+//    bio::mapped_file_params snapshot_mf_(path);
+//    snapshot_mf_.flags         = bio::mapped_file::mapmode::readwrite;
+//    snapshot_mf_.length        = total_scan_bytes + handle->regions.size()*2*sizeof(uintptr_t);
+//    snapshot_mf_.new_file_size = total_scan_bytes + handle->regions.size()*2*sizeof(uintptr_t);
+//
+//    bio::mapped_file snapshot_mf(snapshot_mf_);
+//    if (!snapshot_mf.is_open())
+//        throw invalid_argument("cant open '"+path+"'");
+//
+//    char *snapshot_begin = snapshot_mf.data();
+//    char *snapshot = snapshot_begin;
+//    ssize_t copied;
+//
+//    /// Snapshot goes here
+//    for(RE::Cregion region : handle->regions) {
+//        copied = handle->read(region.address, snapshot+2*sizeof(uintptr_t), region.size);
+//        if (copied < 0) {
+////            clog<<"error: "<<std::strerror(errno)<<", region: "<<region<<endl;
+////            if (!handle->is_running())
+////                throw invalid_argument("process not running");
+//            total_scan_bytes -= region.size;
+//            continue;
+//        } else if (copied != region.size) {
+////            clog<<"warning: region: "<<region<<", requested: "<<HEX(region.size)<<", copied "<<HEX(copied)<<endl;
+//            region.size = static_cast<uintptr_t>(copied);
+//        }
+//        memcpy(snapshot,
+//               &region.address,
+//               2*sizeof(region.address));
+//        snapshot += 2*sizeof(region.address) + region.size;
+//    }
+//    snapshot_mf.resize(snapshot - snapshot_mf.data());
+//
+//    return snapshot_mf;
+//}
 
 
 bool
-RE::Scanner::scan(matches_t& writing_matches,
-                  const Edata_type& data_type,
-                  const Cuservalue *uservalue,
-                  const Ematch_type& match_type)
+RE::Scanner::scan_regions(matches_t& writing_matches,
+                          const Edata_type& data_type,
+                          const Cuservalue *uservalue,
+                          const Ematch_type& match_type)
 {
     using namespace std;
     using namespace std::chrono;
@@ -291,22 +291,23 @@ RE::Scanner::scan(matches_t& writing_matches,
             }
 
             mem64_t *memory_ptr = reinterpret_cast<mem64_t *>(buf_pos);
-            RE::match_flags checkflags = flags_empty;
+            RE::flag checkflags = RE::flag_t::flags_empty;
 
             /* check if we have a match */
             size_t match_length = (*sm_scan_routine)(memory_ptr, memlength, nullptr, uservalue, checkflags);
             if UNLIKELY(match_length > 0) {
                 writing_matches.add_element(reg_pos, memory_ptr, checkflags);
-                writing_matches.matches_size++;
                 required_extra_bytes_to_record = match_length - 1;
             }
             else if UNLIKELY(required_extra_bytes_to_record > 0) {
-                writing_matches.add_element(reg_pos, memory_ptr, flags_empty);
+                writing_matches.add_element(reg_pos, memory_ptr, RE::flag_t::flags_empty);
                 required_extra_bytes_to_record--;
             }
         }
     }
+
     delete[] buffer;
+    scan_fit(writing_matches);
     scan_progress = 1.0;
     return true;
 }
@@ -317,7 +318,7 @@ bool RE::Scanner::scan_update(RE::matches_t& writing_matches) {
     handle->base = 0;
 
     for (swath_t& s : writing_matches.swaths) {
-        size_t copied = handle->read_cached(s.base_address, &s.bytes[0], s.bytes.size());
+        const size_t copied = handle->read_cached(s.base_address, &s.bytes[0], s.bytes.size());
         /* check if the read succeeded */
         if UNLIKELY(copied == Handle::npos) {
             //cout<<"Resizing swath "<<HEX(s.base_address)<<" from "<<s.bytes.size()<<" to "<<0<<" elements"<<endl;
@@ -329,25 +330,18 @@ bool RE::Scanner::scan_update(RE::matches_t& writing_matches) {
             s.bytes.resize(copied);
             s.flags.resize(copied);
         }
-        const size_t len = s.flags.size();
-        if (len > 6) s.flags[len-7] &= ~flags_64b;
-        if (len > 5) s.flags[len-6] &= ~flags_64b;
-        if (len > 4) s.flags[len-5] &= ~flags_64b;
-        if (len > 3) s.flags[len-4] &= ~flags_64b;
-        if (len > 2) s.flags[len-3] &= ~flags_32b;
-        if (len > 1) s.flags[len-2] &= ~flags_32b;
-        if (len > 0) s.flags[len-1] &= ~flags_16b;
     }
+    scan_fit(writing_matches);
 
     return handle->base != 0;
 }
 
 
 bool
-RE::Scanner::rescan(matches_t& writing_matches,
-                    const RE::Edata_type& data_type,
-                    const RE::Cuservalue *uservalue,
-                    RE::Ematch_type match_type)
+RE::Scanner::scan_recheck(matches_t& writing_matches,
+                          const RE::Edata_type& data_type,
+                          const RE::Cuservalue *uservalue,
+                          RE::Ematch_type match_type)
 {
     using namespace std;
 
@@ -356,45 +350,49 @@ RE::Scanner::rescan(matches_t& writing_matches,
         return false;
     }
 
-    writing_matches.matches_size = 0;
     scan_progress = 0.0;
     stop_flag = false;
 
     for (swath_t& s : writing_matches.swaths) {
         for (size_t it = 0; it < s.bytes.size(); it++) {
             mem64_t *mem = reinterpret_cast<mem64_t *>(&s.bytes[it]);
-            uint16_t flag = s.flags[it];
-            size_t mem_size = flags_to_memlength(data_type, flag);
+            RE::flag f = s.flags[it];
+            size_t mem_size = f.memlength(data_type);
 
-            RE::match_flags checkflags = flags_empty;
-            unsigned int match_length = 0;
+            RE::flag checkflags = flag_t::flags_empty;
 
-            if (flag != flags_empty) {
+            if (f != flag_t::flags_empty) {
                 /* Test only valid old matches */
                 value_t val;
-                val = s.data_to_val_aux(it);
+                val = s.to_value(it);
 
-                match_length = (*sm_scan_routine)(mem, mem_size, &val, uservalue, checkflags);
+                unsigned int match_length = (*sm_scan_routine)(mem, mem_size, &val, uservalue, checkflags);
                 s.flags[it] = checkflags;
-            }
-
-            if (match_length > 0) {
-                writing_matches.matches_size++;
-            } else {
-                //cout<<"match_length == 0"<<endl;
             }
         }
     }
+    scan_fit(writing_matches);
 
     return true;
 }
 
 
 
-bool
-RE::Scanner::scan_reset()
-{
-//    snapshots.clear();
-//    matches.clear();
+bool RE::Scanner::scan_fit(RE::matches_t& writing_matches) {
+    // Invalidate cache to get fresh values
+    for (swath_t& s : writing_matches.swaths) {
+        s.bytes.shrink_to_fit();
+        s.flags.shrink_to_fit();
+        assert(s.bytes.capacity() == s.flags.capacity());
+        const size_t len = s.flags.size();
+        if (len > 6) s.flags[len-7] &= ~flag_t::flags_64b;
+        if (len > 5) s.flags[len-6] &= ~flag_t::flags_64b;
+        if (len > 4) s.flags[len-5] &= ~flag_t::flags_64b;
+        if (len > 3) s.flags[len-4] &= ~flag_t::flags_64b;
+        if (len > 2) s.flags[len-3] &= ~flag_t::flags_32b;
+        if (len > 1) s.flags[len-2] &= ~flag_t::flags_32b;
+        if (len > 0) s.flags[len-1] &= ~flag_t::flags_16b;
+    }
+
     return true;
 }

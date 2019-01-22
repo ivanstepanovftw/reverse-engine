@@ -25,10 +25,10 @@ int
 main(int argc, char *argv[])
 {
     auto app = Gtk::Application::create(argc, argv, "com.github.ivanstepanovftw.reverse-engine");
-//    Gdl::init();
+    //Gdl::init();
     
     MainWindow window;
-//    window.set_keep_above(true);
-//    window.set_accept_focus(false);
+    //window.set_keep_above(true);
+    //window.set_accept_focus(false);
     return app->run(window);
 }

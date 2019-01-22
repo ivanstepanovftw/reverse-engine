@@ -149,6 +149,7 @@ target_link_libraries(${RE_LIBRARY_NAME}
         pthread
         boost_iostreams
         stdc++fs
+        bitmask
         )
 
 # ┌──────────────────────────────────────────────────────────────────┐

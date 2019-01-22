@@ -26,45 +26,13 @@
 
 #include "value.hh"
 
-namespace RE {
-
-/* Matches a memory area given by `memory_ptr` and `memlength` against `user_value` or `old_value`
- * (or both, depending on the matching type), stores the result into saveflags.
- * NOTE: saveflags must be set to 0, since only useful bits are set, but extra bits are not cleared!
- * Returns the number of bytes needed to store said match, 0 for not matched
- */
-
-/* this struct describes matched values */
-class value_t {
-public:
-    union {
-        int8_t   i8;
-        uint8_t  u8;
-        int16_t  i16;
-        uint16_t u16;
-        int32_t  i32;
-        uint32_t u32;
-        int64_t  i64;
-        uint64_t u64;
-        float    f32;
-        double   f64;
-        uint8_t  bytes[sizeof(int64_t)];
-        char     chars[sizeof(int64_t)];
-    };
-    
-    uint16_t flags;
-};
-
-//int main() {
-//    value_t *value;
-//    value->u8;
-//}
+NAMESPACE_BEGIN(RE)
 
 typedef unsigned int (*scan_routine_t)(const RE::mem64_t *memory_ptr,
                                        size_t memlength,
                                        const RE::value_t *old_value,
                                        const RE::Cuservalue *user_value,
-                                       RE::match_flags& saveflags);
+                                       RE::flag& saveflags);
 extern scan_routine_t sm_scan_routine;
 
 /* 
@@ -78,7 +46,7 @@ bool sm_choose_scanroutine(RE::Edata_type dt,
 
 scan_routine_t sm_get_scanroutine(RE::Edata_type dt,
                                   RE::Ematch_type mt,
-                                  uint16_t uflags,
+                                  flag uflags,
                                   bool reverse_endianness);
 
-} //namespace RE
+NAMESPACE_END(RE)

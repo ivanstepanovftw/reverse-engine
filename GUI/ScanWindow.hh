@@ -162,8 +162,8 @@ private:
      Gtk::Paned paned_2;
     
     // Routine (fixme их ведь так называют?)
-    void add_row(RE::match_t *val);
+    void add_row(RE::value_t *val);
     
     template<typename T>
-    void refresh_row(RE::match_t *val, const char *type_string, Gtk::TreeModel::Row &row);
+    void refresh_row(RE::value_t *val, const char *type_string, Gtk::TreeModel::Row &row);
 };

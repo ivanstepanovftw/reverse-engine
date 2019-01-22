@@ -29,18 +29,18 @@
 #include <fstream>
 #include <unistd.h>
 #include <cstring>
-#include <sys/stat.h>
 #include <iomanip>
 #include <algorithm>
-#include <dirent.h>  // deprecated
 #include <filesystem>
 #include <reverseengine/value.hh>
 #include <reverseengine/external.hh>
 #include <reverseengine/common.hh>
 
-namespace RE {
-    namespace sfs = std::filesystem;
+namespace sfs = std::filesystem;
 
+NAMESPACE_BEGIN(RE)
+
+// TODO SPACE INDENT 'X-4'
     class Handle {
     public:
         /// Variables
@@ -90,9 +90,7 @@ namespace RE {
         [[gnu::always_inline]]
         bool is_running() {
             using namespace std;
-            static struct stat sts{};
-            errno = 0;
-            return !(stat(("/proc/" + to_string(pid)).c_str(), &sts) == -1 && errno == ENOENT);
+            return sfs::exists(sfs::current_path().root_path()/"proc"/std::to_string(pid));
         }
 
         [[gnu::always_inline]]
@@ -181,7 +179,7 @@ namespace RE {
         Cregion *
         get_region_by_name(const std::string& region_name) {
             for (Cregion& region : regions)
-                if (region.flags & executable && region.filename == region_name)
+                if (region.flags & region_mode_t::executable && region.filename == region_name)
 //                  ^~~~~~~~~~~~~~~~~~~~~~~~~ wtf? fixme[medium]: add documentation or die();
                     return &region;
             return nullptr;
@@ -368,4 +366,5 @@ Handle::scan_exact(vector<Entry> *out,
     return found; //size of pushed back values
 }*/
 
-} //namespace RE
+
+NAMESPACE_END(RE)

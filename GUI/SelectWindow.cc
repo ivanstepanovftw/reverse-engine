@@ -81,33 +81,41 @@ SelectWindow::~SelectWindow()
 void
 SelectWindow::on_button_attach()
 {
+    using std::cout, std::endl;
+
     auto refSelection = tree_processes.get_selection();
     if (refSelection) {
         Gtk::TreeModel::iterator iter = refSelection->get_selected();
         if(iter) {
             int pid = (*iter)[m_Columns.m_col_pid];
-            printf("Selected PID: %i\n", pid);
+            cout<<"Selected PID: "<<pid<<endl;
             delete globals.handle;
             globals.handle = new RE::Handle(pid);
-            printf("Title: %s\n", globals.handle->title.c_str());
+            cout<<"Title: "<<globals.handle->title<<endl;
             globals.handle->update_regions();
             globals.scanner = new RE::Scanner(globals.handle);
-            printf("%-32s%-18s %-18s %s%s%s%s\n",
-                   "Region name",
-                   "Start",
-                   "End",
-                   "r","w","x","-");
+            constexpr size_t print_tip_every_n_line = 32;
+            size_t tip_count = 0;
             for(const RE::Cregion& region : globals.handle->regions) {
+                if (tip_count % print_tip_every_n_line)
+                    printf("%-32s%-18s %-18s %s%s%s%s\n",
+                           "Region name",
+                           "Start",
+                           "End",
+                           "r","w","x","-");
                 printf("%-32s0x%016lx 0x%016lx %i%i%i%i\n",
                        region.filename.empty()?"misc":region.filename.c_str(),
                        region.address,
                        region.address + region.size - 1,
-                       (bool)region.flags & RE::readable,
-                       (bool)region.flags & RE::writable,
-                       (bool)region.flags & RE::executable,
-                       (bool)region.flags & RE::shared);
+                       (bool)(region.flags & RE::region_mode_t::readable),
+                       (bool)(region.flags & RE::region_mode_t::writable),
+                       (bool)(region.flags & RE::region_mode_t::executable),
+                       (bool)(region.flags & RE::region_mode_t::shared));
+                tip_count++;
             }
-            //cout<<"Regions enumeration is done!"<<endl;
+            if (tip_count == 0)
+                cout<<"No region found!"<<endl;
+            cout<<"Regions enumeration is done"<<endl;
             hide();
         }
     }
