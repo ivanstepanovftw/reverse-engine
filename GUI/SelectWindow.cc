@@ -94,23 +94,23 @@ SelectWindow::on_button_attach()
             cout<<"Title: "<<globals.handle->title<<endl;
             globals.handle->update_regions();
             globals.scanner = new RE::Scanner(globals.handle);
-            constexpr size_t print_tip_every_n_line = 32;
+            constexpr size_t print_tip_every_n_line = 25;
             size_t tip_count = 0;
             for(const RE::Cregion& region : globals.handle->regions) {
-                if (tip_count % print_tip_every_n_line)
+                if (tip_count % print_tip_every_n_line == 0)
                     printf("%-32s%-18s %-18s %s%s%s%s\n",
                            "Region name",
                            "Start",
                            "End",
-                           "r","w","x","-");
+                           "s", "r","w", "x");
                 printf("%-32s0x%016lx 0x%016lx %i%i%i%i\n",
                        region.filename.empty()?"misc":region.filename.c_str(),
                        region.address,
                        region.address + region.size - 1,
+                       (bool)(region.flags & RE::region_mode_t::shared),
                        (bool)(region.flags & RE::region_mode_t::readable),
                        (bool)(region.flags & RE::region_mode_t::writable),
-                       (bool)(region.flags & RE::region_mode_t::executable),
-                       (bool)(region.flags & RE::region_mode_t::shared));
+                       (bool)(region.flags & RE::region_mode_t::executable));
                 tip_count++;
             }
             if (tip_count == 0)
@@ -158,7 +158,7 @@ SelectWindow::tree_refresh()
     vector<RE::CProcess> processes = RE::getProcesses();
     
     int r_counted=0;
-    for(int i=0; i<processes.size(); i++) {
+    for(size_t i = 0; i<processes.size(); i++) {
         if (regex_match(processes[i].command, r) || regex_match(processes[i].pid, r)) {
             Gtk::TreeModel::Row row = *(ref_tree_processes->append());
             row[m_Columns.m_col_pid] = stoi(processes[i].pid);

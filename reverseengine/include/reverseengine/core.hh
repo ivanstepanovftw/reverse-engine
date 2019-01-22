@@ -40,231 +40,230 @@ namespace sfs = std::filesystem;
 
 NAMESPACE_BEGIN(RE)
 
-// TODO SPACE INDENT 'X-4'
-    class Handle {
-    public:
-        /// Variables
-        pid_t pid;
-        std::string title;
-        std::vector<RE::Cregion> regions_ignored;
-        std::vector<RE::Cregion> regions;
+class Handle {
+public:
+    /// Variables
+    pid_t pid;
+    std::string title;
+    std::vector<RE::Cregion> regions_ignored;
+    std::vector<RE::Cregion> regions;
 
-        void attach(pid_t pid);
+    void attach(pid_t pid);
 
-        void attach(const std::string& title);
+    void attach(const std::string& title);
 
-        Handle() {
-            this->pid = 0;
-        }
+    Handle() {
+        this->pid = 0;
+    }
 
-        explicit Handle(pid_t pid) {
-            attach(pid);
-        }
+    explicit Handle(pid_t pid) {
+        attach(pid);
+    }
 
-        explicit Handle(const std::string& title) {
-            attach(title);
-        }
+    explicit Handle(const std::string& title) {
+        attach(title);
+    }
 
 
-        //////////////////////////////////////////////////////////////////////
-        /// Functions
-        //////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////
+    /// Functions
+    //////////////////////////////////////////////////////////////////////
 
-        [[gnu::always_inline]]
-        sfs::path get_path() {
-            return sfs::canonical(sfs::current_path().root_path()/"proc"/std::to_string(pid)/"exe");
-        }
+    [[gnu::always_inline]]
+    sfs::path get_path() {
+        return sfs::canonical(sfs::current_path().root_path()/"proc"/std::to_string(pid)/"exe");
+    }
 
-        [[gnu::always_inline]]
-        sfs::path get_working_directory() {
-            return sfs::canonical(sfs::current_path().root_path()/"proc"/std::to_string(pid)/"cwd");
-        }
+    [[gnu::always_inline]]
+    sfs::path get_working_directory() {
+        return sfs::canonical(sfs::current_path().root_path()/"proc"/std::to_string(pid)/"cwd");
+    }
 
-        /// Checking
-        [[gnu::always_inline]]
-        bool is_valid() {
-            return pid != 0;
-        }
+    /// Checking
+    [[gnu::always_inline]]
+    bool is_valid() {
+        return pid != 0;
+    }
 
-        // todo[med] to c++20nize
-        [[gnu::always_inline]]
-        bool is_running() {
-            using namespace std;
-            return sfs::exists(sfs::current_path().root_path()/"proc"/std::to_string(pid));
-        }
+    // todo[med] to c++20nize
+    [[gnu::always_inline]]
+    bool is_running() {
+        using namespace std;
+        return sfs::exists(sfs::current_path().root_path()/"proc"/std::to_string(pid));
+    }
 
-        [[gnu::always_inline]]
-        bool is_good() {
-            return is_valid() && is_running();
-        }
+    [[gnu::always_inline]]
+    bool is_good() {
+        return is_valid() && is_running();
+    }
 
-        /// Value returned by various member functions when they fail.
-        static constexpr size_t npos = static_cast<size_t>(-1);
+    /// Value returned by various member functions when they fail.
+    static constexpr size_t npos = static_cast<size_t>(-1);
 
-        /// Read_from/write_to this handle
-        [[gnu::always_inline]]
-        size_t
-        read(uintptr_t address, void *out, size_t size) {
-            static struct iovec local[1];
-            static struct iovec remote[1];
-            local[0].iov_base = out;
-            local[0].iov_len = size;
-            remote[0].iov_base = reinterpret_cast<void *>(address);
-            remote[0].iov_len = size;
-            return static_cast<size_t>(process_vm_readv(pid, local, 1, remote, 1, 0));
-        }
+    /// Read_from/write_to this handle
+    [[gnu::always_inline]]
+    size_t
+    read(uintptr_t address, void *out, size_t size) {
+        static struct iovec local[1];
+        static struct iovec remote[1];
+        local[0].iov_base = out;
+        local[0].iov_len = size;
+        remote[0].iov_base = reinterpret_cast<void *>(address);
+        remote[0].iov_len = size;
+        return static_cast<size_t>(process_vm_readv(pid, local, 1, remote, 1, 0));
+    }
 
-        [[gnu::always_inline]]
-        size_t
-        write(uintptr_t address, void *in, size_t size) {
-            static struct iovec local[1];
-            static struct iovec remote[1];
-            local[0].iov_base = in;
-            local[0].iov_len = size;
-            remote[0].iov_base = reinterpret_cast<void *>(address);
-            remote[0].iov_len = size;
-            return static_cast<size_t>(process_vm_writev(pid, local, 1, remote, 1, 0));
-        }
+    [[gnu::always_inline]]
+    size_t
+    write(uintptr_t address, void *in, size_t size) {
+        static struct iovec local[1];
+        static struct iovec remote[1];
+        local[0].iov_base = in;
+        local[0].iov_len = size;
+        remote[0].iov_base = reinterpret_cast<void *>(address);
+        remote[0].iov_len = size;
+        return static_cast<size_t>(process_vm_writev(pid, local, 1, remote, 1, 0));
+    }
 
 /* ptrace peek buffer, used by peekdata() as a mirror of the process memory.
- * Max size is the maximum allowed rounded VLT scan length, aka UINT16_MAX,
- * plus a `PEEKDATA_CHUNK`, to store a full extra chunk for maneuverability */
-        // FIXME[critical]: not returning negative values (possibly done)
+* Max size is the maximum allowed rounded VLT scan length, aka UINT16_MAX,
+* plus a `PEEKDATA_CHUNK`, to store a full extra chunk for maneuverability */
+    // FIXME[critical]: not returning negative values (possibly done)
 
-        static constexpr size_t MAX_PEEKBUF_SIZE = 4 * KiB;
+    static constexpr size_t MAX_PEEKBUF_SIZE = 4 * KiB;
 
-        uintptr_t base = 0; // base address of cached region
-        size_t cache_size = 0;
-        uint8_t *cache = new uint8_t[MAX_PEEKBUF_SIZE];
+    uintptr_t base = 0; // base address of cached region
+    size_t cache_size = 0;
+    uint8_t *cache = new uint8_t[MAX_PEEKBUF_SIZE];
 
-        // TODO[medium]: move to CachedReader class
-        /// The cached reader made for reading small values many times to reduce system calls
-        size_t
-        inline
-        read_cached(uintptr_t address, void *out, size_t size) {
-            if UNLIKELY(size > MAX_PEEKBUF_SIZE) {
-                return this->read(address, out, size);
-            }
-
-            if (base
-            && (address >= base)
-            && (address - base + size) <= cache_size) {
-                /* Full cache hit */
-                memcpy(out, &cache[address - base], size);
-                return size;
-            }
-
-            /* we need to retrieve memory to complete the request */
-            size_t len = this->read(address, &cache[0], MAX_PEEKBUF_SIZE);
-            if (len == npos) {
-                /* hard failure to retrieve memory */
-                base = 0;
-                cache_size = 0;
-                return npos;
-            }
-
-            base = address;
-            cache_size = len;
-
-            /* return result to caller */
-            memcpy(out, &cache[0], size);
-            return MIN(size, cache_size);
+    // TODO[medium]: move to CachedReader class
+    /// The cached reader made for reading small values many times to reduce system calls
+    size_t
+    inline
+    read_cached(uintptr_t address, void *out, size_t size) {
+        if UNLIKELY(size > MAX_PEEKBUF_SIZE) {
+            return this->read(address, out, size);
         }
 
+        if (base
+        && (address >= base)
+        && (address - base + size) <= cache_size) {
+            /* Full cache hit */
+            memcpy(out, &cache[address - base], size);
+            return size;
+        }
 
-        /// Modules
+        /* we need to retrieve memory to complete the request */
+        size_t len = this->read(address, &cache[0], MAX_PEEKBUF_SIZE);
+        if (len == npos) {
+            /* hard failure to retrieve memory */
+            base = 0;
+            cache_size = 0;
+            return npos;
+        }
 
-        void update_regions();
+        base = address;
+        cache_size = len;
 
-        Cregion *
-        get_region_by_name(const std::string& region_name) {
-            for (Cregion& region : regions)
-                if (region.flags & region_mode_t::executable && region.filename == region_name)
+        /* return result to caller */
+        memcpy(out, &cache[0], size);
+        return MIN(size, cache_size);
+    }
+
+
+    /// Modules
+
+    void update_regions();
+
+    Cregion *
+    get_region_by_name(const std::string& region_name) {
+        for (Cregion& region : regions)
+            if (region.flags & region_mode_t::executable && region.filename == region_name)
 //                  ^~~~~~~~~~~~~~~~~~~~~~~~~ wtf? fixme[medium]: add documentation or die();
-                    return &region;
-            return nullptr;
-        }
+                return &region;
+        return nullptr;
+    }
 
-        Cregion *
-        get_region_of_address(uintptr_t address) {
-            using namespace std;
-            static Cregion *last_region;
-            if (last_region && last_region->address <= address && address < last_region->address + last_region->size) {
-                clog << "returning last region " << endl;
+    Cregion *
+    get_region_of_address(uintptr_t address) {
+        using namespace std;
+        static Cregion *last_region;
+        if (last_region && last_region->address <= address && address < last_region->address + last_region->size) {
+            clog << "returning last region " << endl;
+            return last_region;
+        }
+        static size_t first, last, mid;
+        first = 0;
+        last = regions.size();
+        while (first < last) {
+            mid = (first + last) / 2;
+            if (address < regions[mid].address)
+                last = mid - 1;
+            else if (address >= regions[mid].address + regions[mid].size)
+                first = mid + 1;
+            else {
+                last_region = &regions[mid];
                 return last_region;
             }
-            static size_t first, last, mid;
-            first = 0;
-            last = regions.size();
-            while (first < last) {
-                mid = (first + last) / 2;
-                if (address < regions[mid].address)
-                    last = mid - 1;
-                else if (address >= regions[mid].address + regions[mid].size)
-                    first = mid + 1;
-                else {
-                    last_region = &regions[mid];
-                    return last_region;
-                }
-            }
-            return nullptr;
         }
+        return nullptr;
+    }
 
-        // TODO: may be moved to scanner.hh
-        [[deprecated("May be moved to scanner.hh")]]
-        bool
-        find_pattern(uintptr_t *out, Cregion *region, const char *pattern, const char *mask) {
-            char buffer[0x1000];
+    // TODO: may be moved to scanner.hh
+    [[deprecated("May be moved to scanner.hh")]]
+    bool
+    find_pattern(uintptr_t *out, Cregion *region, const char *pattern, const char *mask) {
+        char buffer[0x1000];
 
-            uintptr_t len = strlen(mask);
-            uintptr_t chunksize = sizeof(buffer);
-            uintptr_t totalsize = region->size;
-            uintptr_t chunknum = 0;
+        uintptr_t len = strlen(mask);
+        uintptr_t chunksize = sizeof(buffer);
+        uintptr_t totalsize = region->size;
+        uintptr_t chunknum = 0;
 
-            while (totalsize) {
-                uintptr_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
-                uintptr_t readaddr = region->address + (chunksize * chunknum);
-                bzero(buffer, chunksize);
+        while (totalsize) {
+            uintptr_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
+            uintptr_t readaddr = region->address + (chunksize * chunknum);
+            bzero(buffer, chunksize);
 
-                if (this->read(readaddr, buffer, readsize)) {
-                    for (uintptr_t b = 0; b < readsize; b++) {
-                        uintptr_t matches = 0;
+            if (this->read(readaddr, buffer, readsize)) {
+                for (uintptr_t b = 0; b < readsize; b++) {
+                    uintptr_t matches = 0;
 
-                        // если данные совпадают или пропустить
-                        while (buffer[b + matches] == pattern[matches] || mask[matches] != 'x') {
-                            matches++;
+                    // если данные совпадают или пропустить
+                    while (buffer[b + matches] == pattern[matches] || mask[matches] != 'x') {
+                        matches++;
 
-                            if (matches == len) {
-                                *out = readaddr + b;
-                                return true;
-                            }
+                        if (matches == len) {
+                            *out = readaddr + b;
+                            return true;
                         }
                     }
                 }
-
-                totalsize -= readsize;
-                chunknum++;
             }
-            return false;
-        }
 
-        uintptr_t
-        get_call_address(uintptr_t address) {
-            uint64_t code = 0;
-            if (read(address + 1, &code, sizeof(uint32_t)) == sizeof(uint32_t))
-                return code + address + 5;
-            return 0;
+            totalsize -= readsize;
+            chunknum++;
         }
+        return false;
+    }
 
-        uintptr_t
-        get_absolute_address(uintptr_t address, uintptr_t offset, uintptr_t size) {
-            uint64_t code = 0;
-            if (read(address + offset, &code, sizeof(uint32_t)) == sizeof(uint32_t)) {
-                return address + code + size;
-            }
-            return 0;
+    uintptr_t
+    get_call_address(uintptr_t address) {
+        uint64_t code = 0;
+        if (read(address + 1, &code, sizeof(uint32_t)) == sizeof(uint32_t))
+            return code + address + 5;
+        return 0;
+    }
+
+    uintptr_t
+    get_absolute_address(uintptr_t address, uintptr_t offset, uintptr_t size) {
+        uint64_t code = 0;
+        if (read(address + offset, &code, sizeof(uint32_t)) == sizeof(uint32_t)) {
+            return address + code + size;
         }
-    };
+        return 0;
+    }
+};
 
 
 /*bool //todo короче можно вместо стрима закинуть, например, вектор со стрингами

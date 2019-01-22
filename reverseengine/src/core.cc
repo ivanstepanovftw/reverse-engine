@@ -109,7 +109,7 @@ void RE::Handle::update_regions() {
             ss << inode;
             ss >> region.inodeFileNumber;
 
-            region.flags = 0;
+            region.flags = region_mode_t::none;
             region.flags |= (permissions[0] == 'r') ? region_mode_t::readable : region_mode_t::none;
             region.flags |= (permissions[1] == 'w') ? region_mode_t::writable : region_mode_t::none;
             region.flags |= (permissions[2] == 'x') ? region_mode_t::executable : region_mode_t::none;
