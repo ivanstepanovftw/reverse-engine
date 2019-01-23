@@ -348,6 +348,11 @@ public:
                       const RE::Cuservalue *uservalue,
                       const RE::Ematch_type& match_type);
 
+    //bool scan_snapshot(RE::matches_t& writing_matches,
+    //                   const RE::Edata_type& data_type,
+    //                   const RE::Cuservalue *uservalue,
+    //                   const RE::Ematch_type& match_type);
+
     /**
      *  Update bytes of matches (it does not scan, it just updates value).
      *  Should be used after scan_regions().

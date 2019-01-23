@@ -125,7 +125,7 @@ public:
 */
 };
 
-enum class Edata_type {
+enum class Edata_type : uint16_t {
     ANYNUMBER,              /* ANYINTEGER or ANYFLOAT */
     ANYINTEGER,             /* INTEGER of whatever width */
     ANYFLOAT,               /* FLOAT of whatever width */
@@ -138,8 +138,7 @@ enum class Edata_type {
     BYTEARRAY,
     STRING
 };
-
-BITMASK_DEFINE_MAX_ELEMENT(Edata_type, STRING)
+BITMASK_DEFINE_VALUE_MASK(Edata_type, 0xffff)
 
 enum class Ematch_type
 {
@@ -170,10 +169,6 @@ enum class Ematch_type
  * valid for both endians, as the flags are ordered from smaller to bigger.
  * NAMING: Primitive, single-bit flags are called `flag_*`, while aggregates,
  * defined for convenience, are called `flags_*`*/
-/* Problem: c++ from enum class to its underlying type
- * Usage: !!(...) <=> (...)
- * #fixcpp
- */
 enum class flag_t : uint16_t {
     flags_empty = 0,
 
@@ -204,9 +199,8 @@ enum class flag_t : uint16_t {
     flags_64b  = flags_i64b | flag_f64,
 
     flags_max = 0xffffu,
-    _bitmask_value_mask = flags_max
 };
-BITMASK_DEFINE(flag_t);
+BITMASK_DEFINE_VALUE_MASK(flag_t, 0xffff)
 
 class flag : public bitmask::bitmask<flag_t> {
 public:

@@ -5,7 +5,12 @@ RE::Handle::attach(pid_t pid) {
     this->pid = pid;
     try {
         this->title = this->get_path().filename();
-    } catch (const sfs::filesystem_error& e) { /* no such PID running */ }
+    } catch (const sfs::filesystem_error& e) {
+        /* no such PID running */
+        std::cout<<"no such PID running"<<std::endl;
+        std::cout<<"this->get_path(): "<<this->get_path().string()<<std::endl;
+        std::cout<<"this->get_path().filename(): "<<this->get_path().filename()<<std::endl;
+    }
     if (this->title.empty()) {
         this->pid = 0;
         this->title = "";
@@ -22,7 +27,7 @@ RE::Handle::attach(const std::string& title) {
 
     // Linux
     try {
-        for(auto& p: sfs::directory_iterator(sfs::current_path().root_path()/"proc")) {  // usually path is /proc/**
+        for(auto& p: sfs::directory_iterator(sfs::current_path().root_path()/"proc")) {
             if (!sfs::is_directory(p))
                 continue;
             if (!sfs::exists(p/"exe"))  // without this we cannot get pid by title (executable)

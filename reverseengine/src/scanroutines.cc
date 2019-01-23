@@ -731,24 +731,6 @@ RE::scan_routine_t RE::sm_get_scanroutine(RE::Edata_type dt, RE::Ematch_type mt,
     return NULL;
 }
 
-/* Possible flags per scan data type: if an incoming uservalue has none of the
- * listed flags we're sure it's not going to be matched by the scan,
- * so we reject it without even trying */
-//todo[critical]: to method
-static RE::flag_t possible_flags_for_scan_data_type[] = {
-    [(uint16_t)RE::Edata_type::ANYNUMBER]  = RE::flag_t::flags_all,
-    [(uint16_t)RE::Edata_type::ANYINTEGER] = RE::flag_t::flags_integer,
-    [(uint16_t)RE::Edata_type::ANYFLOAT]   = RE::flag_t::flags_float,
-    [(uint16_t)RE::Edata_type::INTEGER8]   = RE::flag_t::flags_i8b,
-    [(uint16_t)RE::Edata_type::INTEGER16]  = RE::flag_t::flags_i16b,
-    [(uint16_t)RE::Edata_type::INTEGER32]  = RE::flag_t::flags_i32b,
-    [(uint16_t)RE::Edata_type::INTEGER64]  = RE::flag_t::flags_i64b,
-    [(uint16_t)RE::Edata_type::FLOAT32]    = RE::flag_t::flag_f32,
-    [(uint16_t)RE::Edata_type::FLOAT64]    = RE::flag_t::flag_f64,
-    [(uint16_t)RE::Edata_type::BYTEARRAY]  = RE::flag_t::flags_max,
-    [(uint16_t)RE::Edata_type::STRING]     = RE::flag_t::flags_max
-};
-
 bool
 RE::sm_choose_scanroutine(RE::Edata_type dt, RE::Ematch_type mt, const RE::Cuservalue* uval, bool reverse_endianness)
 {
@@ -763,7 +745,10 @@ RE::sm_choose_scanroutine(RE::Edata_type dt, RE::Ematch_type mt, const RE::Cuser
     ||  mt == RE::Ematch_type::MATCHINCREASEDBY
     ||  mt == RE::Ematch_type::MATCHDECREASEDBY)
     {
-        RE::flag possible_flags = possible_flags_for_scan_data_type[(uint16_t)dt];
+        /* Possible flags per scan data type: if an incoming uservalue has none of the
+         * listed flags we're sure it's not going to be matched by the scan,
+         * so we reject it without even trying */
+        RE::flag possible_flags = RE::flag::convert(dt);
         if ((possible_flags & uflags) == RE::flag_t::flags_empty) {
             /* There's no possibility to have a match, just abort */
             RE::sm_scan_routine = nullptr;

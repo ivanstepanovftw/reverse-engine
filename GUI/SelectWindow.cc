@@ -19,6 +19,7 @@
     along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <reverseengine/globals.hh>
 #include "SelectWindow.hh"
 
 
@@ -67,6 +68,7 @@ SelectWindow::SelectWindow()
     vbox_1.pack_start(button_cancel,         Gtk::PACK_SHRINK);
     this->add(vbox_1);
     this->show_all_children();
+//    todo[critical]: not refreshing every n seconds
 }
 
 
@@ -87,16 +89,19 @@ SelectWindow::on_button_attach()
     if (refSelection) {
         Gtk::TreeModel::iterator iter = refSelection->get_selected();
         if(iter) {
-            int pid = (*iter)[m_Columns.m_col_pid];
+            pid_t pid = (*iter)[m_Columns.m_col_pid];
             cout<<"Selected PID: "<<pid<<endl;
-            delete globals.handle;
-            globals.handle = new RE::Handle(pid);
-            cout<<"Title: "<<globals.handle->title<<endl;
-            globals.handle->update_regions();
-            globals.scanner = new RE::Scanner(globals.handle);
+            delete Singleton::getInstance()->handle;
+            Singleton::getInstance()->handle = new RE::Handle(pid);
+            cout<<"is_valid? "<<Singleton::getInstance()->handle->is_valid()<<endl;
+            cout<<"is_running? "<<Singleton::getInstance()->handle->is_running()<<endl;
+
+            cout<<"Title: "<<Singleton::getInstance()->handle->title<<endl;
+            Singleton::getInstance()->handle->update_regions();
+            Singleton::getInstance()->scanner = new RE::Scanner(Singleton::getInstance()->handle);
             constexpr size_t print_tip_every_n_line = 25;
             size_t tip_count = 0;
-            for(const RE::Cregion& region : globals.handle->regions) {
+            for(const RE::Cregion& region : Singleton::getInstance()->handle->regions) {
                 if (tip_count % print_tip_every_n_line == 0)
                     printf("%-32s%-18s %-18s %s%s%s%s\n",
                            "Region name",
@@ -116,6 +121,8 @@ SelectWindow::on_button_attach()
             if (tip_count == 0)
                 cout<<"No region found!"<<endl;
             cout<<"Regions enumeration is done"<<endl;
+            cout<<"&re_globals: "<<(void *)Singleton::getInstance()<<endl;
+            cout<<"&handle: "<<(void *)Singleton::getInstance()->handle<<endl;
             hide();
         }
     }

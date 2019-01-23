@@ -37,5 +37,8 @@ if (EXISTS ${CMAKE_SOURCE_DIR}/main.cc)
     find_package(Boost)
     target_include_directories(MAIN PUBLIC ${Boost_INCLUDE_DIR})
     target_link_directories(MAIN PUBLIC ${Boost_LIBRARY_DIR})
-    target_link_libraries(MAIN PUBLIC ${Boost_LIBRARIES})
+    target_link_libraries(MAIN PUBLIC
+            ${Boost_LIBRARIES}
+            stdc++fs
+            )
 endif()

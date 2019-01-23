@@ -54,14 +54,24 @@ public:
         delete last;
         last = prev;
     }
-    
-private:
 };
 
 
-class {
+class Singleton
+{
+private:
+    /* Private constructor to prevent instancing. */
+    Singleton() {};
+
 public:
-    RE::Handle *handle = nullptr;  //fixme [low]: remove pointer
-    RE::Scanner *scanner = nullptr;  //fixme [low]: remove pointer
+    /* Static access method. */
+    static Singleton* getInstance() {
+        static Singleton instance;
+        return &instance;
+    }
+
+    RE::Handle *handle;
+    RE::Scanner *scanner;
     CScans scans;
-} globals;
+};
+

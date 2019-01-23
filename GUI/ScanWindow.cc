@@ -12,13 +12,13 @@ ScanWindow::ScanWindow() :
         paned_1(Gtk::ORIENTATION_HORIZONTAL),
         paned_2(Gtk::ORIENTATION_VERTICAL)
 {
-    delete globals.handle;
-//    globals.handle = new Handle("7DaysToDie.x86_64");
-//    globals.handle = new Handle("csgo_linux");
-    globals.handle = new RE::Handle("FAKEMEM");
-//    globals.handle = new Handle("FakeGame");
-    globals.handle->update_regions();
-    globals.scanner = new RE::Scanner(globals.handle);
+    delete Singleton::getInstance()->handle;
+//    Singleton::getInstance()->handle = new Handle("7DaysToDie.x86_64");
+//    Singleton::getInstance()->handle = new Handle("csgo_linux");
+    Singleton::getInstance()->handle = new RE::Handle("FAKEMEM");
+//    Singleton::getInstance()->handle = new Handle("FakeGame");
+    Singleton::getInstance()->handle->update_regions();
+    Singleton::getInstance()->scanner = new RE::Scanner(Singleton::getInstance()->handle);
     
     Gtk::Widget *scanner_output = create_scanner_output();
     Gtk::Widget *scanner = create_scanner();
@@ -226,7 +226,7 @@ template<typename T>
 void ScanWindow::refresh_row(RE::value_t *val, const char *type_string, Gtk::TreeModel::Row &row)
 {
     T value;
-    globals.handle->read(val->address, &value, sizeof(T));
+    Singleton::getInstance()->handle->read(val->address, &value, sizeof(T));
 
     row[columns_output.m_col_value] = std::to_string(value);
     row[columns_output.m_col_value_type] = type_string;
@@ -251,12 +251,16 @@ ScanWindow::on_button_first_scan()
         return;
     }
     
-    if (!globals.handle->is_running()) {
+    if (!Singleton::getInstance()->handle->is_running()) {
         clog<<"error: process not running"<<endl;
+        clog<<"Singleton::getInstance()->handle->titile: "<<Singleton::getInstance()->handle->title<<endl;
+        clog<<"Singleton::getInstance()->handle->pid: "<<Singleton::getInstance()->handle->pid<<endl;
+        clog<<"&re_globals: "<<(void *)Singleton::getInstance()<<endl;
+        clog<<"&handle: "<<(void *)Singleton::getInstance()->handle<<endl;
         return;
     }
     
-    globals.handle->update_regions();
+    Singleton::getInstance()->handle->update_regions();
     
     Gtk::TreeModel::iterator iter = combo_stype->get_active();
     if(!iter) return;
@@ -267,49 +271,40 @@ ScanWindow::on_button_first_scan()
     RE::Cuservalue uservalue[2];
     RE::Ematch_type match_type;
     try {
-        globals.scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
+        Singleton::getInstance()->scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
     } catch (RE::bad_uservalue_cast &e) {
         clog<<e.what()<<endl;
         return;
     }
     
     timestamp = high_resolution_clock::now();
-    globals.scans.last = new RE::matches_t();
-    globals.scans.first = globals.scans.last;
-    globals.scanner->scan_regions(*globals.scans.last, data_type, uservalue, match_type);
-    clog<<"Scan 1/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+    Singleton::getInstance()->scans.last = new RE::matches_t();
+    Singleton::getInstance()->scans.first = Singleton::getInstance()->scans.last;
+    Singleton::getInstance()->scanner->scan_regions(*Singleton::getInstance()->scans.last, data_type, uservalue, match_type);
+    clog<<"Scan result: "<<Singleton::getInstance()->scans.last->count()
+            <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
             <<" seconds"<<endl;
 
+
     timestamp = high_resolution_clock::now();
-    globals.scanner->scan_update(*globals.scans.last);
-    clog<<"Scan 2/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-            <<" seconds"<<endl;
-    
-    
     ref_tree_output->clear();
-    ssize_t output_count = globals.scans.last->size();
-    char *label_count_text;
-    asprintf(&label_count_text, "Found: %li", output_count);
-    label_found->set_text(label_count_text);
-    //if (output_count > 10'000) {
-    //    // todo[low] FIRST OF ALL - CALCULATE AND ALLOCATE, THEN - ADD TO TABLE!
-    //    clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
-    //    return;
-    //} else {
-    //    clog<<"SHOWING"<<endl;
-    //}
-    
+    std::ostringstream label_count_text;
+    size_t output_count = Singleton::getInstance()->scans.last->count();
+    label_count_text<<"Found: "<<output_count;
+    label_found->set_text(label_count_text.str());
+
     // For each address, that scanner found, add row to tree_output
-    timestamp = high_resolution_clock::now();
-    clog<<"size: globals.scans.last->count(): "<<globals.scans.last->count()<<endl;
     size_t asdasd = 0;
-    for(RE::value_t val : *globals.scans.last) {
-        if (asdasd++ > 100'000)
+    for(RE::value_t val : *Singleton::getInstance()->scans.last) {
+        if (asdasd > 10'000)
             break;
         add_row(&val);
+        asdasd++;
     }
-    clog<<"done: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+    clog<<"Draw result: "<<std::min(asdasd, Singleton::getInstance()->scans.last->count())
+            <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
             <<" seconds"<<endl;
+
     // Continue refresh values inside Scanner output
     conn = Glib::signal_timeout().connect
             (sigc::bind(sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), data_type), REFRESH_RATE);
@@ -323,8 +318,7 @@ ScanWindow::on_button_next_scan()
     using namespace std;
     using namespace std::chrono;
     //namespace bio = boost::iostreams;
-    high_resolution_clock::time_point timestamp,
-                                      timestamp_overall = high_resolution_clock::now();
+    high_resolution_clock::time_point timestamp;
     
     conn.disconnect();
     
@@ -333,7 +327,7 @@ ScanWindow::on_button_next_scan()
         return;
     }
     
-    if (!globals.handle->is_running()) {
+    if (!Singleton::getInstance()->handle->is_running()) {
         clog<<"error: process not running"<<endl;
         return;
     }
@@ -348,59 +342,40 @@ ScanWindow::on_button_next_scan()
     RE::Cuservalue uservalue[2];
     RE::Ematch_type match_type;
     try {
-        globals.scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
+        Singleton::getInstance()->scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
     } catch (RE::bad_uservalue_cast &e) {
         clog<<e.what()<<endl;
         return;
     }
     
-//    timestamp = high_resolution_clock::now();
-//    scans.last.path = "last";
-//    try { scans.last.snapshot_mf = globals.scanner->make_snapshot(scans.last.path); }
-//    catch (const exception& e) {
-//        clog<<"error: "<<e.what()<<endl;
-//        return;
-//    }
-//    if (!scans.last.snapshot_mf.is_open()) {
-//        clog<<"error: !snapshot_mf.is_open()"<<endl;
-//        return;
-//    }
-//    clog<<"Snapshot size: "<<scans.last.snapshot_mf.size()
-//        <<" bytes, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-//        <<" seconds"<<endl;
-//
-//    timestamp = high_resolution_clock::now();
-//    globals.scanner->scan_regions(scans.last, data_type, uservalue, match_type);
-//    clog<<"Scan 1/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-//        <<" seconds"<<endl;
-    
     timestamp = high_resolution_clock::now();
-    delete globals.scans.prev;
-    globals.scans.prev = globals.scans.last;
-    globals.scans.last = new RE::matches_t();
-    globals.scanner->scan_update(*globals.scans.last);
-    globals.scanner->scan_recheck(*globals.scans.last, data_type, uservalue, match_type);
-    clog<<"Scan result: "<<globals.scans.last->count()
+    delete Singleton::getInstance()->scans.prev;
+    Singleton::getInstance()->scans.prev = Singleton::getInstance()->scans.last;
+    Singleton::getInstance()->scans.last = new RE::matches_t(*Singleton::getInstance()->scans.prev);
+    Singleton::getInstance()->scanner->scan_update(*Singleton::getInstance()->scans.last);
+    Singleton::getInstance()->scanner->scan_recheck(*Singleton::getInstance()->scans.last, data_type, uservalue, match_type);
+    clog<<"Scan result: "<<Singleton::getInstance()->scans.last->count()
         <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
-    
+
+    timestamp = high_resolution_clock::now();
     ref_tree_output->clear();
-    size_t output_count = globals.scans.last->count();
-    char *label_count_text;
-    asprintf(&label_count_text, "Found: %li", output_count);
-    label_found->set_text(label_count_text);
-    if (output_count > 10'000) {
-        clog<<"Too much outputs... Trying to show only static... Nope, too much of them..."<<endl;
-        return;
-    } else {
-        clog<<"SHOWING"<<endl;
-    }
-    
-    // For each address, that scanner found, add row to tree_output
-    for(RE::value_t val : *globals.scans.last) {
+
+    std::ostringstream label_count_text;
+    size_t output_count = Singleton::getInstance()->scans.last->count();
+    label_count_text<<"Found: "<<output_count;
+    label_found->set_text(label_count_text.str());
+
+    size_t asdasd = 0;
+    for(RE::value_t val : *Singleton::getInstance()->scans.last) {
+        if (asdasd > 10'000)
+            break;
         add_row(&val);
+        asdasd++;
     }
-    
+    clog<<"Draw result: "<<std::min(asdasd, Singleton::getInstance()->scans.last->count())
+            <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+            <<" seconds"<<endl;
     
     // Continue refresh values inside Scanner output
     conn = Glib::signal_timeout().connect
@@ -421,14 +396,20 @@ bool
 ScanWindow::on_timer_refresh(RE::Edata_type data_type)
 {
     using namespace std;
-    clog<<"on_timer_refresh begin"<<endl;
+    using namespace std::chrono;
+    high_resolution_clock::time_point timestamp;
+
+    clog<<"on_timer_refresh()"<<endl;
+    timestamp = high_resolution_clock::now();
+
     auto ref_child = ref_tree_output->children();
 
-    size_t i = 0;
-    for(RE::value_t val : *globals.scans.last) {
-        //add_row(&val);
+    size_t asdasd = 0;
+    for(RE::value_t val : *Singleton::getInstance()->scans.last) {
+        if (asdasd > 10'000)
+            break;
 
-        Gtk::TreeModel::Row row = *ref_child[i];
+        Gtk::TreeModel::Row row = *ref_child[asdasd];
         if      (val.flags & RE::flag_t::flag_i64) refresh_row<int64_t> (&val, "i64", row);
         else if (val.flags & RE::flag_t::flag_i32) refresh_row<int32_t> (&val, "i32", row);
         else if (val.flags & RE::flag_t::flag_i16) refresh_row<int16_t> (&val, "i16", row);
@@ -439,8 +420,10 @@ ScanWindow::on_timer_refresh(RE::Edata_type data_type)
         else if (val.flags & RE::flag_t::flag_u8)  refresh_row<uint8_t> (&val, "u8",  row);
         else if (val.flags & RE::flag_t::flag_f64) refresh_row<double>  (&val, "f64", row);
         else if (val.flags & RE::flag_t::flag_f32) refresh_row<float>   (&val, "f32", row);
-        i++;
+        asdasd++;
     }
-    clog<<"on_timer_refresh end"<<endl;
+    clog<<"Draw result: "<<std::min(asdasd, Singleton::getInstance()->scans.last->count())
+            <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
+            <<" seconds"<<endl;
     return true;
 }

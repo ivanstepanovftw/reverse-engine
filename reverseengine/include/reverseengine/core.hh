@@ -71,6 +71,7 @@ public:
 
     [[gnu::always_inline]]
     sfs::path get_path() {
+        // todo[medium] should throw something if [[asdad]] proccess with pid '4' attached
         return sfs::canonical(sfs::current_path().root_path()/"proc"/std::to_string(pid)/"exe");
     }
 
@@ -85,10 +86,8 @@ public:
         return pid != 0;
     }
 
-    // todo[med] to c++20nize
     [[gnu::always_inline]]
     bool is_running() {
-        using namespace std;
         return sfs::exists(sfs::current_path().root_path()/"proc"/std::to_string(pid));
     }
 
@@ -179,7 +178,7 @@ public:
     get_region_by_name(const std::string& region_name) {
         for (Cregion& region : regions)
             if (region.flags & region_mode_t::executable && region.filename == region_name)
-//                  ^~~~~~~~~~~~~~~~~~~~~~~~~ wtf? fixme[medium]: add documentation or die();
+//                             ^~~~~~~~~~~~~~~~~~~~~~~~~ wtf? fixme[medium]: add documentation or die();
                 return &region;
         return nullptr;
     }

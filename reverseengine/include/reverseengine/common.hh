@@ -29,19 +29,21 @@
 //https://softwareengineering.stackexchange.com/questions/194412/using-scoped-enums-for-bit-flags-in-c
 //https://paste.ubuntu.com/23884820/
 //see also https://softwareengineering.stackexchange.com/revisions/205567/1
-//template <typename E, typename U = typename std::underlying_type<E>::type>
-//static inline E operator ~(E lhs) { return static_cast<E>(~static_cast<U>(lhs)); }
-//template <typename E, typename U = typename std::underlying_type<E>::type>
-//static inline bool operator !(E lhs) { return static_cast<U>(lhs) != 0; }
-//#define LIFT_ENUM_OP(op, assignop) \
-//    template <typename E, typename U = typename std::underlying_type<E>::type> \
-//    static inline E operator op(E lhs, E rhs) { return static_cast<E>(static_cast<U>(lhs) op static_cast<U>(rhs)); } \
-//    template <typename E, typename U = typename std::underlying_type<E>::type> \
-//    static inline E& operator assignop(E& lhs, E rhs) { lhs = lhs op rhs; return lhs; }
-//LIFT_ENUM_OP(&,&=)
-//LIFT_ENUM_OP(|,|=)
-//LIFT_ENUM_OP(^,^=)
-//#undef LIFT_ENUM_OP
+/*
+template <typename E, typename U = typename std::underlying_type<E>::type>
+static inline E operator ~(E lhs) { return static_cast<E>(~static_cast<U>(lhs)); }
+template <typename E, typename U = typename std::underlying_type<E>::type>
+static inline bool operator !(E lhs) { return static_cast<U>(lhs) != 0; }
+#define LIFT_ENUM_OP(op, assignop) \
+    template <typename E, typename U = typename std::underlying_type<E>::type> \
+    static inline E operator op(E lhs, E rhs) { return static_cast<E>(static_cast<U>(lhs) op static_cast<U>(rhs)); } \
+    template <typename E, typename U = typename std::underlying_type<E>::type> \
+    static inline E& operator assignop(E& lhs, E rhs) { lhs = lhs op rhs; return lhs; }
+LIFT_ENUM_OP(&,&=)
+LIFT_ENUM_OP(|,|=)
+LIFT_ENUM_OP(^,^=)
+#undef LIFT_ENUM_OP
+*/
 
 #endif
 
