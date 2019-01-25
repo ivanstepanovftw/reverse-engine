@@ -129,7 +129,7 @@ public:
 * plus a `PEEKDATA_CHUNK`, to store a full extra chunk for maneuverability */
     // FIXME[critical]: not returning negative values (possibly done)
 
-    static constexpr size_t MAX_PEEKBUF_SIZE = 4 * KiB;
+    static constexpr size_t MAX_PEEKBUF_SIZE = 4 * (1<<10);
 
     uintptr_t base = 0; // base address of cached region
     size_t cache_size = 0;

@@ -119,6 +119,7 @@ public:
  */
 class matches_t {
 public:
+
     std::vector<swath_t> swaths;
 
     matches_t() { }
@@ -161,6 +162,14 @@ public:
     }
 
     size_t mem_virt() {
+        size_t size = 0;
+        for(auto& swath : swaths)
+            size += swath.bytes.size() * sizeof(decltype(swath.bytes)::value_type)
+                    + swath.flags.size() * sizeof(decltype(swath.flags)::value_type);
+        return size + swaths.size() * sizeof(swath_t);
+    }
+
+    size_t mem_disk() {
         size_t size = 0;
         for(auto& swath : swaths)
             size += swath.bytes.size() * sizeof(decltype(swath.bytes)::value_type)

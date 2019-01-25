@@ -20,10 +20,12 @@
 */
 #pragma once
 
+#include <reverseengine/common.hh>
 #include <reverseengine/core.hh>
 #include <reverseengine/value.hh>
 #include <reverseengine/scanner.hh>
 
+NAMESPACE_BEGIN(RE)
 
 constexpr size_t REFRESH_RATE = 2000;
 
@@ -57,21 +59,32 @@ public:
 };
 
 
-class Singleton
-{
-private:
-    /* Private constructor to prevent instancing. */
-    Singleton() {};
+//class Singleton
+//{
+//private:
+//    /* Private constructor to prevent instancing. */
+//    Singleton() {};
+//
+//public:
+//    /* Static access method. */
+//    static Singleton* getInstance() {
+//        static Singleton instance;
+//        return &instance;
+//    }
+//
+//    RE::Handle *handle;
+//    RE::Scanner *scanner;
+//    CScans scans;
+//};
 
+
+class globals_t {
 public:
-    /* Static access method. */
-    static Singleton* getInstance() {
-        static Singleton instance;
-        return &instance;
-    }
-
     RE::Handle *handle;
     RE::Scanner *scanner;
     CScans scans;
 };
 
+extern std::shared_ptr<globals_t> globals;
+
+NAMESPACE_END(RE)

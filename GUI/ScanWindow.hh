@@ -115,20 +115,20 @@ protected:
     };
     
     //ComboBox
-//    class ColumnsValueType : public Gtk::TreeModel::ColumnRecord
-//    {
-//    public:
-//        ColumnsValueType()
-//        { add(m_col_name); add(m_col_value_type); }
-//        
-//        Gtk::TreeModelColumn<Glib::ustring> m_col_name;
-//        Gtk::TreeModelColumn<Flags> m_col_value_type;
-//    };
-//    
+    class ColumnsValueType : public Gtk::TreeModel::ColumnRecord
+    {
+    public:
+        ColumnsValueType()
+        { add(m_col_name); add(m_col_value_type); }
+
+        Gtk::TreeModelColumn<Glib::ustring> m_col_name;
+        Gtk::TreeModelColumn<RE::flag> m_col_value_type;
+    };
+
     ColumnsScanType columns_scan_type;
-//    ColumnsValueType columns_value_type;
+    ColumnsValueType columns_value_type;
     Glib::RefPtr<Gtk::ListStore> ref_stype;
-//    Glib::RefPtr<Gtk::ListStore> ref_vtype;
+    Glib::RefPtr<Gtk::ListStore> ref_vtype;
     
     //Childs
     Gtk::Widget *create_scanner_output();

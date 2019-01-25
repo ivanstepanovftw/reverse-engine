@@ -12,13 +12,13 @@ ScanWindow::ScanWindow() :
         paned_1(Gtk::ORIENTATION_HORIZONTAL),
         paned_2(Gtk::ORIENTATION_VERTICAL)
 {
-    delete Singleton::getInstance()->handle;
-//    Singleton::getInstance()->handle = new Handle("7DaysToDie.x86_64");
-//    Singleton::getInstance()->handle = new Handle("csgo_linux");
-    Singleton::getInstance()->handle = new RE::Handle("FAKEMEM");
-//    Singleton::getInstance()->handle = new Handle("FakeGame");
-    Singleton::getInstance()->handle->update_regions();
-    Singleton::getInstance()->scanner = new RE::Scanner(Singleton::getInstance()->handle);
+    delete RE::globals->handle;
+//    RE::globals->handle = new Handle("7DaysToDie.x86_64");
+//    RE::globals->handle = new Handle("csgo_linux");
+    RE::globals->handle = new RE::Handle("FAKEMEM");
+//    RE::globals->handle = new Handle("FakeGame");
+    RE::globals->handle->update_regions();
+    RE::globals->scanner = new RE::Scanner(RE::globals->handle);
     
     Gtk::Widget *scanner_output = create_scanner_output();
     Gtk::Widget *scanner = create_scanner();
@@ -67,7 +67,7 @@ ScanWindow::create_scanner_output()
     scrolledwindow->add(*Gtk::manage(tree_output));
     scrolledwindow->set_policy(Gtk::POLICY_ALWAYS, Gtk::POLICY_ALWAYS);
     scrolledwindow->set_resize_mode(Gtk::ResizeMode::RESIZE_IMMEDIATE);
-//    scrolledwindow->set_shadow_type(Gtk::SHADOW_ETCHED_IN); // DONT GOOGLE 'SHADOW_ETCHED_IN'
+//    scrolledwindow->set_shadow_type(Gtk::SHADOW_ETCHED_IN);
     
     box->add(*Gtk::manage(label_found));
     box->add(*Gtk::manage(scrolledwindow));
@@ -115,19 +115,19 @@ ScanWindow::create_scanner()
     
     
     /// ComboBox "Value Type"
-//    ref_vtype = Gtk::ListStore::create(columns_value_type);
-//    combo_vtype->set_model(ref_vtype);
-//    
-//    // Inactive rows (NOT combo box) if Scan Type is not (Number) or not (Array)
-//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "c: Byte";   row[columns_value_type.m_col_value_type] = Flags::flags_i8;
-//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "s: 2 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i16;
-//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "i: 4 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i32;
-//    combo_vtype->set_active(row);
-//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "l: 8 Bytes";row[columns_value_type.m_col_value_type] = Flags::flags_i64;
-//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "f: Float";  row[columns_value_type.m_col_value_type] = Flags::flag_f32;
-//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "d: Double"; row[columns_value_type.m_col_value_type] = Flags::flag_f64;
-//    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "All";       row[columns_value_type.m_col_value_type] = Flags::flags_full;
-//    combo_vtype->pack_start(columns_value_type.m_col_name);
+    ref_vtype = Gtk::ListStore::create(columns_value_type);
+    combo_vtype->set_model(ref_vtype);
+
+    // Inactive rows (NOT combo box) if Scan Type is not (Number) or not (Array)
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "c: Byte";   row[columns_value_type.m_col_value_type] = RE::flag_t::flags_i8b;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "s: 2 Bytes";row[columns_value_type.m_col_value_type] = RE::flag_t::flags_i16b;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "i: 4 Bytes";row[columns_value_type.m_col_value_type] = RE::flag_t::flags_i32b;
+    combo_vtype->set_active(row);
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "l: 8 Bytes";row[columns_value_type.m_col_value_type] = RE::flag_t::flags_i64b;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "f: Float";  row[columns_value_type.m_col_value_type] = RE::flag_t::flag_f32;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "d: Double"; row[columns_value_type.m_col_value_type] = RE::flag_t::flag_f64;
+    row = *(ref_vtype->append()); row[columns_value_type.m_col_name] = "All";       row[columns_value_type.m_col_value_type] = RE::flag_t::flags_all;
+    combo_vtype->pack_start(columns_value_type.m_col_name);
     
     
     /// Signals
@@ -226,7 +226,7 @@ template<typename T>
 void ScanWindow::refresh_row(RE::value_t *val, const char *type_string, Gtk::TreeModel::Row &row)
 {
     T value;
-    Singleton::getInstance()->handle->read(val->address, &value, sizeof(T));
+    RE::globals->handle->read(val->address, &value, sizeof(T));
 
     row[columns_output.m_col_value] = std::to_string(value);
     row[columns_output.m_col_value_type] = type_string;
@@ -245,22 +245,22 @@ ScanWindow::on_button_first_scan()
             timestamp_overall = high_resolution_clock::now();
     
     conn.disconnect();
-    
+
     if (entry_value->get_text().empty()) {
         clog<<"Enter value first!"<<endl;
         return;
     }
     
-    if (!Singleton::getInstance()->handle->is_running()) {
+    if (!RE::globals->handle->is_running()) {
         clog<<"error: process not running"<<endl;
-        clog<<"Singleton::getInstance()->handle->titile: "<<Singleton::getInstance()->handle->title<<endl;
-        clog<<"Singleton::getInstance()->handle->pid: "<<Singleton::getInstance()->handle->pid<<endl;
-        clog<<"&re_globals: "<<(void *)Singleton::getInstance()<<endl;
-        clog<<"&handle: "<<(void *)Singleton::getInstance()->handle<<endl;
+        clog<<"RE::globals->handle->titile: "<<RE::globals->handle->title<<endl;
+        clog<<"RE::globals->handle->pid: "<<RE::globals->handle->pid<<endl;
+        clog<<"&re_globals: "<<(void *)(&*RE::globals)<<endl;
+        clog<<"&handle: "<<(void *)RE::globals->handle<<endl;
         return;
     }
     
-    Singleton::getInstance()->handle->update_regions();
+    RE::globals->handle->update_regions();
     
     Gtk::TreeModel::iterator iter = combo_stype->get_active();
     if(!iter) return;
@@ -271,43 +271,35 @@ ScanWindow::on_button_first_scan()
     RE::Cuservalue uservalue[2];
     RE::Ematch_type match_type;
     try {
-        Singleton::getInstance()->scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
+        RE::globals->scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
     } catch (RE::bad_uservalue_cast &e) {
         clog<<e.what()<<endl;
         return;
     }
     
     timestamp = high_resolution_clock::now();
-    Singleton::getInstance()->scans.last = new RE::matches_t();
-    Singleton::getInstance()->scans.first = Singleton::getInstance()->scans.last;
-    Singleton::getInstance()->scanner->scan_regions(*Singleton::getInstance()->scans.last, data_type, uservalue, match_type);
-    clog<<"Scan result: "<<Singleton::getInstance()->scans.last->count()
+    RE::globals->scans.last = new RE::matches_t();
+    RE::globals->scans.first = RE::globals->scans.last;
+    RE::globals->scanner->scan_regions(*RE::globals->scans.last, data_type, uservalue, match_type);
+    clog<<"Scan result: "<<RE::globals->scans.last->count()
             <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
             <<" seconds"<<endl;
 
-
-    timestamp = high_resolution_clock::now();
-    ref_tree_output->clear();
     std::ostringstream label_count_text;
-    size_t output_count = Singleton::getInstance()->scans.last->count();
+    size_t output_count = RE::globals->scans.last->count();
     label_count_text<<"Found: "<<output_count;
     label_found->set_text(label_count_text.str());
 
     // For each address, that scanner found, add row to tree_output
-    size_t asdasd = 0;
-    for(RE::value_t val : *Singleton::getInstance()->scans.last) {
-        if (asdasd > 10'000)
-            break;
-        add_row(&val);
-        asdasd++;
-    }
-    clog<<"Draw result: "<<std::min(asdasd, Singleton::getInstance()->scans.last->count())
-            <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-            <<" seconds"<<endl;
+    ref_tree_output->clear();
+    if (output_count <= 10000)
+        for(RE::value_t val : *RE::globals->scans.last) {
+            add_row(&val);
+        }
 
     // Continue refresh values inside Scanner output
     conn = Glib::signal_timeout().connect
-            (sigc::bind(sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), data_type), REFRESH_RATE);
+            (sigc::bind(sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), data_type), RE::REFRESH_RATE);
 }
 
 
@@ -321,13 +313,13 @@ ScanWindow::on_button_next_scan()
     high_resolution_clock::time_point timestamp;
     
     conn.disconnect();
-    
+
     if (entry_value->get_text().empty()) {
         clog<<"Enter value first!"<<endl;
         return;
     }
     
-    if (!Singleton::getInstance()->handle->is_running()) {
+    if (!RE::globals->handle->is_running()) {
         clog<<"error: process not running"<<endl;
         return;
     }
@@ -342,44 +334,36 @@ ScanWindow::on_button_next_scan()
     RE::Cuservalue uservalue[2];
     RE::Ematch_type match_type;
     try {
-        Singleton::getInstance()->scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
+        RE::globals->scanner->string_to_uservalue(data_type, entry_value->get_text(), &match_type, uservalue);
     } catch (RE::bad_uservalue_cast &e) {
         clog<<e.what()<<endl;
         return;
     }
     
     timestamp = high_resolution_clock::now();
-    delete Singleton::getInstance()->scans.prev;
-    Singleton::getInstance()->scans.prev = Singleton::getInstance()->scans.last;
-    Singleton::getInstance()->scans.last = new RE::matches_t(*Singleton::getInstance()->scans.prev);
-    Singleton::getInstance()->scanner->scan_update(*Singleton::getInstance()->scans.last);
-    Singleton::getInstance()->scanner->scan_recheck(*Singleton::getInstance()->scans.last, data_type, uservalue, match_type);
-    clog<<"Scan result: "<<Singleton::getInstance()->scans.last->count()
+    delete RE::globals->scans.prev;
+    RE::globals->scans.prev = RE::globals->scans.last;
+    RE::globals->scans.last = new RE::matches_t(*RE::globals->scans.prev);
+    RE::globals->scanner->scan_update(*RE::globals->scans.last);
+    RE::globals->scanner->scan_recheck(*RE::globals->scans.last, data_type, uservalue, match_type);
+    clog<<"Scan result: "<<RE::globals->scans.last->count()
         <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
         <<" seconds"<<endl;
 
-    timestamp = high_resolution_clock::now();
-    ref_tree_output->clear();
-
     std::ostringstream label_count_text;
-    size_t output_count = Singleton::getInstance()->scans.last->count();
+    size_t output_count = RE::globals->scans.last->count();
     label_count_text<<"Found: "<<output_count;
     label_found->set_text(label_count_text.str());
 
-    size_t asdasd = 0;
-    for(RE::value_t val : *Singleton::getInstance()->scans.last) {
-        if (asdasd > 10'000)
-            break;
-        add_row(&val);
-        asdasd++;
-    }
-    clog<<"Draw result: "<<std::min(asdasd, Singleton::getInstance()->scans.last->count())
-            <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-            <<" seconds"<<endl;
-    
+    ref_tree_output->clear();
+    if (output_count <= 10000)
+        for(RE::value_t val : *RE::globals->scans.last) {
+            add_row(&val);
+        }
+
     // Continue refresh values inside Scanner output
     conn = Glib::signal_timeout().connect
-            (sigc::bind(sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), data_type), REFRESH_RATE);
+            (sigc::bind(sigc::mem_fun(*this, &ScanWindow::on_timer_refresh), data_type), RE::REFRESH_RATE);
 }
 
 
@@ -404,25 +388,23 @@ ScanWindow::on_timer_refresh(RE::Edata_type data_type)
 
     auto ref_child = ref_tree_output->children();
 
+    size_t output_count = RE::globals->scans.last->size();
     size_t asdasd = 0;
-    for(RE::value_t val : *Singleton::getInstance()->scans.last) {
-        if (asdasd > 10'000)
-            break;
-
-        Gtk::TreeModel::Row row = *ref_child[asdasd];
-        if      (val.flags & RE::flag_t::flag_i64) refresh_row<int64_t> (&val, "i64", row);
-        else if (val.flags & RE::flag_t::flag_i32) refresh_row<int32_t> (&val, "i32", row);
-        else if (val.flags & RE::flag_t::flag_i16) refresh_row<int16_t> (&val, "i16", row);
-        else if (val.flags & RE::flag_t::flag_i8)  refresh_row<int8_t>  (&val, "i8",  row);
-        else if (val.flags & RE::flag_t::flag_u64) refresh_row<uint64_t>(&val, "u64", row);
-        else if (val.flags & RE::flag_t::flag_u32) refresh_row<uint32_t>(&val, "u32", row);
-        else if (val.flags & RE::flag_t::flag_u16) refresh_row<uint16_t>(&val, "u16", row);
-        else if (val.flags & RE::flag_t::flag_u8)  refresh_row<uint8_t> (&val, "u8",  row);
-        else if (val.flags & RE::flag_t::flag_f64) refresh_row<double>  (&val, "f64", row);
-        else if (val.flags & RE::flag_t::flag_f32) refresh_row<float>   (&val, "f32", row);
-        asdasd++;
-    }
-    clog<<"Draw result: "<<std::min(asdasd, Singleton::getInstance()->scans.last->count())
+    if (output_count <= 10000)
+        for(RE::value_t val : *RE::globals->scans.last) {
+            Gtk::TreeModel::Row row = *ref_child[asdasd];
+            if      (val.flags & RE::flag_t::flag_i64) refresh_row<int64_t> (&val, "i64", row);
+            else if (val.flags & RE::flag_t::flag_i32) refresh_row<int32_t> (&val, "i32", row);
+            else if (val.flags & RE::flag_t::flag_i16) refresh_row<int16_t> (&val, "i16", row);
+            else if (val.flags & RE::flag_t::flag_i8)  refresh_row<int8_t>  (&val, "i8",  row);
+            else if (val.flags & RE::flag_t::flag_u64) refresh_row<uint64_t>(&val, "u64", row);
+            else if (val.flags & RE::flag_t::flag_u32) refresh_row<uint32_t>(&val, "u32", row);
+            else if (val.flags & RE::flag_t::flag_u16) refresh_row<uint16_t>(&val, "u16", row);
+            else if (val.flags & RE::flag_t::flag_u8)  refresh_row<uint8_t> (&val, "u8",  row);
+            else if (val.flags & RE::flag_t::flag_f64) refresh_row<double>  (&val, "f64", row);
+            else if (val.flags & RE::flag_t::flag_f32) refresh_row<float>   (&val, "f32", row);
+        }
+    clog<<"Draw result: "<<std::min(asdasd, RE::globals->scans.last->count())
             <<" matches, done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
             <<" seconds"<<endl;
     return true;

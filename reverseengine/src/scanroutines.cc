@@ -748,7 +748,7 @@ RE::sm_choose_scanroutine(RE::Edata_type dt, RE::Ematch_type mt, const RE::Cuser
         /* Possible flags per scan data type: if an incoming uservalue has none of the
          * listed flags we're sure it's not going to be matched by the scan,
          * so we reject it without even trying */
-        RE::flag possible_flags = RE::flag::convert(dt);
+        RE::flag possible_flags = RE::flag(dt);
         if ((possible_flags & uflags) == RE::flag_t::flags_empty) {
             /* There's no possibility to have a match, just abort */
             RE::sm_scan_routine = nullptr;

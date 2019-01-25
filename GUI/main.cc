@@ -21,9 +21,11 @@
 
 #include "MainWindow.hh"
 
-int
-main(int argc, char *argv[])
-{
+std::shared_ptr<RE::globals_t> RE::globals;
+
+int main(int argc, char *argv[]) {
+    RE::globals = std::make_shared<RE::globals_t>();
+
     auto app = Gtk::Application::create(argc, argv, "com.github.ivanstepanovftw.reverse-engine");
     //Gdl::init();
     

@@ -91,17 +91,17 @@ SelectWindow::on_button_attach()
         if(iter) {
             pid_t pid = (*iter)[m_Columns.m_col_pid];
             cout<<"Selected PID: "<<pid<<endl;
-            delete Singleton::getInstance()->handle;
-            Singleton::getInstance()->handle = new RE::Handle(pid);
-            cout<<"is_valid? "<<Singleton::getInstance()->handle->is_valid()<<endl;
-            cout<<"is_running? "<<Singleton::getInstance()->handle->is_running()<<endl;
+            delete RE::globals->handle;
+            RE::globals->handle = new RE::Handle(pid);
+            cout<<"is_valid? "<<RE::globals->handle->is_valid()<<endl;
+            cout<<"is_running? "<<RE::globals->handle->is_running()<<endl;
 
-            cout<<"Title: "<<Singleton::getInstance()->handle->title<<endl;
-            Singleton::getInstance()->handle->update_regions();
-            Singleton::getInstance()->scanner = new RE::Scanner(Singleton::getInstance()->handle);
+            cout<<"Title: "<<RE::globals->handle->title<<endl;
+            RE::globals->handle->update_regions();
+            RE::globals->scanner = new RE::Scanner(RE::globals->handle);
             constexpr size_t print_tip_every_n_line = 25;
             size_t tip_count = 0;
-            for(const RE::Cregion& region : Singleton::getInstance()->handle->regions) {
+            for(const RE::Cregion& region : RE::globals->handle->regions) {
                 if (tip_count % print_tip_every_n_line == 0)
                     printf("%-32s%-18s %-18s %s%s%s%s\n",
                            "Region name",
@@ -121,8 +121,8 @@ SelectWindow::on_button_attach()
             if (tip_count == 0)
                 cout<<"No region found!"<<endl;
             cout<<"Regions enumeration is done"<<endl;
-            cout<<"&re_globals: "<<(void *)Singleton::getInstance()<<endl;
-            cout<<"&handle: "<<(void *)Singleton::getInstance()->handle<<endl;
+            cout<<"&re_globals: "<<(void *)(&*RE::globals)<<endl;
+            cout<<"&handle: "<<(void *)RE::globals->handle<<endl;
             hide();
         }
     }

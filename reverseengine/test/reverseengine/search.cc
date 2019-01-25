@@ -2,96 +2,80 @@
 // Created by root on 28.07.18.
 //
 
-#include <reverseengine/globals.hh>
 #include <iostream>
 #include <string>
 #include <chrono>
+#include <reverseengine/core.hh>
+#include <reverseengine/scanner.hh>
 
-using namespace std;
-using namespace std::chrono;
 
 int main() {
-    string target = "FAKEMEM";
-    string search_for = "145";
+    using std::cout, std::clog, std::cerr, std::endl;
+    using namespace std::chrono;
+    high_resolution_clock::time_point timestamp;
 
-    Singleton::getInstance()->handle = new RE::Handle(target);
-    if (!Singleton::getInstance()->handle->is_good())
+    std::string target = "FAKEMEM";
+    std::string search_for = "145";
+    RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
+
+    RE::Handle *handle = new RE::Handle(target);
+    if (!handle->is_good())
         throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
-    Singleton::getInstance()->handle->update_regions();
-    Singleton::getInstance()->scanner = new RE::Scanner(Singleton::getInstance()->handle);
+    handle->update_regions();
+    RE::Scanner *scanner = new RE::Scanner(handle);
 
 
     clog<<"FAKEMEM, pid: "
-        <<Singleton::getInstance()->handle->pid
-        <<", title: "<<Singleton::getInstance()->handle->title
+        <<handle->pid
+        <<", title: "<<handle->title
         <<endl;
 
-    high_resolution_clock::time_point timestamp;
 
-    //RE::Edata_type data_type = RE::Edata_type::INTEGER32;
-    RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
-    //RE::Edata_type data_type = RE::Edata_type::INTEGER8;
     RE::Cuservalue uservalue[2];
     RE::Ematch_type match_type;
     try {
-        Singleton::getInstance()->scanner->string_to_uservalue(data_type, search_for, &match_type, uservalue);
+        scanner->string_to_uservalue(data_type, search_for, &match_type, uservalue);
     } catch (RE::bad_uservalue_cast &e) {
         clog<<e.what()<<endl;
-        //return;
         return 0;
     }
 
-    Singleton::getInstance()->scans.first = new RE::matches_t();
+    RE::matches_t matches;
 
     timestamp = high_resolution_clock::now();
-    Singleton::getInstance()->scanner->scan_regions(*Singleton::getInstance()->scans.first, data_type, uservalue, match_type);
-    clog<<"Scan 1/3 done in: "
-        <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
-    assert(Singleton::getInstance()->scans.first->size() == Singleton::getInstance()->scans.first->matches_size);
-    clog<<"size: {counted: "<<Singleton::getInstance()->scans.first->count()<<"}"<<endl;
-    //clog<<"mem_virt: "<<Singleton::getInstance()->scans.first->mem_virt()<<endl;
-    //clog<<"mem_allo: "<<Singleton::getInstance()->scans.first->mem_allo()<<endl;
-    //clog<<"swaths.size: "<<Singleton::getInstance()->scans.first->swaths_count<<endl;
-    //clog<<"swaths.capacity: "<<Singleton::getInstance()->scans.first->swaths_allocated<<endl;
+    scanner->scan_regions(matches, data_type, uservalue, match_type);
+    clog<<"Scan 1/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
+    clog<<"mem_virt: "<<matches.mem_virt()<<endl;
+    clog<<"mem_disk: "<<matches.mem_disk()<<endl;
+    clog<<"size: "<<matches.size()<<endl;
+    clog<<"count: "<<matches.count()<<endl;
 
     timestamp = high_resolution_clock::now();
-    Singleton::getInstance()->scanner->scan_update(*Singleton::getInstance()->scans.first);
-    Singleton::getInstance()->scanner->scan_recheck(*Singleton::getInstance()->scans.first, data_type, uservalue, match_type);
-    clog<<"Scan 2/3 done in: "
-        <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
+    scanner->scan_update(matches);
+    scanner->scan_recheck(matches, data_type, uservalue, match_type);
+    clog<<"Scan 2/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
+    clog<<"mem_virt: "<<matches.mem_virt()<<endl;
+    clog<<"mem_allo: "<<matches.mem_allo()<<endl;
+    clog<<"mem_disk: "<<matches.mem_disk()<<endl;
+    clog<<"size: "<<matches.size()<<endl;
+    clog<<"count: "<<matches.count()<<endl;
 
-    clog<<"size: {counted: "<<Singleton::getInstance()->scans.first->count()<<"}"<<endl;
-    //clog<<"swaths.size: "<<Singleton::getInstance()->scans.first->swaths_count<<endl;
-    //clog<<"swaths.capacity: "<<Singleton::getInstance()->scans.first->swaths_allocated<<endl;
+    clog<<"============================================="<<endl;
 
-    timestamp = high_resolution_clock::now();
-    Singleton::getInstance()->scanner->scan_update(*Singleton::getInstance()->scans.first);
-    Singleton::getInstance()->scanner->scan_recheck(*Singleton::getInstance()->scans.first, data_type, uservalue, match_type);
-    //TODO[med]: (TO INVESTIGATE) really interesting result (why second scan is faster?)
-    clog<<"Scan 3/3 done in: "
-        <<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()
-        <<" seconds"<<endl;
 
-    clog<<"size: {counted: "<<Singleton::getInstance()->scans.first->count()<<"}"<<endl;
-    //clog<<"swaths.size: "<<Singleton::getInstance()->scans.first->swaths_count<<endl;
-    //clog<<"swaths.capacity: "<<Singleton::getInstance()->scans.first->swaths_allocated<<endl;
+    /*
+     *  Сканируем из памяти в свою память           (scanmem)
+     *      -> Сканируем из памяти в свою память    (scanmem)
+     *  Сканируем из памяти в диск                  (Cheat Engine)
+     *      -> Сканируем из диска в диск            (Cheat Engine)
+     */
 
-    int isd = 0;
-    for(RE::value_t val : *Singleton::getInstance()->scans.first) {
-        cout<<"val: "<<isd<<": "<<val<<endl;
-        isd++;
-    }
 
-    clog<<"size: "<<Singleton::getInstance()->scans.first->size()<<endl;
-    clog<<"count: "<<Singleton::getInstance()->scans.first->count()<<endl;
 
-    //for (auto&& s : Singleton::getInstance()->scans.first->swaths) {
-    //    for (auto && b : s.bytes) {
-    //        ;
-    //    }
+    //int isd = 0;
+    //for(RE::value_t val : *RE::globals->scans.first) {
+    //    cout<<"val: "<<isd<<": "<<val<<endl;
+    //    isd++;
     //}
-
     return 0;
 }

@@ -43,7 +43,7 @@ MainWindow::MainWindow()
     //FIXME[critical] DEBUG
     m_window_scan = new ScanWindow();
     m_window_scan->show();
-    Singleton::getInstance()->scanner = new RE::Scanner(Singleton::getInstance()->handle);
+    RE::globals->scanner = new RE::Scanner(RE::globals->handle);
     //end
 
     this->show_all_children();

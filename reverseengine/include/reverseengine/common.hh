@@ -51,6 +51,12 @@ LIFT_ENUM_OP(^,^=)
 //constexpr std::size_t operator""_KiB(unsigned long long v) {
 //    return v<<10u;
 //}
+//constexpr std::size_t operator""_MiB(unsigned long long v) {
+//    return v<<20u;
+//}
+//constexpr std::size_t operator""_GiB(unsigned long long v) {
+//    return v<<30u;
+//}
 constexpr std::size_t KiB = 1u<<10u;
 constexpr std::size_t MiB = 1u<<20u;
 constexpr std::size_t GiB = 1u<<30u;

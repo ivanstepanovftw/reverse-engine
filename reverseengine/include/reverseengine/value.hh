@@ -73,8 +73,9 @@ enum class region_mode_t : uint8_t
     writable   = 1u<<1u,
     readable   = 1u<<2u,
     shared     = 1u<<3u,
+    max = executable|writable|readable|shared
 };
-BITMASK_DEFINE_MAX_ELEMENT(region_mode_t, shared)
+BITMASK_DEFINE_MAX_ELEMENT(region_mode_t, max)
 
 class Cregion {
 public:
@@ -207,12 +208,17 @@ public:
     using bitmask::bitmask;
 
     // oliora/bitmask#4, message#4, issue n.1
-    constexpr flag(const bitmask<value_type>& flag) noexcept : bitmask::bitmask<value_type>(flag) {}
+    constexpr flag(const bitmask<value_type> flag) noexcept
+    : bitmask::bitmask<value_type>(flag) {}
+
+    constexpr flag(const Edata_type& dt) noexcept
+    : bitmask::bitmask<value_type>(convert(dt)) {}
 
     /* Possible flags per scan data type: if an incoming uservalue has none of the
      * listed flags we're sure it's not going to be matched by the scan,
      * so we reject it without even trying */
-    constexpr static flag convert(const Edata_type& dt) {
+    constexpr static flag convert(const Edata_type& dt)
+    {
         switch (dt) {
             case Edata_type::ANYNUMBER:  return flag_t::flags_all;
             case Edata_type::ANYINTEGER: return flag_t::flags_integer;
@@ -243,15 +249,6 @@ public:
         }
     }
 
-    //constexpr flag(const Edata_type& dt) noexcept {
-    //    switch (dt) {
-    //        case Edata_type::EXECUTE_BIT: flag(flag_t::execute);
-    //        case Edata_type::WRITE_BIT:   flag(flag_t::write);
-    //        case Edata_type::READ_BIT:    flag(flag_t::read);
-    //        default: flag(flag_t::none);
-    //    }
-    //}
-    //
     std::string str() const {
         std::ostringstream ss;
         ss<<(*this & flag_t::flag_u8 ? "C" : "");

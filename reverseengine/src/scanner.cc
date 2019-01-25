@@ -163,8 +163,8 @@ RE::Scanner::string_to_uservalue(const RE::Edata_type &data_type,
 
 valid_number:;
 //fixme[high]: Edata_type_to_match_flags must be a function
-    uservalue[0].flags &= RE::flag::convert(data_type);
-    uservalue[1].flags &= RE::flag::convert(data_type);
+    uservalue[0].flags &= RE::flag(data_type);
+    uservalue[1].flags &= RE::flag(data_type);
     return;
 }
 
@@ -247,8 +247,8 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
      * The actual allocation is that plus the rounded size of the maximum possible VLT.
      * This is needed because the last byte might be scanned as max size VLT,
      * thus need 2^16 - 2 extra bytes after it */
-    constexpr size_t MAX_BUFFER_SIZE = 128*KiB;
-    constexpr size_t MAX_ALLOC_SIZE = MAX_BUFFER_SIZE+64*KiB;
+    constexpr size_t MAX_BUFFER_SIZE = 128 * (1<<10);
+    constexpr size_t MAX_ALLOC_SIZE = MAX_BUFFER_SIZE + 64 * (1<<10);
 
     /* allocate data array */
     uint8_t *buffer = new uint8_t[MAX_ALLOC_SIZE];
