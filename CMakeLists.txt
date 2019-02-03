@@ -40,6 +40,7 @@ if (EXISTS ${CMAKE_SOURCE_DIR}/main.cc)
     target_link_libraries(MAIN PUBLIC
             ${Boost_LIBRARIES}
             boost_serialization
+            boost_iostreams
             stdc++fs
             rt
             )

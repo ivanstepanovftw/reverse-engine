@@ -36,6 +36,10 @@
 #include <reverseengine/value.hh>
 #include <reverseengine/external.hh>
 #include <reverseengine/common.hh>
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/serialization/vector.hpp>
+#include <strstream> // FIXME[med]: DEPRECATED!!!
 
 
 NAMESPACE_BEGIN(RE)
@@ -80,14 +84,6 @@ public:
         return address != 0;
     }
 
-    char *serialize() {
-
-    }
-
-    bool deserialize(char *series) {
-
-    }
-
     std::string str() const {
         std::ostringstream ss;
         ss << "{"
@@ -106,6 +102,21 @@ public:
 
     friend std::ostream& operator<<(std::ostream& outputStream, const Cregion& region) {
         return outputStream<<region.str();
+    }
+private:
+    friend class boost::serialization::access;
+
+    template<class Archive>
+    void serialize(Archive& ar, const unsigned int version) {
+        ar & address;
+        ar & size;
+        ar & *reinterpret_cast<decltype(flags)::underlying_type*>(&flags);
+        ar & offset;
+        ar & deviceMajor;
+        ar & deviceMinor;
+        ar & inodeFileNumber;
+        ar & pathname;
+        ar & filename;
     }
 };
 
@@ -132,29 +143,38 @@ public:
         return nullptr;
     }
 
+    /*FIXME[CRITICAL]: REMAKE THIS SHIT, DO TESTS!!!!!!!!!!!!!! */
     size_t get_region_of_address(uintptr_t address) const {
         using namespace std;
-        static size_t last_return = npos;
-        if (last_return != npos
-        && regions[last_return].address <= address
-        && address < regions[last_return].address + regions[last_return].size) {
-            //clog << "returning last region " << endl;
-            return last_return;
-        }
+        //static size_t last_return = npos;
+        //if (last_return != npos
+        //&& regions[last_return].address <= address
+        //&& address < regions[last_return].address + regions[last_return].size) {
+        //    //clog << "returning last region " << endl;
+        //    return last_return;
+        //}
+        //cout<<"address: 0x"<<RE::HEX(address)<<", first region: 0x"<<RE::HEX(regions[0].address)<<" : 0x"<<RE::HEX(regions[0].address+regions[0].size)<<endl;
         size_t first, last, mid;
         first = 0;
         last = regions.size();
-        while (first < last) {
+        //cout<<"last: "<<last<<endl;
+        while (first <= last) {
             mid = (first + last) / 2;
-            if (address < regions[mid].address)
+            //cout<<"   mid: "<<mid<<endl;
+            if (address < regions[mid].address) {
                 last = mid - 1;
-            else if (address >= regions[mid].address + regions[mid].size)
+                //cout<<"      address at the left side of 0x"<<RE::HEX(regions[mid].address)<<endl;
+            } else if (address > regions[mid].address + regions[mid].size) {
                 first = mid + 1;
-            else {
-                last_return = mid;
-                return last_return;
+                //cout<<"      address at the right side of 0x"<<RE::HEX(regions[mid].address + regions[mid].size)<<endl;
+            } else {
+                //last_return = mid;
+                //return last_return;
+                //std::cout<<"      returning mid: "<<mid<<std::endl;
+                return mid;
             }
         }
+        //std::cout<<"      returning npos: "<<mid<<std::endl;
         return npos;
     }
 
@@ -474,97 +494,90 @@ private:
 //    uint8_t *m_cache;
 //};
 
+/*!
+ * @brief  Used to store size of objects to be serialized
+ */
+class counter_streambuf : public std::streambuf
+{
+public:
+    using std::streambuf::streambuf;
+
+    size_t size() const { return m_size; }
+
+protected:
+    std::streamsize xsputn(const char_type* __s, std::streamsize __n) override
+    { this->m_size += __n; return __n; }
+
+private:
+    size_t m_size = 0;
+};
+
 class handler_mmap : public handler_i {
 public:
     using handler_i::handler_i;
 
+    void save(const handler_pid& handler, const std::string& path) {
+        regions = handler.regions;
+        size_t total_scan_bytes = 0;
+        for (const RE::Cregion& r : handler.regions) {
+            total_scan_bytes += r.size;
+        }
+
+        RE::counter_streambuf csb;
+        boost::archive::binary_oarchive boa_csb(csb, boost::archive::no_header);
+        boa_csb << *this;
+
+        snapshot_mf_.path = path;
+        snapshot_mf_.flags = bio::mapped_file::mapmode::readwrite;
+        snapshot_mf_.new_file_size = total_scan_bytes + csb.size();
+        snapshot_mf.open(snapshot_mf_);
+        if (!snapshot_mf.is_open())
+            throw std::invalid_argument("can not open '" + path + "'");
+
+        char *snapshot = snapshot_mf.data();
+
+        std::ostrstream oss(snapshot, csb.size());
+        boost::archive::binary_oarchive boa_oss(oss, boost::archive::no_header);
+        boa_oss << *this;
+        oss.flush();
+        snapshot += csb.size();
+
+        regions_on_map.clear();
+        for(RE::Cregion region : handler.regions) {
+            regions_on_map.emplace_back(snapshot);
+            ssize_t copied = handler.read(region.address, snapshot, region.size);
+            snapshot += region.size;
+        }
+        //todo[low]: maybe we should made `mmap_streambuf` as `counter_streambuf` made?
+        //snapshot_mf.resize(snapshot - snapshot_mf.data());
+    }
+
+
+
     /// Open (open snapshot from file)
     explicit handler_mmap(const std::string& path) {
+        std::ifstream ifs(path);
+        boost::archive::binary_iarchive ia(ifs);
+        // read class state from archive
 
+        std::string magic_bytes;
+        uint8_t a;
+        ia >> regions;
     }
 
     /// Save (make snapshot)
     explicit handler_mmap(const handler_pid& handler, const std::string& path) {
-        /// Allocate space
-        if (handler.regions.empty())
-            throw std::invalid_argument("no regions defined");
-
-        uintptr_t total_scan_bytes = 0;
-        for(const RE::Cregion& region : handler.regions)
-            total_scan_bytes += region.size;
-        if (total_scan_bytes == 0)
-            throw std::invalid_argument("zero bytes to scan");
-
-        /// Create mmap
-        snapshot_mf_.path = path;
-        snapshot_mf_.flags = bio::mapped_file::mapmode::readwrite;
-        snapshot_mf_.length = total_scan_bytes + handler.regions.size()*2*sizeof(uintptr_t);
-        snapshot_mf_.new_file_size = total_scan_bytes + handler.regions.size()*2*sizeof(uintptr_t); //fixme [critical]: что это такое? Правильно ли?
-
-        snapshot_mf.open(snapshot_mf_);
-        if (!snapshot_mf.is_open())
-            throw std::invalid_argument("can not open '"+path+"'");
-
-        char *snapshot_begin = snapshot_mf.data();
-        char *snapshot = snapshot_begin;
-        ssize_t copied;
-
-        /// Snapshot goes here
-        /// magic_bytes
-        const char magic_bytes[] = "RE::handler_mmap";
-        static_assert(sizeof(magic_bytes) == 17);
-        memcpy(snapshot, magic_bytes, sizeof(magic_bytes));
-        snapshot += sizeof(magic_bytes);
-
-        /// handler_i::regions
-        for(RE::Cregion region : handler.regions) {
-            memcpy(snapshot,
-                   &region,
-                   sizeof(region));
-            snapshot += region.size;
-        }
-
-        for(RE::Cregion region : handler.regions) {
-            copied = handler.read(region.address, snapshot+2*sizeof(uintptr_t), region.size);
-            if (copied < 0) {
-                //clog<<"error: "<<std::strerror(errno)<<", region: "<<region<<endl;
-                //if (!handle->is_running())
-                //    throw invalid_argument("process not running");
-                total_scan_bytes -= region.size;
-                continue;
-            } else if (copied != region.size) {
-                //clog<<"warning: region: "<<region<<", requested: "<<HEX(region.size)<<", copied "<<HEX(copied)<<endl;
-                region.size = static_cast<uintptr_t>(copied);
-            }
-            memcpy(snapshot,
-                   &region.address,
-                   2*sizeof(region.address));
-            snapshot += 2*sizeof(region.address) + region.size;
-        }
-        snapshot_mf.resize(snapshot - snapshot_mf.data());
+        save(handler, path);
     }
-
-
-    template<typename Ar>
-    void save(Ar& ar, unsigned) const {
-        ar & s;
-    }
-
-    template<typename Ar>
-    void load(Ar& ar, unsigned) {
-        std::string s;
-        ar & s;
-        data = string_pool::add(s);
-    }
-    BOOST_SERIALIZATION_SPLIT_MEMBER()
-
 
 
     /** Read value */
     [[gnu::always_inline]]
     size_t read(uintptr_t address, void *out, size_t size) const override {
-        size_t region = get_region_of_address(address);
-        snapshot_mf.data();
+        size_t r = get_region_of_address(address);
+        if UNLIKELY(r == npos)
+            throw std::invalid_argument("read: cannot find region of address "+RE::HEX(address));
+        memcpy(out, reinterpret_cast<char *>(regions_on_map[r] + address - regions[r].address), size);
         return static_cast<size_t>(size);
     }
 
@@ -587,9 +600,17 @@ public:
     }
 
 private:
+    friend class boost::serialization::access;
+
+    template<typename Archive>
+    void serialize(Archive& ar, const unsigned int version) {
+        ar & regions;
+    }
+
+private:
     bio::mapped_file snapshot_mf;
     bio::mapped_file_params snapshot_mf_;
-    std::vector<std::pair<uintptr_t, uintptr_t>> regions_on_map;
+    std::vector<char *> regions_on_map;
 };
 
 

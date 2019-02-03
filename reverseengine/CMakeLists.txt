@@ -147,9 +147,11 @@ target_link_options(${RE_LIBRARY_NAME} PUBLIC
 
 target_link_libraries(${RE_LIBRARY_NAME}
         pthread
+        boost_serialization
         boost_iostreams
         stdc++fs
         bitmask
+        rt
         )
 
 # ┌──────────────────────────────────────────────────────────────────┐

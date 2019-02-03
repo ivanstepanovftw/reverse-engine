@@ -261,7 +261,7 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
 
 
 bool RE::Scanner::scan_update(RE::matches_t& writing_matches) {
-    cached_reader<handler_i> reader(*handler);
+    cached_reader reader(*handler);
 
     // Invalidate cache to get fresh values
     for (swath_t& s : writing_matches.swaths) {
