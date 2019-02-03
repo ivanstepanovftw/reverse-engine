@@ -31,7 +31,7 @@ if (EXISTS ${CMAKE_SOURCE_DIR}/main.cc)
     add_executable(MAIN main.cc)
     set_property(TARGET MAIN PROPERTY CXX_STANDARD 20)
     target_compile_options(MAIN PUBLIC
-            -O3
+            -O0
             -g3
             )
     find_package(Boost)
@@ -39,6 +39,8 @@ if (EXISTS ${CMAKE_SOURCE_DIR}/main.cc)
     target_link_directories(MAIN PUBLIC ${Boost_LIBRARY_DIR})
     target_link_libraries(MAIN PUBLIC
             ${Boost_LIBRARIES}
+            boost_serialization
             stdc++fs
+            rt
             )
 endif()

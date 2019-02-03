@@ -15,19 +15,18 @@ int main() {
     high_resolution_clock::time_point timestamp;
 
     std::string target = "FAKEMEM";
-    std::string search_for = "145";
+    std::string search_for = "1";
     RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
 
-    RE::Handle *handle = new RE::Handle(target);
-    if (!handle->is_good())
+    RE::handler_pid* handler = new RE::handler_pid(target);
+    if (!*handler)
         throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
-    handle->update_regions();
-    RE::Scanner *scanner = new RE::Scanner(handle);
-
+    handler->update_regions();
+    RE::Scanner *scanner = new RE::Scanner(handler);
 
     clog<<"FAKEMEM, pid: "
-        <<handle->pid
-        <<", title: "<<handle->title
+        <<handler->get_pid()
+        <<", title: "<<handler->get_title()
         <<endl;
 
 
@@ -40,27 +39,48 @@ int main() {
         return 0;
     }
 
-    RE::matches_t matches;
-
+    RE::matches_t matches_first;
     timestamp = high_resolution_clock::now();
-    scanner->scan_regions(matches, data_type, uservalue, match_type);
-    clog<<"Scan 1/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
-    clog<<"mem_virt: "<<matches.mem_virt()<<endl;
-    clog<<"mem_disk: "<<matches.mem_disk()<<endl;
-    clog<<"size: "<<matches.size()<<endl;
-    clog<<"count: "<<matches.count()<<endl;
+    scanner->scan_regions(matches_first, data_type, uservalue, match_type);
+    clog<<"Scan 1/3 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
+    clog<<"mem_virt: "<<matches_first.mem_virt()<<endl;
+    clog<<"mem_disk: "<<matches_first.mem_disk()<<endl;
+    clog<<"size: "<<matches_first.size()<<endl;
+    clog<<"count: "<<matches_first.count()<<endl;
 
+    RE::matches_t matches_prev = matches_first;
     timestamp = high_resolution_clock::now();
-    scanner->scan_update(matches);
-    scanner->scan_recheck(matches, data_type, uservalue, match_type);
-    clog<<"Scan 2/2 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
-    clog<<"mem_virt: "<<matches.mem_virt()<<endl;
-    clog<<"mem_allo: "<<matches.mem_allo()<<endl;
-    clog<<"mem_disk: "<<matches.mem_disk()<<endl;
-    clog<<"size: "<<matches.size()<<endl;
-    clog<<"count: "<<matches.count()<<endl;
+    scanner->scan_update(matches_prev);
+    scanner->scan_recheck(matches_prev, data_type, uservalue, match_type);
+    clog<<"Scan 2/3 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
+    clog<<"mem_virt: "<<matches_prev.mem_virt()<<endl;
+    clog<<"mem_allo: "<<matches_prev.mem_allo()<<endl;
+    clog<<"mem_disk: "<<matches_prev.mem_disk()<<endl;
+    clog<<"size: "<<matches_prev.size()<<endl;
+    clog<<"count: "<<matches_prev.count()<<endl;
+
 
     clog<<"============================================="<<endl;
+
+
+    RE::handler_mmap *handler_mmap = new RE::handler_mmap(*handler, "vadimislove");
+    if (!*handler_mmap)
+        throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
+    handler_mmap->update_regions();
+    RE::Scanner *scanner_mmap = new RE::Scanner(handler_mmap);
+
+
+    RE::matches_t matches_curr = matches_prev;
+    timestamp = high_resolution_clock::now();
+    scanner_mmap->scan_update(matches_curr);
+    scanner_mmap->scan_recheck(matches_curr, data_type, uservalue, match_type);
+    clog<<"Scan 3/3 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
+    clog<<"mem_virt: "<<matches_curr.mem_virt()<<endl;
+    clog<<"mem_allo: "<<matches_curr.mem_allo()<<endl;
+    clog<<"mem_disk: "<<matches_curr.mem_disk()<<endl;
+    clog<<"size: "<<matches_curr.size()<<endl;
+    clog<<"count: "<<matches_curr.count()<<endl;
+
 
 
     /*
@@ -73,8 +93,10 @@ int main() {
 
 
     //int isd = 0;
-    //for(RE::value_t val : *RE::globals->scans.first) {
-    //    cout<<"val: "<<isd<<": "<<val<<endl;
+    //for(RE::value_t val : matches_first) {
+    //    if (isd>=10)
+    //        break;
+    //    clog<<"val: "<<isd<<": "<<val<<endl;
     //    isd++;
     //}
     return 0;

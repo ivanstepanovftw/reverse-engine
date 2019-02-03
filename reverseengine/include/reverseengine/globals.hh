@@ -72,7 +72,7 @@ public:
 //        return &instance;
 //    }
 //
-//    RE::Handle *handle;
+//    RE::handler *handler;
 //    RE::Scanner *scanner;
 //    CScans scans;
 //};
@@ -80,7 +80,7 @@ public:
 
 class globals_t {
 public:
-    RE::Handle *handle;
+    RE::handler *handle;
     RE::Scanner *scanner;
     CScans scans;
 };

@@ -92,7 +92,7 @@ SelectWindow::on_button_attach()
             pid_t pid = (*iter)[m_Columns.m_col_pid];
             cout<<"Selected PID: "<<pid<<endl;
             delete RE::globals->handle;
-            RE::globals->handle = new RE::Handle(pid);
+            RE::globals->handle = new RE::handler(pid);
             cout<<"is_valid? "<<RE::globals->handle->is_valid()<<endl;
             cout<<"is_running? "<<RE::globals->handle->is_running()<<endl;
 
@@ -122,7 +122,7 @@ SelectWindow::on_button_attach()
                 cout<<"No region found!"<<endl;
             cout<<"Regions enumeration is done"<<endl;
             cout<<"&re_globals: "<<(void *)(&*RE::globals)<<endl;
-            cout<<"&handle: "<<(void *)RE::globals->handle<<endl;
+            cout<<"&handler: "<<(void *)RE::globals->handle<<endl;
             hide();
         }
     }

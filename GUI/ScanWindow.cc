@@ -13,10 +13,10 @@ ScanWindow::ScanWindow() :
         paned_2(Gtk::ORIENTATION_VERTICAL)
 {
     delete RE::globals->handle;
-//    RE::globals->handle = new Handle("7DaysToDie.x86_64");
-//    RE::globals->handle = new Handle("csgo_linux");
-    RE::globals->handle = new RE::Handle("FAKEMEM");
-//    RE::globals->handle = new Handle("FakeGame");
+//    RE::globals->handler = new handler("7DaysToDie.x86_64");
+//    RE::globals->handler = new handler("csgo_linux");
+    RE::globals->handle = new RE::handler("FAKEMEM");
+//    RE::globals->handler = new handler("FakeGame");
     RE::globals->handle->update_regions();
     RE::globals->scanner = new RE::Scanner(RE::globals->handle);
     
@@ -253,10 +253,10 @@ ScanWindow::on_button_first_scan()
     
     if (!RE::globals->handle->is_running()) {
         clog<<"error: process not running"<<endl;
-        clog<<"RE::globals->handle->titile: "<<RE::globals->handle->title<<endl;
-        clog<<"RE::globals->handle->pid: "<<RE::globals->handle->pid<<endl;
+        clog<<"RE::globals->handler->titile: "<<RE::globals->handle->title<<endl;
+        clog<<"RE::globals->handler->pid: "<<RE::globals->handle->pid<<endl;
         clog<<"&re_globals: "<<(void *)(&*RE::globals)<<endl;
-        clog<<"&handle: "<<(void *)RE::globals->handle<<endl;
+        clog<<"&handler: "<<(void *)RE::globals->handle<<endl;
         return;
     }
     

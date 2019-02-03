@@ -86,7 +86,7 @@ main(int argc, char* argv[])
         cerr<<"Warning: non root user"<<endl;
     }
     /// Trainer and scanner example
-    RE::Handle csgo;
+    RE::handler csgo;
     RE::Cregion *engine_client_so;
 
 stage_waiting:;

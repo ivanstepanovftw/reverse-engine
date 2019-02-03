@@ -50,7 +50,7 @@ main()
         cout<<"Warning: running without root"<<endl;
     }
     /// Trainer and scanner example
-    RE::Handle h;
+    RE::handler h;
     RE::Cregion *exe = nullptr;
     RE::Cregion *libc = nullptr;
     RE::Cregion *ld = nullptr;

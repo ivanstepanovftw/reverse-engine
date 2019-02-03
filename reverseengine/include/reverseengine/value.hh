@@ -64,68 +64,6 @@ std::string HEX(const T& value)
 }
 
 
-
-
-enum class region_mode_t : uint8_t
-{
-    none = 0,
-    executable = 1u<<0u,
-    writable   = 1u<<1u,
-    readable   = 1u<<2u,
-    shared     = 1u<<3u,
-    max = executable|writable|readable|shared
-};
-BITMASK_DEFINE_MAX_ELEMENT(region_mode_t, max)
-
-class Cregion {
-public:
-    uintptr_t address;
-    uintptr_t size{};
-
-    //todo[critical]: flags or region_mode? Tell the difference!!!
-    bitmask::bitmask<region_mode_t> flags;  // -> RE::Eregion_mode
-
-    /// File data
-    uintptr_t offset{};
-    char deviceMajor{}; //fixme char?
-    char deviceMinor{}; //fixme char?
-    unsigned long inodeFileNumber{}; //fixme unsigned long?
-    std::string pathname; //fixme pathname?
-    std::string filename;
-
-    bitmask::bitmask<region_mode_t> region_mode;
-
-    Cregion() : address(0), size(0), flags(0), offset(0), deviceMajor(0), deviceMinor(0), inodeFileNumber(0),
-    region_mode(region_mode_t::shared|region_mode_t::readable|region_mode_t::writable|region_mode_t::executable) { }
-
-
-    bool is_good() {
-        return address != 0;
-    }
-
-    void serialize()
-    {
-        // TODO 334[medium]: size dependent. Solution: make serialization.
-    }
-
-/*
-    friend std::ostream& operator<<(std::ostream& outputStream, const Cregion& region)
-    {
-        return outputStream<<"{"
-                           <<"address: "<<HEX(region.address)
-                           <<", end: "<<HEX(region.address+region.size)
-                           <<", flags: "
-                           <<(region.flags&shared?"s":"-")
-                           <<(region.flags&readable?"r":"-")
-                           <<(region.flags&writable?"w":"-")
-                           <<(region.flags&executable?"x":"-")
-                           <<", size: "<<HEX(region.size)
-                           <<", filename: "<<region.filename
-                           <<"}";
-    }
-*/
-};
-
 enum class Edata_type : uint16_t {
     ANYNUMBER,              /* ANYINTEGER or ANYFLOAT */
     ANYINTEGER,             /* INTEGER of whatever width */

@@ -170,59 +170,6 @@ valid_number:;
 
 
 
-//bio::mapped_file
-//RE::Scanner::make_snapshot(const std::string& path)
-//{
-//    using namespace std;
-//
-//    /// Allocate space
-//    if (handle->regions.empty())
-//        throw invalid_argument("no regions defined");
-//
-//    uintptr_t total_scan_bytes = 0;
-//    for(const RE::Cregion& region : handle->regions)
-//        total_scan_bytes += region.size;
-//    if (total_scan_bytes == 0)
-//        throw invalid_argument("zero bytes to scan");
-//
-//    /// Create mmap
-//    bio::mapped_file_params snapshot_mf_(path);
-//    snapshot_mf_.flags         = bio::mapped_file::mapmode::readwrite;
-//    snapshot_mf_.length        = total_scan_bytes + handle->regions.size()*2*sizeof(uintptr_t);
-//    snapshot_mf_.new_file_size = total_scan_bytes + handle->regions.size()*2*sizeof(uintptr_t);
-//
-//    bio::mapped_file snapshot_mf(snapshot_mf_);
-//    if (!snapshot_mf.is_open())
-//        throw invalid_argument("cant open '"+path+"'");
-//
-//    char *snapshot_begin = snapshot_mf.data();
-//    char *snapshot = snapshot_begin;
-//    ssize_t copied;
-//
-//    /// Snapshot goes here
-//    for(RE::Cregion region : handle->regions) {
-//        copied = handle->read(region.address, snapshot+2*sizeof(uintptr_t), region.size);
-//        if (copied < 0) {
-////            clog<<"error: "<<std::strerror(errno)<<", region: "<<region<<endl;
-////            if (!handle->is_running())
-////                throw invalid_argument("process not running");
-//            total_scan_bytes -= region.size;
-//            continue;
-//        } else if (copied != region.size) {
-////            clog<<"warning: region: "<<region<<", requested: "<<HEX(region.size)<<", copied "<<HEX(copied)<<endl;
-//            region.size = static_cast<uintptr_t>(copied);
-//        }
-//        memcpy(snapshot,
-//               &region.address,
-//               2*sizeof(region.address));
-//        snapshot += 2*sizeof(region.address) + region.size;
-//    }
-//    snapshot_mf.resize(snapshot - snapshot_mf.data());
-//
-//    return snapshot_mf;
-//}
-
-
 bool
 RE::Scanner::scan_regions(matches_t& writing_matches,
                           const Edata_type& data_type,
@@ -257,7 +204,7 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
     size_t required_extra_bytes_to_record = 0;
 
     /* check every memory region */
-    for(const RE::Cregion& region : handle->regions) {
+    for(const RE::Cregion& region : handler->regions) {
         /* For every offset, check if we have a match. */
         size_t memlength = region.size;
         size_t buffer_size = 0;
@@ -274,8 +221,8 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
 
                 /* load the next buffer block */
                 size_t alloc_size = MIN(memlength, MAX_ALLOC_SIZE);
-                size_t copied = handle->read(reg_pos, buffer, alloc_size);
-                if UNLIKELY(copied == Handle::npos)
+                size_t copied = handler->read(reg_pos, buffer, alloc_size);
+                if UNLIKELY(copied == handler_i::npos)
                     break;
                 else if UNLIKELY(copied < alloc_size) {
                     /* the region ends here, update `memlength` */
@@ -314,13 +261,14 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
 
 
 bool RE::Scanner::scan_update(RE::matches_t& writing_matches) {
-    // Invalidate cache to get fresh values
-    handle->base = 0;
+    cached_reader<handler_i> reader(*handler);
 
+    // Invalidate cache to get fresh values
     for (swath_t& s : writing_matches.swaths) {
-        const size_t copied = handle->read_cached(s.base_address, &s.bytes[0], s.bytes.size());
+        const size_t copied = reader.read(s.base_address, &s.bytes[0], s.bytes.size());
+        //const size_t copied = handler->read(s.base_address, &s.bytes[0], s.bytes.size());
         /* check if the read succeeded */
-        if UNLIKELY(copied == Handle::npos) {
+        if UNLIKELY(copied == handler->npos) {
             //cout<<"Resizing swath "<<HEX(s.base_address)<<" from "<<s.bytes.size()<<" to "<<0<<" elements"<<endl;
             //cout<<"Error: can not read "<<s.bytes.size()<<" bytes from "<<HEX(s.base_address)<<": "<<strerror(errno)<<endl;
             s.bytes.resize(0);
@@ -332,8 +280,7 @@ bool RE::Scanner::scan_update(RE::matches_t& writing_matches) {
         }
     }
     scan_fit(writing_matches);
-
-    return handle->base != 0;
+    return true;
 }
 
 

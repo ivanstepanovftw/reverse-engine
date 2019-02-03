@@ -34,7 +34,7 @@ You can also create [trainers](./trainer.cc). Even with Python.
 *Further information:* [Advanced C++ example of CS:GO trainer](./example/csgo_linux64/fix_resources_download/main.cc) 
 ### Example is a bit out of date, you can check [our testing suites](./reverseengine/test). It is also have example of python executable
 ```cpp
-Handle h("csgo_linux64");
+handler h("csgo_linux64");
 h.update_regions();
 Cregion *client = h.get_region_by_name("client_client.so");
 uintptr_t glow_pointer_call;
