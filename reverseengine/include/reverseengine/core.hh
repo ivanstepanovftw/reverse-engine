@@ -494,62 +494,58 @@ private:
 //    uint8_t *m_cache;
 //};
 
-/*!
- * @brief  Used to store size of objects to be serialized
- */
-class counter_streambuf : public std::streambuf
-{
-public:
-    using std::streambuf::streambuf;
-
-    size_t size() const { return m_size; }
-
-protected:
-    std::streamsize xsputn(const char_type* __s, std::streamsize __n) override
-    { this->m_size += __n; return __n; }
-
-private:
-    size_t m_size = 0;
-};
 
 class handler_mmap : public handler_i {
 public:
     using handler_i::handler_i;
 
+    /*!
+     * Now, we will able to send data to another PC and search pointers together.
+     */
     void save(const handler_pid& handler, const std::string& path) {
         regions = handler.regions;
-        size_t total_scan_bytes = 0;
-        for (const RE::Cregion& r : handler.regions) {
-            total_scan_bytes += r.size;
-        }
 
-        RE::counter_streambuf csb;
-        boost::archive::binary_oarchive boa_csb(csb, boost::archive::no_header);
-        boa_csb << *this;
+        std::ofstream stream(path, std::ios_base::out | std::ios_base::binary);
+        boost::archive::binary_oarchive archive(stream, boost::archive::no_header);
+        archive << *this;
+        stream.flush();
 
-        snapshot_mf_.path = path;
-        snapshot_mf_.flags = bio::mapped_file::mapmode::readwrite;
-        snapshot_mf_.new_file_size = total_scan_bytes + csb.size();
-        snapshot_mf.open(snapshot_mf_);
-        if (!snapshot_mf.is_open())
+        params.path = path;
+        params.flags = bio::mapped_file::mapmode::readwrite;
+        params.new_file_size = 0; //todo[critical]: to remove
+        mf.open(params);
+        if (!mf.is_open())
             throw std::invalid_argument("can not open '" + path + "'");
 
-        char *snapshot = snapshot_mf.data();
+        char* snapshot = mf.data();
+        assert(stream.is_open());
+        assert(stream.tellp() != -1);
+        snapshot += stream.tellp();
 
-        std::ostrstream oss(snapshot, csb.size());
-        boost::archive::binary_oarchive boa_oss(oss, boost::archive::no_header);
-        boa_oss << *this;
-        oss.flush();
-        snapshot += csb.size();
+        size_t bytes_to_save = 0;
+        for (const RE::Cregion& region : handler.regions)
+            bytes_to_save += sizeof(region.size) + region.size;
+        mf.resize(mf.size() + bytes_to_save);
 
         regions_on_map.clear();
         for(RE::Cregion region : handler.regions) {
             regions_on_map.emplace_back(snapshot);
+            memcpy(snapshot, &region.size, sizeof(region.size));
             ssize_t copied = handler.read(region.address, snapshot, region.size);
             snapshot += region.size;
         }
-        //todo[low]: maybe we should made `mmap_streambuf` as `counter_streambuf` made?
-        //snapshot_mf.resize(snapshot - snapshot_mf.data());
+        mf.close();
+
+        //assert(stream.tellp() != -1);
+        //stream.seekp(static_cast<size_t>(stream.tellp()) + s);
+        //archive<<"0000";
+        //archive<< static_cast<char>(0xff);
+        //stream.flush();
+    }
+
+    void
+    load(const std::string& path) {
+
     }
 
 
@@ -567,7 +563,7 @@ public:
 
     /// Save (make snapshot)
     explicit handler_mmap(const handler_pid& handler, const std::string& path) {
-        save(handler, path);
+        this->save(handler, path);
     }
 
 
@@ -608,8 +604,8 @@ private:
     }
 
 private:
-    bio::mapped_file snapshot_mf;
-    bio::mapped_file_params snapshot_mf_;
+    bio::mapped_file mf;
+    bio::mapped_file_params params;
     std::vector<char *> regions_on_map;
 };
 
