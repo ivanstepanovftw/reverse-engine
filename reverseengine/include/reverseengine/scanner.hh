@@ -329,12 +329,12 @@ class Scanner
 {
 public:
     /// Create file for storing matches
-    RE::handler_i *handler;
+    RE::phandler_i *handler;
     volatile bool stop_flag = false;
     volatile double scan_progress = 0;
     volatile uintptr_t step = 1;
     
-    explicit Scanner(handler_i *handler) {
+    explicit Scanner(phandler_i *handler) {
         this->handler = handler;
     }
     
@@ -388,69 +388,6 @@ private:
      *  Usually used after scan_* methods
      */
     bool scan_fit(RE::matches_t& writing_matches);
-
-    /** The cached reader made for reading small values many times to reduce system calls */
-    template<class _READER = handler_i>
-    class cached_reader {
-    public:
-        explicit cached_reader(_READER& parent)
-        : m_parent(parent) {
-            std::cout<<"cached_reader()"<<std::endl;
-            m_base = 0;
-            m_cache_size = 0;
-            m_cache = new uint8_t[MAX_PEEKBUF_SIZE];
-        }
-
-        ~cached_reader() {
-            std::cout<<"~cached_reader()"<<std::endl;
-            delete[] m_cache;
-        }
-
-        [[gnu::always_inline]]
-        void reset() {
-            m_base = 0;
-            m_cache_size = 0;
-        }
-
-        [[gnu::always_inline]]
-        size_t read(uintptr_t address, void *out, size_t size) {
-            if UNLIKELY(size > MAX_PEEKBUF_SIZE) {
-                return m_parent.read(address, out, size);
-            }
-
-            if (m_base
-            && address >= m_base
-            && address - m_base + size <= m_cache_size) {
-                /* full cache hit */
-                memcpy(out, &m_cache[address - m_base], size);
-                return size;
-            }
-
-            /* we need to retrieve memory to complete the request */
-            size_t len = m_parent.read(address, &m_cache[0], MAX_PEEKBUF_SIZE);
-            if (len == m_parent.npos) {
-                /* hard failure to retrieve memory */
-                reset();
-                return m_parent.npos;
-            }
-
-            m_base = address;
-            m_cache_size = len;
-
-            /* return result to caller */
-            memcpy(out, &m_cache[0], size);
-            return MIN(size, m_cache_size);
-        }
-
-    public:
-        static constexpr size_t MAX_PEEKBUF_SIZE = 4 * (1 << 10);
-
-    private:
-        _READER& m_parent;
-        uintptr_t m_base; // base address of cached region
-        size_t m_cache_size;
-        uint8_t *m_cache;
-    };
 };
 
 NAMESPACE_END(RE)

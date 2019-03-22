@@ -7,6 +7,7 @@ add_executable(${TARGET} search.cc)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
 target_compile_options(${TARGET} PUBLIC
         -O3
+        -g3
         -fstack-protector-strong
         -pie -fPIE
         -Wformat -Werror=format-security

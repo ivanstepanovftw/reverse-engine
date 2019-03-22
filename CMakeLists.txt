@@ -28,20 +28,22 @@ add_subdirectory(GUI)
 add_subdirectory(example)
 
 if (EXISTS ${CMAKE_SOURCE_DIR}/main.cc)
-    add_executable(MAIN main.cc)
-    set_property(TARGET MAIN PROPERTY CXX_STANDARD 20)
-    target_compile_options(MAIN PUBLIC
+    set(RE_TEST RE_TEST)
+    add_executable(${RE_TEST} main.cc)
+    set_property(TARGET ${RE_TEST} PROPERTY CXX_STANDARD 20)
+    target_compile_options(${RE_TEST} PUBLIC
             -O0
             -g3
             )
     find_package(Boost)
-    target_include_directories(MAIN PUBLIC ${Boost_INCLUDE_DIR})
-    target_link_directories(MAIN PUBLIC ${Boost_LIBRARY_DIR})
-    target_link_libraries(MAIN PUBLIC
+    target_include_directories(${RE_TEST} PUBLIC ${Boost_INCLUDE_DIR} ${RE_INCLUDE_DIRS})
+    target_link_directories(${RE_TEST} PUBLIC ${Boost_LIBRARY_DIR})
+    target_link_libraries(${RE_TEST} PUBLIC
             ${Boost_LIBRARIES}
             boost_serialization
             boost_iostreams
             stdc++fs
             rt
+            ${RE_LIBRARY_NAME}
             )
 endif()

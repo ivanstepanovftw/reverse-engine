@@ -37,6 +37,7 @@
 #include <exception>          // std::bad_alloc
 #include <csignal>
 #include <csetjmp>
+#include <fstream>
 
 
 static
@@ -175,6 +176,10 @@ main(int argc, char *argv[])
     using std::clog, std::cout, std::cerr, std::flush, std::endl, std::cin;
     using _Type = unsigned int; // fixme[low]: (RAND LIMITATIONS) will use 'int' instead of 'uint64_t'
 
+    {
+        std::ofstream f("/proc/self/oom_score_adj", std::ios::out | std::ios::binary);
+        f<<"1000";
+    }
     CSequentialGenerator<_Type> s;
     CRandomGenerator<_Type> r;
 

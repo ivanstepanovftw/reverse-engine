@@ -14,6 +14,15 @@ int main() {
     using namespace std::chrono;
     high_resolution_clock::time_point timestamp;
 
+    {
+        std::fstream f("/proc/self/oom_score_adj", std::ios::out | std::ios::binary);
+        if (f.is_open())
+            f<<"700";
+    }
+
+    //sleep(100000);
+    //return 0;
+
     std::string target = "FAKEMEM";
     std::string search_for = "1";
     RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
@@ -26,7 +35,9 @@ int main() {
 
     clog<<"FAKEMEM, pid: "
         <<handler->get_pid()
-        <<", title: "<<handler->get_title()
+        <<", title: "<< handler->get_cmdline()
+        <<", exe: "<<handler->get_exe()
+        <<", executable: "<<handler->get_executable()
         <<endl;
 
 
@@ -63,7 +74,9 @@ int main() {
     clog<<"============================================="<<endl;
 
 
-    RE::handler_mmap *handler_mmap = new RE::handler_mmap(*handler, "vadimislove");
+    timestamp = high_resolution_clock::now();
+    //RE::phandler_file *handler_mmap = new RE::phandler_file(*handler, "vadimislove");
+    RE::phandler_memory* handler_mmap = new RE::phandler_memory(*handler);
     if (!*handler_mmap)
         throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
     handler_mmap->update_regions();
@@ -71,7 +84,6 @@ int main() {
 
 
     RE::matches_t matches_curr = matches_prev;
-    timestamp = high_resolution_clock::now();
     scanner_mmap->scan_update(matches_curr);
     scanner_mmap->scan_recheck(matches_curr, data_type, uservalue, match_type);
     clog<<"Scan 3/3 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
@@ -99,5 +111,10 @@ int main() {
     //    clog<<"val: "<<isd<<": "<<val<<endl;
     //    isd++;
     //}
+    delete scanner_mmap;
+    delete handler_mmap;
+    delete scanner;
+    delete handler;
+
     return 0;
 }

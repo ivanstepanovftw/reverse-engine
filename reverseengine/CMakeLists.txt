@@ -107,6 +107,7 @@ endif()
 # └──────────────────────────────────────────────────────────────────┘
 target_compile_options(${RE_LIBRARY_NAME} PUBLIC
         -O3
+        -g3
         -pipe
         -m64
         -fPIC

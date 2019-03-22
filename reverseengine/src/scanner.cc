@@ -222,7 +222,7 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
                 /* load the next buffer block */
                 size_t alloc_size = MIN(memlength, MAX_ALLOC_SIZE);
                 size_t copied = handler->read(reg_pos, buffer, alloc_size);
-                if UNLIKELY(copied == handler_i::npos)
+                if UNLIKELY(copied == phandler_i::npos)
                     break;
                 else if UNLIKELY(copied < alloc_size) {
                     /* the region ends here, update `memlength` */
@@ -265,8 +265,8 @@ bool RE::Scanner::scan_update(RE::matches_t& writing_matches) {
 
     // Invalidate cache to get fresh values
     for (swath_t& s : writing_matches.swaths) {
+        //const size_t copied = (*handler).read(s.base_address, &s.bytes[0], s.bytes.size());
         const size_t copied = reader.read(s.base_address, &s.bytes[0], s.bytes.size());
-        //const size_t copied = handler->read(s.base_address, &s.bytes[0], s.bytes.size());
         /* check if the read succeeded */
         if UNLIKELY(copied == handler->npos) {
             //cout<<"Resizing swath "<<HEX(s.base_address)<<" from "<<s.bytes.size()<<" to "<<0<<" elements"<<endl;
