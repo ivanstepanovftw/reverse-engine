@@ -42,6 +42,13 @@
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/serialization/vector.hpp>
 
+#include <r_core.h>
+#include <r_types.h>
+#include <r_util.h>
+#include <r_bin.h>
+#include <r_io.h>
+
+
 
 NAMESPACE_BEGIN(RE)
 
@@ -63,15 +70,17 @@ BITMASK_DEFINE_MAX_ELEMENT(region_mode_t, max)
 
 
 
-class Cregion {
+
+
+class region {
 public:
     uintptr_t address;
-    uintptr_t size{};
-
+    uintptr_t size;
     bitmask::bitmask<region_mode_t> flags;
 
     /// File data
-    uintptr_t offset{};
+    RCore *b;
+    uintptr_t offset;
     union {
         struct {
             uint8_t st_device_minor;
@@ -79,12 +88,14 @@ public:
         };
         __dev_t st_device;
     };
-    unsigned long inodeFileNumber{}; //fixme unsigned long?
-    std::string pathname; //fixme pathname?
+    uint64_t inode;
+    std::string pathname;
     std::string filename;
 
-    Cregion()
-    : address(0), size(0), flags(region_mode_t::none), offset(0), st_device(0), inodeFileNumber(0) {}
+    region()
+    : address(0), size(0), flags(region_mode_t::none), offset(0), st_device(0), inode(0) {
+
+    }
 
     bool is_good() {
         return address != 0;
@@ -92,15 +103,15 @@ public:
 
     std::string str() const {
         std::ostringstream ss;
-        ss << HEX(address)<<"-"<<HEX(address+size)<<" "
+        ss << HEX(address)<<"-"<<HEX(address+size)<<" ("<<HEX(size)<<") "
            << (flags & region_mode_t::shared?"s":"-") << (flags & region_mode_t::readable?"r":"-") << (flags & region_mode_t::writable?"w":"-") << (flags & region_mode_t::executable?"x":"-") << " "
            << HEX(st_device_major)<<":"<< HEX(st_device_minor) <<" "
-           << inodeFileNumber<<" "
+           << inode<<" "
            << pathname;
         return ss.str();
     }
 
-    friend std::ostream& operator<<(std::ostream& outputStream, const Cregion& region) {
+    friend std::ostream& operator<<(std::ostream& outputStream, const region& region) {
         return outputStream<<region.str();
     }
 private:
@@ -114,7 +125,7 @@ private:
         ar & offset;
         ar & st_device_minor;
         ar & st_device_major;
-        ar & inodeFileNumber;
+        ar & inode;
         ar & pathname;
         ar & filename;
     }
@@ -135,134 +146,60 @@ public:
     virtual void update_regions() = 0;
     virtual const bool operator!() = 0;
 
-    Cregion *get_region_by_name(const std::string& region_name) {
-        for (Cregion& region : regions)
-            if (region.flags & region_mode_t::executable && region.filename == region_name)
-//                             ^~~~~~~~~~~~~~~~~~~~~~~~~ wtf? fixme[medium]: add documentation or die();
-                return &region;
-        return nullptr;
+    ///** Read value, return true if success */
+    template <typename T>
+    bool read(uintptr_t address, T *out) {
+        return read(address, out, sizeof(T)) == sizeof(T);
     }
 
-    /*FIXME[CRITICAL]: REMAKE THIS SHIT, DO TESTS!!!!!!!!!!!!!! */
-    size_t get_region_of_address(uintptr_t address) const {
-        using namespace std;
-        //static size_t last_return = npos;
-        //if (last_return != npos
-        //&& regions[last_return].address <= address
-        //&& address < regions[last_return].address + regions[last_return].size) {
-        //    //clog << "returning last region " << endl;
-        //    return last_return;
-        //}
-        //cout<<"address: 0x"<<RE::HEX(address)<<", first region: 0x"<<RE::HEX(regions[0].address)<<" : 0x"<<RE::HEX(regions[0].address+regions[0].size)<<endl;
-        size_t first, last, mid;
-        first = 0;
-        last = regions.size();
-        //cout<<"last: "<<last<<endl;
-        while (first <= last) {
-            mid = (first + last) / 2;
-            //cout<<"   mid: "<<mid<<endl;
-            if (address < regions[mid].address) {
-                last = mid - 1;
-                //cout<<"      address at the left side of 0x"<<RE::HEX(regions[mid].address)<<endl;
-            } else if (address >= regions[mid].address + regions[mid].size) {
-                first = mid + 1;
-                //cout<<"      address at the right side of 0x"<<RE::HEX(regions[mid].address + regions[mid].size)<<endl;
-            } else {
-                //last_return = mid;
-                //return last_return;
-                //std::cout<<"      returning mid: "<<mid<<std::endl;
-                return mid;
-            }
-        }
-        //std::cout<<"      returning npos: "<<mid<<std::endl;
-        return npos;
+    ///** Read value, return value if success, throws on error */
+    template <typename T>
+    T read(uintptr_t address) {
+        T a;
+        if (read(address, &a, sizeof(T)) == sizeof(T))
+            return a;
+        else
+            throw std::runtime_error("Cannot read "+HEX(address));
     }
 
-    uintptr_t get_call_address(uintptr_t address) const {
-        uint64_t code = 0;
-        if (read(address + 1, &code, sizeof(uint32_t)) == sizeof(uint32_t))
-            return code + address + 5;
-        return 0;
+    ///** Read value, return true if success */
+    template <typename T>
+    bool write(uintptr_t address, T *in) {
+        return write(address, in, sizeof(T)) == sizeof(T);
     }
 
-    uintptr_t get_absolute_address(uintptr_t address, uintptr_t offset, uintptr_t size) const {
-        uint64_t code = 0;
-        if (read(address + offset, &code, sizeof(uint32_t)) == sizeof(uint32_t)) {
-            return address + code + size;
-        }
-        return 0;
-    }
+    region *
+    get_region_by_name(const std::string& region_name);
+
+    region *
+    get_region_of_address(uintptr_t address) const;
+
+    uintptr_t
+    get_call_address(uintptr_t address) const;
+
+    uintptr_t
+    get_absolute_address(uintptr_t address, uintptr_t offset, uintptr_t size) const;
 
 public:
     /// Value returned by various member functions when they fail.
     static constexpr size_t npos = static_cast<size_t>(-1);
 
-    std::vector<Cregion> regions;
-    std::vector<Cregion> regions_ignored;
+    std::vector<region> regions;
 };
 
 
-class handler_pid : public phandler_i {
+class phandler_pid : public phandler_i {
 public:
     using phandler_i::phandler_i;
+    using phandler_i::read;
 
-    handler_pid() : m_pid(0) {}
+    phandler_pid() : m_pid(0) {}
 
     /** Make process handler from PID */
-    explicit handler_pid(pid_t pid) noexcept {
-        m_pid = pid;
-        try {
-            m_cmdline = get_executable().filename();
-        } catch (const sfs::filesystem_error& e) {
-            /* no such PID running */
-            ;
-        }
-        if (m_cmdline.empty()) {
-            m_pid = 0;
-            m_cmdline = "";
-            return;
-        }
-        update_regions();
-    }
+    explicit phandler_pid(pid_t pid) noexcept;
 
     /** Make process handler from process executable filename */
-    explicit handler_pid(const std::string& title) {
-        m_pid = 0;
-        if (title.empty())
-            return;
-
-        for(auto& p: sfs::directory_iterator("/proc")) {
-            if (p.path().filename().string().find_first_not_of("0123456789") != std::string::npos)
-                /* if filename is not numeric */
-                continue;
-            if (!sfs::is_directory(p))
-                continue;
-            if (!sfs::exists(p / "maps"))
-                continue;
-            if (!sfs::exists(p / "exe"))
-                continue;
-            if (!sfs::exists(p / "cmdline"))
-                continue;
-            std::istringstream ss(p.path().filename().string());
-            ss >> m_pid;
-            m_cmdline = get_cmdline();
-
-            std::regex rgx(title);
-            std::smatch match;
-            if (std::regex_search(m_cmdline, match, rgx)) {
-                //std::cout<<"pid: "<<p.path().filename().string()<<", cmdline: "<<cmdline<<std::endl;
-                //std::cout<<"{ ";
-                //for (char* c = &cmdline[0]; c<&cmdline[0]+cmdline.length(); c++) {
-                //    std::cout<< HEX<char, 1>(*c) <<" ";
-                //}
-                //std::cout<<"}";
-                update_regions();
-                return;
-            }
-        }
-        m_pid = 0;
-        m_cmdline = "";
-    }
+    explicit phandler_pid(const std::string& title);
 
     /*!
      * Returns a symlink to the original executable file, if it still exists
@@ -270,7 +207,8 @@ public:
      * If the pathname has been unlinked, the symbolic link will contain the string ' (deleted)' appended to the original pathname.
      */
     [[gnu::always_inline]]
-    sfs::path get_exe() {
+    sfs::path
+    get_exe() {
         return sfs::read_symlink(sfs::path("/proc") / std::to_string(m_pid) / "exe");
     }
 
@@ -278,15 +216,16 @@ public:
      * Returns path to the original executable file, if it still exists, or throws std::runtime_error("File not found").
      */
     [[gnu::always_inline]]
-    sfs::path get_executable() {
+    sfs::path
+    get_executable() {
         /* Ambiguous */
         std::string exe = get_exe();
-        for (const Cregion& region : regions) {
+        for (const region& region : regions) {
             if (region.pathname == exe) {
                 struct stat sb{};
                 errno = 0;
                 int s = stat(exe.c_str(), &sb);
-                if (s == 0 && sb.st_dev == region.st_device && sb.st_ino == region.inodeFileNumber)
+                if (s == 0 && sb.st_dev == region.st_device && sb.st_ino == region.inode && region.offset == 0)
                     return sfs::path(exe);
             }
         }
@@ -335,21 +274,8 @@ public:
         return static_cast<size_t>(process_vm_writev(m_pid, local, 1, remote, 1, 0));
     }
 
-    ///** Read value, return true if success */
-    template <typename T, size_t _SIZE = sizeof(T)>
-    bool read(uintptr_t address, T *out) {
-        return read(address, out, _SIZE) == _SIZE;
-    }
-
-    ///** Read value, return true if success */
-    template <typename T, size_t _SIZE = sizeof(T)>
-    bool write(uintptr_t address, T *in) {
-        return write(address, in, _SIZE) == _SIZE;
-    }
-
     void update_regions() override {
         regions.clear();
-        regions_ignored.clear();
         std::ifstream maps(sfs::path("/proc") / std::to_string(get_pid()) / "maps");
         std::string line;
         while (getline(maps, line)) {
@@ -373,7 +299,7 @@ public:
                     }
                 }
 
-                Cregion region;
+                region region;
 
                 size_t memorySplit = memorySpace.find_first_of('-');
                 size_t deviceSplit = device.find_first_of(':');
@@ -400,7 +326,7 @@ public:
                 ss >> region.offset;
                 ss.clear();
                 ss << std::dec << inode;
-                ss >> region.inodeFileNumber;
+                ss >> region.inode;
 
                 region.flags = region_mode_t::none;
                 region.flags |= (permissions[0] == 'r') ? region_mode_t::readable : region_mode_t::none;
@@ -417,24 +343,24 @@ public:
                         region.filename = pathname.substr(fileNameSplit + 1, pathname.size());
                     }
                 }
-
-                if (region.flags & (region_mode_t::readable | region_mode_t::writable) && !(region.flags & region_mode_t::shared) && region.size > 0)
-                    regions.push_back(region);
-                else
-                    regions_ignored.push_back(region);
+                regions.push_back(region);
             }
         }
         regions.shrink_to_fit();
-        regions_ignored.shrink_to_fit();
     }
 
     constexpr pid_t get_pid() { return this->m_pid; }
 
-    /** cmdline */
+    /** /proc/pid/cmdline
+     * @return std::string, because cmdline is not null-terminated, e.g.:
+     * "/usr/bin/qemu-system-x86_64\x00-name\x00guest=generic,debug-threads=on\x00"
+     */
     [[gnu::always_inline]]
     std::string get_cmdline() {
         std::ifstream t(sfs::path("/proc") / std::to_string(m_pid) / "cmdline");
-        std::getline(t, m_cmdline, '\0');
+        std::ostringstream ss;
+        ss<<t.rdbuf();
+        m_cmdline = ss.str();
         return m_cmdline;
     }
 
@@ -453,16 +379,13 @@ public:
     [[gnu::always_inline]]
     size_t read(uintptr_t address, void *out, size_t size) const override {
         using namespace std;
-        size_t r = get_region_of_address(address);
-        if UNLIKELY(r == npos)
+        region *r = get_region_of_address(address);
+        if UNLIKELY(r == nullptr)
             return npos;
-        size_t size_requested = size;
-        if UNLIKELY(address + size > regions[r].address + regions[r].size) {
-            size = regions[r].size - (address - regions[r].address);
-            //cout<<"Trying to read "<<HEX(address)<<" of size "<<HEX(size)<<", but region "<<region<<std::endl; // DEBUG_STDOUT
-            memset((char*)(out) + size, 0, (size_requested-size));
+        if UNLIKELY(address + size > r->address + r->size) {
+            size = r->size - (address - r->address);
         }
-        memcpy(out, reinterpret_cast<char *>(regions_on_map[r] + (address - regions[r].address)), size);
+        memcpy(out, reinterpret_cast<char *>(regions_on_map[r - &regions[0]] + (address - r->address)), size);
         return size;
     }
 
@@ -484,7 +407,7 @@ public:
         return 0;
     }
 
-protected:
+public:
     std::vector<char *> regions_on_map;
 };
 
@@ -494,10 +417,9 @@ class phandler_memory : public phandler_map_i {
 public:
     using phandler_map_i::phandler_map_i;
 
-    explicit phandler_memory(const handler_pid& rhs) {
+    explicit phandler_memory(const phandler_pid& rhs) {
         regions = rhs.regions;
-        regions_ignored = rhs.regions_ignored;
-        for (const RE::Cregion& region : rhs.regions) {
+        for (const RE::region& region : rhs.regions) {
             char* map = new char[region.size];
             regions_on_map.emplace_back(map);
             ssize_t copied = rhs.read(region.address, map, region.size);
@@ -527,7 +449,7 @@ public:
      * Now, we will able to send data to another PC and search pointers together.
      */
     void
-    save(const handler_pid& handler, const std::string& path) {
+    save(const phandler_pid& handler, const std::string& path) {
         regions = handler.regions;
 
         std::ofstream stream(path, std::ios_base::out | std::ios_base::binary);
@@ -543,7 +465,7 @@ public:
             throw std::invalid_argument("can not open '" + path + "'");
 
         size_t bytes_to_save = 0;
-        for (const RE::Cregion& region : handler.regions)
+        for (const RE::region& region : handler.regions)
             bytes_to_save += sizeof(region.size) + region.size;
         mf.resize(mf.size() + bytes_to_save);
 
@@ -553,7 +475,7 @@ public:
         snapshot += stream.tellp();
 
         regions_on_map.clear();
-        for(const RE::Cregion& region : handler.regions) {
+        for(const RE::region& region : handler.regions) {
             regions_on_map.emplace_back(snapshot);
             ssize_t copied = handler.read(region.address, snapshot, region.size);
             //snapshot += region.size + sizeof(mem64_t::bytes) - 1;
@@ -585,7 +507,7 @@ public:
         snapshot += stream.tellg();
 
         regions_on_map.clear();
-        for (const RE::Cregion& region : regions) {
+        for (const RE::region& region : regions) {
             regions_on_map.emplace_back(snapshot);
             //snapshot += region.size + sizeof(mem64_t::bytes) - 1;
             snapshot += region.size;
@@ -601,7 +523,7 @@ public:
     }
 
     /// Save (make snapshot)
-    explicit phandler_file(const handler_pid& handler, const std::string& path) {
+    explicit phandler_file(const phandler_pid& handler, const std::string& path) {
         this->save(handler, path);
     }
 
@@ -722,7 +644,7 @@ handler::findPointer(void *out, uintptr_t address, std::vector<uintptr_t> offset
 }
 
 size_t
-handler::findPattern(vector<uintptr_t> *out, Cregion *region, const char *pattern, const char *mask)
+handler::findPattern(vector<uintptr_t> *out, region *region, const char *pattern, const char *mask)
 {
     char buffer[0x1000];
 
@@ -761,7 +683,7 @@ handler::findPattern(vector<uintptr_t> *out, Cregion *region, const char *patter
 
 size_t
 handler::scan_exact(vector<Entry> *out,
-                   const Cregion *region,
+                   const region *region,
                    vector<Entry> entries, 
                    size_t increment)
 {
@@ -806,7 +728,7 @@ handler::scan_exact(vector<Entry> *out,
 NAMESPACE_END(RE)
 
 //[[deprecated("May be moved to scanner.hh")]]
-//bool find_pattern(uintptr_t *out, Cregion *region, const char *pattern, const char *mask) {
+//bool find_pattern(uintptr_t *out, region *region, const char *pattern, const char *mask) {
 //    char buffer[0x1000];
 //
 //    uintptr_t len = strlen(mask);

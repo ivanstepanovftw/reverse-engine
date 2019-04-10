@@ -204,13 +204,15 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
     size_t required_extra_bytes_to_record = 0;
 
     /* check every memory region */
-    for(const RE::Cregion& region : handler->regions) {
+    for(const RE::region& region : handler->regions) {
         /* For every offset, check if we have a match. */
         size_t memlength = region.size;
         size_t buffer_size = 0;
         uintptr_t reg_pos = region.address;
 
-        for ( ; ; memlength--, buffer_size--, reg_pos++, buf_pos++) {
+        // TODO[low]: remove memlength and other useless variables that pointed to speedup scanning but they doesnt
+        for ( ; ; memlength-=step, buffer_size-=step, reg_pos+=step, buf_pos+=step) {
+        //for ( ; ; memlength--, buffer_size--, reg_pos++, buf_pos++) {
             /* check if the buffer is finished (or we just started) */
             if UNLIKELY(buffer_size == 0) {
                 /* the whole region is finished */

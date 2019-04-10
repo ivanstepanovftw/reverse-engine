@@ -332,7 +332,7 @@ public:
     RE::phandler_i *handler;
     volatile bool stop_flag = false;
     volatile double scan_progress = 0;
-    volatile uintptr_t step = 1;
+    uintptr_t step = 1;
     
     explicit Scanner(phandler_i *handler) {
         this->handler = handler;
@@ -353,7 +353,6 @@ public:
      *
      *  Will read process memory and update 'matches_t'
      */
-    // TODO[critical]: rename to scan_regions, потому что потом скан может быть не только для регионов, а, например, для файла
     bool scan_regions(RE::matches_t& writing_matches,
                       const RE::Edata_type& data_type,
                       const RE::Cuservalue *uservalue,
@@ -388,6 +387,54 @@ private:
      *  Usually used after scan_* methods
      */
     bool scan_fit(RE::matches_t& writing_matches);
+};
+
+
+class ptr {
+
+};
+
+class pointerscan
+{
+public:
+    /// Create file for storing matches
+    RE::phandler_memory *handler;
+    volatile bool stop_flag = false;
+    volatile double scan_progress = 0;
+    uintptr_t step = 1;
+
+    explicit pointerscan(phandler_memory *handler) {
+        this->handler = handler;
+    }
+
+    std::vector<RE::ptr>
+    scan_regions(uintptr_t address, size_t max_offset, size_t max_level)
+    {
+        using std::cout, std::endl;
+        std::vector<ptr> ret;
+
+        /* check every memory region */
+        for (const RE::region& region : handler->regions) {
+            if ((region.flags & region_mode_t::writable) == 0 && (region.flags & region_mode_t::readable) == 1)
+                continue;
+            if (region.offset != 0)
+                continue;
+            if (region.st_device_major == 0 || region.inode == 0)
+                continue;
+            cout<<"scan_regions: device: "<<HEX(region.st_device_major)<<", region matched: "<<region<<endl;
+
+            //char *reg_beg = handler->regions_on_map[handler->get_region_of_address(region.address)];
+            //uintptr_t reg_kek = handler->get_region_of_address(region.address);
+            //for (char *cur = reg_beg; cur < reg_beg + region.size; cur+=step, reg_kek+=step) {
+            //
+            //}
+
+            //cout<<"scan_regions: breaking after: "<<region<<endl;
+            //break;
+        }
+
+        return ret;
+    }
 };
 
 NAMESPACE_END(RE)

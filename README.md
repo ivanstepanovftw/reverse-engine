@@ -36,7 +36,7 @@ You can also create [trainers](./trainer.cc). Even with Python.
 ```cpp
 handler h("csgo_linux64");
 h.update_regions();
-Cregion *client = h.get_region_by_name("client_client.so");
+region *client = h.get_region_by_name("client_client.so");
 uintptr_t glow_pointer_call;
 h.find_pattern(&glow_pointer_call,
                client,

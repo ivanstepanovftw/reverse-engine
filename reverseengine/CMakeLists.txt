@@ -16,6 +16,7 @@ add_library(${RE_LIBRARY_NAME} SHARED ${SOURCES})
 set(RE_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include" CACHE INTERNAL "")
 target_include_directories(${RE_LIBRARY_NAME} PUBLIC
         $<BUILD_INTERFACE:${RE_INCLUDE_DIRS}>
+        $<BUILD_INTERFACE:${R2_INCLUDE_DIRS}>
         $<INSTALL_INTERFACE:include>
         PRIVATE src
         )
@@ -153,6 +154,7 @@ target_link_libraries(${RE_LIBRARY_NAME}
         stdc++fs
         bitmask
         rt
+        ${R2_LIBRARIES}
         )
 
 # ┌──────────────────────────────────────────────────────────────────┐

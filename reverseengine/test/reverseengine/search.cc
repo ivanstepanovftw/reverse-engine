@@ -27,24 +27,24 @@ int main() {
     std::string search_for = "1";
     RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
 
-    RE::handler_pid* handler = new RE::handler_pid(target);
-    if (!*handler)
+    RE::phandler_pid handler(target);
+    if (!handler)
         throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
-    handler->update_regions();
-    RE::Scanner *scanner = new RE::Scanner(handler);
+    handler.update_regions();
+    RE::Scanner scanner(&handler);
 
     clog<<"FAKEMEM, pid: "
-        <<handler->get_pid()
-        <<", title: "<< handler->get_cmdline()
-        <<", exe: "<<handler->get_exe()
-        <<", executable: "<<handler->get_executable()
+        <<handler.get_pid()
+        <<", title: "<< handler.get_cmdline()
+        <<", exe: "<<handler.get_exe()
+        <<", executable: "<<handler.get_executable()
         <<endl;
 
 
     RE::Cuservalue uservalue[2];
     RE::Ematch_type match_type;
     try {
-        scanner->string_to_uservalue(data_type, search_for, &match_type, uservalue);
+        scanner.string_to_uservalue(data_type, search_for, &match_type, uservalue);
     } catch (RE::bad_uservalue_cast &e) {
         clog<<e.what()<<endl;
         return 0;
@@ -52,7 +52,7 @@ int main() {
 
     RE::matches_t matches_first;
     timestamp = high_resolution_clock::now();
-    scanner->scan_regions(matches_first, data_type, uservalue, match_type);
+    scanner.scan_regions(matches_first, data_type, uservalue, match_type);
     clog<<"Scan 1/3 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
     clog<<"mem_virt: "<<matches_first.mem_virt()<<endl;
     clog<<"mem_disk: "<<matches_first.mem_disk()<<endl;
@@ -61,8 +61,8 @@ int main() {
 
     RE::matches_t matches_prev = matches_first;
     timestamp = high_resolution_clock::now();
-    scanner->scan_update(matches_prev);
-    scanner->scan_recheck(matches_prev, data_type, uservalue, match_type);
+    scanner.scan_update(matches_prev);
+    scanner.scan_recheck(matches_prev, data_type, uservalue, match_type);
     clog<<"Scan 2/3 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
     clog<<"mem_virt: "<<matches_prev.mem_virt()<<endl;
     clog<<"mem_allo: "<<matches_prev.mem_allo()<<endl;
@@ -75,17 +75,17 @@ int main() {
 
 
     timestamp = high_resolution_clock::now();
-    //RE::phandler_file *handler_mmap = new RE::phandler_file(*handler, "vadimislove");
-    RE::phandler_memory* handler_mmap = new RE::phandler_memory(*handler);
-    if (!*handler_mmap)
+    RE::phandler_file handler_mmap(handler, "vadimislove");
+    //RE::phandler_memory handler_mmap(handler);
+    if (!handler_mmap)
         throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
-    handler_mmap->update_regions();
-    RE::Scanner *scanner_mmap = new RE::Scanner(handler_mmap);
+    handler_mmap.update_regions();
+    RE::Scanner scanner_mmap(&handler_mmap);
 
 
     RE::matches_t matches_curr = matches_prev;
-    scanner_mmap->scan_update(matches_curr);
-    scanner_mmap->scan_recheck(matches_curr, data_type, uservalue, match_type);
+    scanner_mmap.scan_update(matches_curr);
+    scanner_mmap.scan_recheck(matches_curr, data_type, uservalue, match_type);
     clog<<"Scan 3/3 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
     clog<<"mem_virt: "<<matches_curr.mem_virt()<<endl;
     clog<<"mem_allo: "<<matches_curr.mem_allo()<<endl;
@@ -94,6 +94,12 @@ int main() {
     clog<<"count: "<<matches_curr.count()<<endl;
 
 
+    /*
+     * Какой адрес ищём? Пусть будет А.
+     * scan_regions(A)
+     * получили результаты, теперь ищем, какие результаты зелёные. Если нет ни одного, то:
+     * для каждого найденного результата ищем результат, и так рекурсивно.
+     */
 
     /*
      *  Сканируем из памяти в свою память           (scanmem)
@@ -111,10 +117,6 @@ int main() {
     //    clog<<"val: "<<isd<<": "<<val<<endl;
     //    isd++;
     //}
-    delete scanner_mmap;
-    delete handler_mmap;
-    delete scanner;
-    delete handler;
 
     return 0;
 }

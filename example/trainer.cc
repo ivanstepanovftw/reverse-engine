@@ -51,9 +51,9 @@ main()
     }
     /// Trainer and scanner example
     RE::handler h;
-    RE::Cregion *exe = nullptr;
-    RE::Cregion *libc = nullptr;
-    RE::Cregion *ld = nullptr;
+    RE::region *exe = nullptr;
+    RE::region *libc = nullptr;
+    RE::region *ld = nullptr;
     
 stage_waiting:;
     cout<<"Waiting for '"<<target<<"' process"<<endl;
@@ -85,7 +85,7 @@ stage_updating:;
     cout<<"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"<<endl;
     
     const uintptr_t test_address = exe->address+16;
-    RE::Cregion *test_region = h.get_region_of_address(test_address);
+    RE::region *test_region = h.get_region_of_address(test_address);
     if (!test_region) {
         cout<<"Can't find region of address: address: "<<RE::HEX(test_address)<<endl;
         return 1;
