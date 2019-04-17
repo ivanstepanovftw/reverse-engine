@@ -27,9 +27,9 @@ target_link_libraries(${TARGET}
 # ┌──────────────────────────────────────────────────────────────────┐
 #   POINTER
 # └──────────────────────────────────────────────────────────────────┘
-set(TARGET POINTER_CC)
+set(TARGET POINTERSCAN_CC)
 
-add_executable(${TARGET} pointer.cc)
+add_executable(${TARGET} pointerscan.cc)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
 target_compile_options(${TARGET} PUBLIC
         -O3

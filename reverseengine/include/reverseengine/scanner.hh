@@ -37,9 +37,11 @@
 //#include <boost/iostreams/device/mapped_file.hpp>
 #include <cstdlib>
 //
-#include "core.hh"
-#include "value.hh"
-#include "scanroutines.hh"
+#include <reverseengine/core.hh>
+#include <reverseengine/value.hh>
+#include <reverseengine/scanroutines.hh>
+#include <reverseengine/pointerscan.hh>
+#include <omp.h>
 
 //namespace bio = boost::iostreams;
 
@@ -329,12 +331,12 @@ class Scanner
 {
 public:
     /// Create file for storing matches
-    RE::phandler_i *handler;
+    RE::IProcess *handler;
     volatile bool stop_flag = false;
     volatile double scan_progress = 0;
     uintptr_t step = 1;
     
-    explicit Scanner(phandler_i *handler) {
+    explicit Scanner(IProcess *handler) {
         this->handler = handler;
     }
     
@@ -390,51 +392,304 @@ private:
 };
 
 
-class ptr {
-
-};
 
 class pointerscan
 {
 public:
-    /// Create file for storing matches
-    RE::phandler_memory *handler;
-    volatile bool stop_flag = false;
-    volatile double scan_progress = 0;
-    uintptr_t step = 1;
-
-    explicit pointerscan(phandler_memory *handler) {
+    explicit pointerscan(IProcess *handler) {
         this->handler = handler;
+        omp_init_lock(&writelock);
     }
 
-    std::vector<RE::ptr>
-    scan_regions(uintptr_t address, size_t max_offset, size_t max_level)
-    {
-        using std::cout, std::endl;
-        std::vector<ptr> ret;
+    ~pointerscan() {
+        omp_destroy_lock(&writelock);
+    }
 
-        /* check every memory region */
-        for (const RE::region& region : handler->regions) {
-            if ((region.flags & region_mode_t::writable) == 0 && (region.flags & region_mode_t::readable) == 1)
-                continue;
-            if (region.offset != 0)
-                continue;
-            if (region.st_device_major == 0 || region.inode == 0)
-                continue;
-            cout<<"scan_regions: device: "<<HEX(region.st_device_major)<<", region matched: "<<region<<endl;
-
-            //char *reg_beg = handler->regions_on_map[handler->get_region_of_address(region.address)];
-            //uintptr_t reg_kek = handler->get_region_of_address(region.address);
-            //for (char *cur = reg_beg; cur < reg_beg + region.size; cur+=step, reg_kek+=step) {
-            //
-            //}
-
-            //cout<<"scan_regions: breaking after: "<<region<<endl;
-            //break;
+    void helper(vector<uintptr_t> off, uintptr_t last, uintptr_t address, pointer_swath& ps) {
+        if (off.size() == max_level) {
+            // cout<<"helper: reached maxlevel"<<endl; //fixme [debug] #4
+            return;
         }
 
+        if (address >= last-min_offset && address < last+max_offset) {
+            vector<uintptr_t> offs = off;
+            offs.push_back(address-(last-min_offset));
+            // cout<<"helper: level"<<offs.size()<<": off: {"<<ps.file.filename()<<"+";
+            // for (const auto& i: offs)
+            //     cout << HEX(i) << ",";
+            // cout<<"\b} FOUND"<<endl; //fixme [debug] #1
+            omp_set_lock(&writelock);
+            ps.offsets.push_back(offs); /// success
+            omp_unset_lock(&writelock);
+        }
+
+        off.push_back(0);
+        for (size_t o1 = min_offset; o1 < max_offset; o1 += align) {
+            off.back() = o1;
+            // cout<<"helper: level"<<off.size()<<": off: {"<<ps.file.filename()<<"+";
+            // for (const auto& i: off)
+            //     cout << HEX(i) << ",";
+            // cout<<"\b}"<<endl; //fixme [debug] #1
+
+            if (!handler->read(last+o1, &last)) {
+                // cout<<"helper: cannot dereference"<<endl; //fixme [debug] #3
+                continue;
+            }
+
+            /// for each offset in level2
+            helper(off, last, address, ps);
+        }
+    }
+
+    std::vector<pointer_swath>
+    scan_regions(uintptr_t address)
+    {
+        using std::cout, std::endl;
+
+        scan_progress = 0.0;
+
+        std::vector<pointer_swath> ret;
+        size_t static_regions_count = 0;
+        size_t static_regions_bytes = 0;
+        for (RE::Region& region : handler->regions) {
+            if (region.r2) {
+                static_regions_count++;
+                static_regions_bytes += region.size;
+            }
+        }
+        double scan_step = 1.0/static_regions_bytes;
+        double scan_last_printed = 0.0;
+
+        /// for each region
+        size_t static_region_counter = 0;
+        for (RE::Region& region : handler->regions) {
+            /// if region is static
+            if (!region.r2) {
+                continue;
+            }
+            cout<<"scan_regions: region["<<static_region_counter++<<"/"<<static_regions_count<<"]: "<<region<<endl; //fixme [debug] #0
+
+            pointer_swath ps;
+            ps.file = region.file;
+            // cout<<"region.file: "<<region.file<<endl; //fixme [debug] #0
+
+            std::vector<RBinSection *> sections = region.r2.get_sections();
+            uintptr_t static_offset_to = 0;
+            for(RBinSection *s : sections) {
+                uintptr_t se = s->vaddr + s->vsize;
+                static_offset_to = std::max(static_offset_to, se);
+            }
+
+            // static_offset_to = 0x40; //fixme [debug] REMOVEME
+
+            uintptr_t static_begin = region.address;
+            uintptr_t static_end = region.address + static_offset_to;
+
+            // cout<<"static_begin: "<<region.file.filename()<<endl; //fixme [debug] #0
+            // cout<<"static_end: "<<region.file.filename()<<"+"<<HEX(static_offset_to)<<endl; //fixme [debug] #0
+
+
+            if (address >= static_begin && address < static_end) {
+                std::vector<uintptr_t> off {address-static_begin};
+                // cout<<"static: level"<<off.size()<<": off: {"<<ps.file.filename()<<"+";
+                // for (const auto i: off)
+                //     cout << HEX(i) << ",";
+                // cout<<"\b} FOUND"<<endl; //fixme [debug] #1
+                ps.offsets.push_back(off); /// success
+            }
+
+            /// for each level0 pointer
+#pragma omp parallel for
+            for (uintptr_t o = 0; o < static_offset_to; o += align) {
+                std::vector<uintptr_t> off {o};
+                off.reserve(max_level);
+                // cout<<"static: level"<<off.size()<<": off: {"<<ps.file.filename()<<"+";
+                // for (const auto& i: off)
+                //     cout << HEX(i) << ",";
+                // cout<<"\b}"<<endl; //fixme [debug] #1
+                uintptr_t last = static_begin + o;
+                if (!handler->read(last, &last)) {
+                    // cout<<"static: cannot dereference"<<endl; //fixme [debug] #3
+                    continue;
+                }
+
+                /// for each offset in level1
+                helper(off, last, address, ps);
+
+                // scan_progress+=scan_step;
+                // if (scan_progress-scan_last_printed > 0.01) {
+                //     scan_last_printed = scan_progress;
+                //     cout<<scan_progress<<": [";
+                //     for(size_t i = 0; i < 70*scan_progress-1; i++)
+                //         cout<<"=";
+                //     cout<<">";
+                //     for(size_t i = 70.0*scan_progress-1; i < 70; i++)
+                //         cout<<" ";
+                //     cout<<"]"<<endl;
+                // }
+                // if (stop_flag)
+                //     break;
+            }
+
+            if (!ps.offsets.empty()) {
+                ret.push_back(ps);
+            }
+            // break; //fixme [debug] REMOVEME
+        }
+        scan_progress = 1.0;
         return ret;
     }
+
+public:
+    /// Create file for storing matches
+    RE::IProcess *handler;
+    volatile bool stop_flag = false;
+    volatile double scan_progress = 0.0;
+    uintptr_t max_level = 5;
+
+    uintptr_t min_offset = 0;
+    uintptr_t max_offset = 0x1000;
+    uintptr_t align = sizeof(uint32_t);
+
+    omp_lock_t writelock;
 };
+
+
+
+
+/*bool //todo короче можно вместо стрима закинуть, например, вектор со стрингами
+handler::findPointer(void *out, uintptr_t address, std::vector<uintptr_t> offsets, size_t size, size_t point_size, std::ostream *ss)
+{
+    void *buffer;
+    if (ss) *ss<<"["<<offsets[0]<<"] -> ";
+    if (!this->read(&buffer, (void *)(address), point_size)) return false;
+    if (ss) *ss<<""<<buffer<<endl;
+    for(uint64_t i = 0; i < offsets.size()-1; i++) {
+        if (ss) *ss<<"["<<buffer<<" + "<<offsets[i]<<"] -> ";
+        if (!this->read(&buffer, buffer + offsets[i], point_size)) return false;
+        if (ss) *ss<<""<<buffer<<endl;
+    }
+    if (ss) *ss<<buffer<<" + "<<offsets[offsets.size()-1]<<" = "<<buffer+offsets[offsets.size()-1]<<" -> ";
+    if (!this->read(out, buffer + offsets[offsets.size() - 1], size)) return false;
+
+    return true;
+}
+
+size_t
+handler::findPattern(vector<uintptr_t> *out, region *region, const char *pattern, const char *mask)
+{
+    char buffer[0x1000];
+
+    size_t len = strlen(mask);
+    size_t chunksize = sizeof(buffer);
+    size_t totalsize = region->end - region->address;
+    size_t chunknum = 0;
+    size_t found = 0;
+
+    while (totalsize) {
+        size_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
+        size_t readaddr = region->address + (chunksize * chunknum);
+        bzero(buffer, chunksize);
+
+        if (this->read(buffer, (void *) readaddr, readsize)) {
+            for(size_t b = 0; b < readsize; b++) {
+                size_t matches = 0;
+
+                // если данные совпадают или пропустить
+                while (buffer[b + matches] == pattern[matches] || mask[matches] != 'x') {
+                    matches++;
+
+                    if (matches == len) {
+                        found++;
+                        out->push_back((uintptr_t) (readaddr + b));
+                    }
+                }
+            }
+        }
+
+        totalsize -= readsize;
+        chunknum++;
+    }
+    return found;
+}
+
+size_t
+handler::scan_exact(vector<Entry> *out,
+                   const region *region,
+                   vector<Entry> entries,
+                   size_t increment)
+{
+    byte buffer[0x1000];
+
+    size_t chunksize = sizeof(buffer);
+    size_t totalsize = region->end - region->address;
+    size_t chunknum = 0;
+    size_t found = 0;
+    // TODO[HIGH] научить не добавлять, если предыдущий (собсна, наибольший) уже есть
+    while (totalsize) {
+        size_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
+        uintptr_t readaddr = region->address + (chunksize * chunknum);
+        bzero(buffer, chunksize);
+
+        if (this->read(buffer, (void *) readaddr, readsize)) {    // read into buffer
+            for(uintptr_t b = 0; b < readsize; b += increment) {  // for each addr inside buffer
+                for(int k = 0; k < entries.size(); k++) {         // for each entry
+                    size_t matches = 0;
+                    while (buffer[b + matches] == entries[k].value.bytes[matches]) {  // находим адрес
+                        matches++;
+
+                        if (matches == SIZEOF_FLAG(entries[k].flags)) {
+                            found++;
+                            out->emplace_back(entries[k].flags, (uintptr_t)(readaddr + b), region, entries[k].value.bytes);
+                            //todo мне кажется, что нужно всё-таки добавить плавующую точку, посмотрим, как сделаю scan_reset
+                            goto sorry_for_goto;
+                        }
+                    }
+                }
+                sorry_for_goto: ;
+            }
+        }
+
+        totalsize -= readsize;
+        chunknum++;
+    }
+    return found; //size of pushed back values
+}*/
+//[[deprecated("May be moved to scanner.hh")]]
+//bool find_pattern(uintptr_t *out, region *region, const char *pattern, const char *mask) {
+//    char buffer[0x1000];
+//
+//    uintptr_t len = strlen(mask);
+//    uintptr_t chunksize = sizeof(buffer);
+//    uintptr_t totalsize = region->size;
+//    uintptr_t chunknum = 0;
+//
+//    while (totalsize) {
+//        uintptr_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
+//        uintptr_t readaddr = region->address + (chunksize * chunknum);
+//        bzero(buffer, chunksize);
+//
+//        if (this->read(readaddr, buffer, readsize)) {
+//            for (uintptr_t b = 0; b < readsize; b++) {
+//                uintptr_t matches = 0;
+//
+//                // если данные совпадают или пропустить
+//                while (buffer[b + matches] == pattern[matches] || mask[matches] != 'x') {
+//                    matches++;
+//
+//                    if (matches == len) {
+//                        *out = readaddr + b;
+//                        return true;
+//                    }
+//                }
+//            }
+//        }
+//
+//        totalsize -= readsize;
+//        chunknum++;
+//    }
+//    return false;
+//}
+
 
 NAMESPACE_END(RE)

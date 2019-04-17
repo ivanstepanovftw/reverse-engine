@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 # Report the hardening characterists of a set of binaries.
 # Copyright (C) 2009-2012 Kees Cook <kees@debian.org>
 # License: GPLv2 or newer

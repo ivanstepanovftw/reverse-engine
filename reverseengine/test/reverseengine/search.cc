@@ -9,7 +9,7 @@
 #include <reverseengine/scanner.hh>
 
 
-int main() {
+int main(int argc, const char *argv[]) {
     using std::cout, std::clog, std::cerr, std::endl;
     using namespace std::chrono;
     high_resolution_clock::time_point timestamp;
@@ -24,13 +24,15 @@ int main() {
     //return 0;
 
     std::string target = "FAKEMEM";
-    std::string search_for = "1";
-    RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
+    // std::string target = "csgo_linux64";
+    std::string search_for = "100";
+    // RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
+    RE::Edata_type data_type = RE::Edata_type::FLOAT64;
 
-    RE::phandler_pid handler(target);
+    RE::Process handler(target);
     if (!handler)
         throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
-    handler.update_regions();
+
     RE::Scanner scanner(&handler);
 
     clog<<"FAKEMEM, pid: "
@@ -75,13 +77,14 @@ int main() {
 
 
     timestamp = high_resolution_clock::now();
-    RE::phandler_file handler_mmap(handler, "vadimislove");
-    //RE::phandler_memory handler_mmap(handler);
+    // RE::phandler_file handler_mmap(handler, "vadimislove");
+    RE::ProcessH handler_mmap(handler);
     if (!handler_mmap)
         throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
     handler_mmap.update_regions();
     RE::Scanner scanner_mmap(&handler_mmap);
 
+    return 0;
 
     RE::matches_t matches_curr = matches_prev;
     scanner_mmap.scan_update(matches_curr);

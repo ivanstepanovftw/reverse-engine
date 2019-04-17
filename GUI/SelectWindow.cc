@@ -101,7 +101,7 @@ SelectWindow::on_button_attach()
             RE::globals->scanner = new RE::Scanner(RE::globals->handle);
             constexpr size_t print_tip_every_n_line = 25;
             size_t tip_count = 0;
-            for(const RE::region& region : RE::globals->handle->regions) {
+            for(const RE::Region& region : RE::globals->handle->regions) {
                 if (tip_count % print_tip_every_n_line == 0)
                     printf("%-32s%-18s %-18s %s%s%s%s\n",
                            "Region name",

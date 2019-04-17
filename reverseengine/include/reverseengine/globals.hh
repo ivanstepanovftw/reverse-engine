@@ -80,7 +80,7 @@ public:
 
 class globals_t {
 public:
-    RE::handler *handle;
+    RE::Process *handle;
     RE::Scanner *scanner;
     CScans scans;
 };

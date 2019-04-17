@@ -204,7 +204,7 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
     size_t required_extra_bytes_to_record = 0;
 
     /* check every memory region */
-    for(const RE::region& region : handler->regions) {
+    for(const RE::Region& region : handler->regions) {
         /* For every offset, check if we have a match. */
         size_t memlength = region.size;
         size_t buffer_size = 0;
@@ -224,7 +224,7 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
                 /* load the next buffer block */
                 size_t alloc_size = MIN(memlength, MAX_ALLOC_SIZE);
                 size_t copied = handler->read(reg_pos, buffer, alloc_size);
-                if UNLIKELY(copied == phandler_i::npos)
+                if UNLIKELY(copied == IProcess::npos)
                     break;
                 else if UNLIKELY(copied < alloc_size) {
                     /* the region ends here, update `memlength` */

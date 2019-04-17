@@ -35,18 +35,13 @@
 #include <regex>
 #include <sys/stat.h>
 #include <boost/iostreams/device/mapped_file.hpp>
-#include <reverseengine/value.hh>
-#include <reverseengine/external.hh>
-#include <reverseengine/common.hh>
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/serialization/vector.hpp>
-
-#include <r_core.h>
-#include <r_types.h>
-#include <r_util.h>
-#include <r_bin.h>
-#include <r_io.h>
+#include <reverseengine/r2_wrapper.hh>
+#include <reverseengine/value.hh>
+#include <reverseengine/external.hh>
+#include <reverseengine/common.hh>
 
 
 
@@ -58,28 +53,23 @@ namespace bio = boost::iostreams;
 
 enum class region_mode_t : uint8_t
 {
-    none = 0,
+    none = 0u,
     executable = 1u<<0u,
     writable   = 1u<<1u,
     readable   = 1u<<2u,
     shared     = 1u<<3u,
-    max = executable|writable|readable|shared
+    max = 0u|executable|writable|readable|shared
 };
-BITMASK_DEFINE_MAX_ELEMENT(region_mode_t, max)
+BITMASK_DEFINE_VALUE_MASK(region_mode_t, 0xff)
 
 
-
-
-
-
-class region {
+class Region {
 public:
     uintptr_t address;
     uintptr_t size;
     bitmask::bitmask<region_mode_t> flags;
 
     /// File data
-    RCore *b;
     uintptr_t offset;
     union {
         struct {
@@ -89,13 +79,13 @@ public:
         __dev_t st_device;
     };
     uint64_t inode;
-    std::string pathname;
-    std::string filename;
+    sfs::path file;
+    R2::Bin r2;
 
-    region()
-    : address(0), size(0), flags(region_mode_t::none), offset(0), st_device(0), inode(0) {
+    Region()
+    : address(0), size(0), flags(region_mode_t::none), offset(0), st_device(0), inode(0) { }
 
-    }
+    ~Region() = default;
 
     bool is_good() {
         return address != 0;
@@ -105,15 +95,17 @@ public:
         std::ostringstream ss;
         ss << HEX(address)<<"-"<<HEX(address+size)<<" ("<<HEX(size)<<") "
            << (flags & region_mode_t::shared?"s":"-") << (flags & region_mode_t::readable?"r":"-") << (flags & region_mode_t::writable?"w":"-") << (flags & region_mode_t::executable?"x":"-") << " "
+           << HEX(offset) << " "
            << HEX(st_device_major)<<":"<< HEX(st_device_minor) <<" "
            << inode<<" "
-           << pathname;
+           << file;
         return ss.str();
     }
 
-    friend std::ostream& operator<<(std::ostream& outputStream, const region& region) {
+    friend std::ostream& operator<<(std::ostream& outputStream, const Region& region) {
         return outputStream<<region.str();
     }
+
 private:
     friend class boost::serialization::access;
 
@@ -126,8 +118,7 @@ private:
         ar & st_device_minor;
         ar & st_device_major;
         ar & inode;
-        ar & pathname;
-        ar & filename;
+        // ar & file;
     }
 };
 
@@ -135,16 +126,21 @@ private:
  *  Process handler
  ********************/
 
-class phandler_i {
+class IProcess {
 public:
-    phandler_i() = default;
-    ~phandler_i() = default;
+    IProcess() = default;
+    ~IProcess() = default;
 
     virtual size_t read(uintptr_t address, void *out, size_t size) const = 0;
     virtual size_t write(uintptr_t address, void *in, size_t size) const = 0;
     virtual bool is_valid() const = 0;
     virtual void update_regions() = 0;
     virtual const bool operator!() = 0;
+
+    Region *get_region_by_name(const std::string& region_name);
+    Region *get_region_of_address(uintptr_t address) const;
+    uintptr_t get_call_address(uintptr_t address) const;
+    uintptr_t get_absolute_address(uintptr_t address, uintptr_t offset, uintptr_t size) const;
 
     ///** Read value, return true if success */
     template <typename T>
@@ -168,38 +164,27 @@ public:
         return write(address, in, sizeof(T)) == sizeof(T);
     }
 
-    region *
-    get_region_by_name(const std::string& region_name);
-
-    region *
-    get_region_of_address(uintptr_t address) const;
-
-    uintptr_t
-    get_call_address(uintptr_t address) const;
-
-    uintptr_t
-    get_absolute_address(uintptr_t address, uintptr_t offset, uintptr_t size) const;
-
 public:
     /// Value returned by various member functions when they fail.
     static constexpr size_t npos = static_cast<size_t>(-1);
 
-    std::vector<region> regions;
+    std::vector<Region> regions;
 };
 
 
-class phandler_pid : public phandler_i {
+/** Process - process is active */
+class Process : public IProcess {
 public:
-    using phandler_i::phandler_i;
-    using phandler_i::read;
+    using IProcess::IProcess;
+    using IProcess::read;
 
-    phandler_pid() : m_pid(0) {}
+    Process() : m_pid(0) {}
 
     /** Make process handler from PID */
-    explicit phandler_pid(pid_t pid) noexcept;
+    explicit Process(pid_t pid) noexcept;
 
     /** Make process handler from process executable filename */
-    explicit phandler_pid(const std::string& title);
+    explicit Process(const std::string& title);
 
     /*!
      * Returns a symlink to the original executable file, if it still exists
@@ -207,148 +192,28 @@ public:
      * If the pathname has been unlinked, the symbolic link will contain the string ' (deleted)' appended to the original pathname.
      */
     [[gnu::always_inline]]
-    sfs::path
-    get_exe() {
-        return sfs::read_symlink(sfs::path("/proc") / std::to_string(m_pid) / "exe");
-    }
+    sfs::path get_exe() { return sfs::read_symlink(sfs::path("/proc") / std::to_string(m_pid) / "exe"); }
 
     /*!
      * Returns path to the original executable file, if it still exists, or throws std::runtime_error("File not found").
      */
-    [[gnu::always_inline]]
-    sfs::path
-    get_executable() {
-        /* Ambiguous */
-        std::string exe = get_exe();
-        for (const region& region : regions) {
-            if (region.pathname == exe) {
-                struct stat sb{};
-                errno = 0;
-                int s = stat(exe.c_str(), &sb);
-                if (s == 0 && sb.st_dev == region.st_device && sb.st_ino == region.inode && region.offset == 0)
-                    return sfs::path(exe);
-            }
-        }
-        throw std::runtime_error("File not found");
-    }
+    sfs::path get_executable();
 
     /** Process working directory real path */
     [[gnu::always_inline]]
-    sfs::path get_working_directory() {
-        return sfs::read_symlink(sfs::path("/proc") / std::to_string(m_pid) / "cwd");
-    }
+    sfs::path get_working_directory() { return sfs::read_symlink(sfs::path("/proc") / std::to_string(m_pid) / "cwd"); }
 
     /** Checking */
     [[gnu::always_inline]]
-    bool is_valid() const override {
-        return m_pid != 0;
-    }
+    bool is_valid() const override { return m_pid != 0; }
 
     /** Process working directory real path */
     [[gnu::always_inline]]
-    bool is_running() const {
-        return sfs::exists(sfs::path("/proc") / std::to_string(m_pid));
-    }
+    bool is_running() const { return sfs::exists(sfs::path("/proc") / std::to_string(m_pid)); }
 
-    /** Read value */
-    [[gnu::always_inline]]
-    size_t read(uintptr_t address, void *out, size_t size) const override {
-        struct iovec local[1];
-        struct iovec remote[1];
-        local[0].iov_base = out;
-        local[0].iov_len = size;
-        remote[0].iov_base = reinterpret_cast<void *>(address);
-        remote[0].iov_len = size;
-        return static_cast<size_t>(process_vm_readv(m_pid, local, 1, remote, 1, 0));
-    }
-
-    /** Write value */
-    [[gnu::always_inline]]
-    size_t write(uintptr_t address, void *in, size_t size) const override {
-        struct iovec local[1];
-        struct iovec remote[1];
-        local[0].iov_base = in;
-        local[0].iov_len = size;
-        remote[0].iov_base = reinterpret_cast<void *>(address);
-        remote[0].iov_len = size;
-        return static_cast<size_t>(process_vm_writev(m_pid, local, 1, remote, 1, 0));
-    }
-
-    void update_regions() override {
-        regions.clear();
-        std::ifstream maps(sfs::path("/proc") / std::to_string(get_pid()) / "maps");
-        std::string line;
-        while (getline(maps, line)) {
-            std::istringstream iss(line);
-            std::string memorySpace, permissions, offset, device, inode;
-            if (iss >> memorySpace >> permissions >> offset >> device >> inode) {
-                std::string pathname;
-
-                for (size_t ls = 0, i = 0; i < line.length(); i++) {
-                    if (line.substr(i, 1) == " ") {
-                        ls++;
-
-                        if (ls == 5) {
-                            size_t begin = line.substr(i, line.size()).find_first_not_of(' ');
-
-                            if (begin != std::string::npos)
-                                pathname = line.substr(begin + i, line.size());
-                            else
-                                pathname.clear();
-                        }
-                    }
-                }
-
-                region region;
-
-                size_t memorySplit = memorySpace.find_first_of('-');
-                size_t deviceSplit = device.find_first_of(':');
-                uintptr_t rend;
-
-                std::stringstream ss;
-
-                if (memorySplit != std::string::npos) {
-                    ss << std::hex << memorySpace.substr(0, memorySplit);
-                    ss >> region.address;
-                    ss.clear();
-                    ss << std::hex << memorySpace.substr(memorySplit + 1, memorySpace.size());
-                    ss >> rend;
-                    region.size = (region.address < rend) ? (rend - region.address) : 0;
-                    ss.clear();
-                }
-
-                if (deviceSplit != std::string::npos) {
-                    region.st_device_major = static_cast<uint8_t>(stoi(device.substr(0, deviceSplit), nullptr, 16));
-                    region.st_device_minor = static_cast<uint8_t>(stoi(device.substr(deviceSplit + 1, device.size()), nullptr, 16));
-                }
-
-                ss << std::hex << offset;
-                ss >> region.offset;
-                ss.clear();
-                ss << std::dec << inode;
-                ss >> region.inode;
-
-                region.flags = region_mode_t::none;
-                region.flags |= (permissions[0] == 'r') ? region_mode_t::readable : region_mode_t::none;
-                region.flags |= (permissions[1] == 'w') ? region_mode_t::writable : region_mode_t::none;
-                region.flags |= (permissions[2] == 'x') ? region_mode_t::executable : region_mode_t::none;
-                region.flags |= (permissions[3] == '-') ? region_mode_t::shared : region_mode_t::none;
-
-                if (!pathname.empty()) {
-                    region.pathname = pathname;
-
-                    size_t fileNameSplit = pathname.find_last_of('/');
-
-                    if (fileNameSplit != std::string::npos) {
-                        region.filename = pathname.substr(fileNameSplit + 1, pathname.size());
-                    }
-                }
-                regions.push_back(region);
-            }
-        }
-        regions.shrink_to_fit();
-    }
-
+    size_t read(uintptr_t address, void *out, size_t size) const override;
+    size_t write(uintptr_t address, void *in, size_t size) const override;
+    void update_regions() override;
     constexpr pid_t get_pid() { return this->m_pid; }
 
     /** /proc/pid/cmdline
@@ -371,64 +236,43 @@ private:
     std::string m_cmdline;
 };
 
-class phandler_map_i : public phandler_i {
+/** IProcessM - memory mapped reader */
+class IProcessM : public IProcess {
 public:
-    using phandler_i::phandler_i;
+    using IProcess::IProcess;
 
-    /** Read value */
-    [[gnu::always_inline]]
-    size_t read(uintptr_t address, void *out, size_t size) const override {
-        using namespace std;
-        region *r = get_region_of_address(address);
-        if UNLIKELY(r == nullptr)
-            return npos;
-        if UNLIKELY(address + size > r->address + r->size) {
-            size = r->size - (address - r->address);
-        }
-        memcpy(out, reinterpret_cast<char *>(regions_on_map[r - &regions[0]] + (address - r->address)), size);
-        return size;
-    }
-
-    /** Write value */
-    [[gnu::always_inline]]
-    size_t write(uintptr_t address, void *in, size_t size) const override {
-        return static_cast<size_t>(size);
-    }
-
-    bool is_valid() const override {
-        return false;
-    }
-
-    void update_regions() override {
-
-    }
-
-    const bool operator!() override {
-        return 0;
-    }
+    size_t read(uintptr_t address, void *out, size_t size) const override;
+    size_t write(uintptr_t address, void *in, size_t size) const override;
+    bool is_valid() const override;
+    void update_regions() override;
+    const bool operator!() override;
 
 public:
     std::vector<char *> regions_on_map;
 };
 
-class phandler_file;
+class ProcessF;
 
-class phandler_memory : public phandler_map_i {
+/**
+ * IProcessM - memory mapped reader
+ * ProcessH - process loaded to HEAP
+ */
+class ProcessH : public IProcessM {
 public:
-    using phandler_map_i::phandler_map_i;
+    using IProcessM::IProcessM;
 
-    explicit phandler_memory(const phandler_pid& rhs) {
+    explicit ProcessH(const Process& rhs) {
         regions = rhs.regions;
-        for (const RE::region& region : rhs.regions) {
+        for (const RE::Region& region : rhs.regions) {
             char* map = new char[region.size];
             regions_on_map.emplace_back(map);
             ssize_t copied = rhs.read(region.address, map, region.size);
         }
     }
 
-    explicit phandler_memory(const phandler_file& rhs);
+    explicit ProcessH(const ProcessF& rhs);
 
-    ~phandler_memory() {
+    ~ProcessH() {
         for (char* r : regions_on_map) {
             if (r) {
                 delete[] r;
@@ -440,16 +284,19 @@ public:
 
 };
 
-
-class phandler_file : public phandler_map_i {
+/**
+ * IProcessM - memory mapped reader
+ * ProcessF - process file memory mapped
+ */
+class ProcessF : public IProcessM {
 public:
-    using phandler_map_i::phandler_map_i;
+    using IProcessM::IProcessM;
 
     /*!
      * Now, we will able to send data to another PC and search pointers together.
      */
     void
-    save(const phandler_pid& handler, const std::string& path) {
+    save(const Process& handler, const std::string& path) {
         regions = handler.regions;
 
         std::ofstream stream(path, std::ios_base::out | std::ios_base::binary);
@@ -465,7 +312,7 @@ public:
             throw std::invalid_argument("can not open '" + path + "'");
 
         size_t bytes_to_save = 0;
-        for (const RE::region& region : handler.regions)
+        for (const RE::Region& region : handler.regions)
             bytes_to_save += sizeof(region.size) + region.size;
         mf.resize(mf.size() + bytes_to_save);
 
@@ -475,7 +322,7 @@ public:
         snapshot += stream.tellp();
 
         regions_on_map.clear();
-        for(const RE::region& region : handler.regions) {
+        for(const RE::Region& region : handler.regions) {
             regions_on_map.emplace_back(snapshot);
             ssize_t copied = handler.read(region.address, snapshot, region.size);
             //snapshot += region.size + sizeof(mem64_t::bytes) - 1;
@@ -503,11 +350,11 @@ public:
 
         char* snapshot = mf.data();
         assert(stream.is_open());
-        assert(stream.tellp() != -1);
+        assert(stream.tellg() != -1);
         snapshot += stream.tellg();
 
         regions_on_map.clear();
-        for (const RE::region& region : regions) {
+        for (const RE::Region& region : regions) {
             regions_on_map.emplace_back(snapshot);
             //snapshot += region.size + sizeof(mem64_t::bytes) - 1;
             snapshot += region.size;
@@ -515,15 +362,14 @@ public:
     }
 
     /// Open (open snapshot from file)
-    explicit phandler_file(const std::string& path) {
+    explicit ProcessF(const std::string& path) {
         this->load(path);
     }
 
-    ~phandler_file() {
-    }
+    ~ProcessF() = default;
 
     /// Save (make snapshot)
-    explicit phandler_file(const phandler_pid& handler, const std::string& path) {
+    explicit ProcessF(const Process& handler, const std::string& path) {
         this->save(handler, path);
     }
 
@@ -577,7 +423,7 @@ public:
         m_cache_size = 0;
     }
 
-    template<class PH = __PHANDLER, typename std::enable_if<std::is_base_of<PH, phandler_file>::value>::type* = nullptr>
+    template<class PH = __PHANDLER, typename std::enable_if<std::is_base_of<PH, ProcessF>::value>::type* = nullptr>
     [[gnu::always_inline]]
     size_t read(uintptr_t address, void *out, size_t size) {
         if UNLIKELY(size > MAX_PEEKBUF_SIZE) {
@@ -608,14 +454,14 @@ public:
         return MIN(size, m_cache_size);
     }
 
-    template<class PH = __PHANDLER, typename std::enable_if<!std::is_base_of<PH, phandler_file>::value>::type* = nullptr>
+    template<class PH = __PHANDLER, typename std::enable_if<!std::is_base_of<PH, ProcessF>::value>::type* = nullptr>
     [[gnu::always_inline]]
     size_t read(uintptr_t address, void *out, size_t size) {
         return m_parent.read(address, out, size);
     }
 
 public:
-    static constexpr size_t MAX_PEEKBUF_SIZE = 4 * (1 << 10);
+    static constexpr size_t MAX_PEEKBUF_SIZE = 4u * (1u << 10u);
 
 private:
     __PHANDLER& m_parent;
@@ -624,141 +470,4 @@ private:
     uint8_t *m_cache;
 };
 
-
-/*bool //todo короче можно вместо стрима закинуть, например, вектор со стрингами
-handler::findPointer(void *out, uintptr_t address, std::vector<uintptr_t> offsets, size_t size, size_t point_size, std::ostream *ss)
-{
-    void *buffer;
-    if (ss) *ss<<"["<<offsets[0]<<"] -> ";
-    if (!this->read(&buffer, (void *)(address), point_size)) return false;
-    if (ss) *ss<<""<<buffer<<endl;
-    for(uint64_t i = 0; i < offsets.size()-1; i++) {
-        if (ss) *ss<<"["<<buffer<<" + "<<offsets[i]<<"] -> ";
-        if (!this->read(&buffer, buffer + offsets[i], point_size)) return false;
-        if (ss) *ss<<""<<buffer<<endl;
-    }
-    if (ss) *ss<<buffer<<" + "<<offsets[offsets.size()-1]<<" = "<<buffer+offsets[offsets.size()-1]<<" -> ";
-    if (!this->read(out, buffer + offsets[offsets.size() - 1], size)) return false;
-
-    return true;
-}
-
-size_t
-handler::findPattern(vector<uintptr_t> *out, region *region, const char *pattern, const char *mask)
-{
-    char buffer[0x1000];
-
-    size_t len = strlen(mask);
-    size_t chunksize = sizeof(buffer);
-    size_t totalsize = region->end - region->address;
-    size_t chunknum = 0;
-    size_t found = 0;
-
-    while (totalsize) {
-        size_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
-        size_t readaddr = region->address + (chunksize * chunknum);
-        bzero(buffer, chunksize);
-
-        if (this->read(buffer, (void *) readaddr, readsize)) {
-            for(size_t b = 0; b < readsize; b++) {
-                size_t matches = 0;
-
-                // если данные совпадают или пропустить
-                while (buffer[b + matches] == pattern[matches] || mask[matches] != 'x') {
-                    matches++;
-
-                    if (matches == len) {
-                        found++;
-                        out->push_back((uintptr_t) (readaddr + b));
-                    }
-                }
-            }
-        }
-
-        totalsize -= readsize;
-        chunknum++;
-    }
-    return found;
-}
-
-size_t
-handler::scan_exact(vector<Entry> *out,
-                   const region *region,
-                   vector<Entry> entries, 
-                   size_t increment)
-{
-    byte buffer[0x1000];
-
-    size_t chunksize = sizeof(buffer);
-    size_t totalsize = region->end - region->address;
-    size_t chunknum = 0;
-    size_t found = 0;
-    // TODO[HIGH] научить не добавлять, если предыдущий (собсна, наибольший) уже есть 
-    while (totalsize) {
-        size_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
-        uintptr_t readaddr = region->address + (chunksize * chunknum);
-        bzero(buffer, chunksize);
-
-        if (this->read(buffer, (void *) readaddr, readsize)) {    // read into buffer
-            for(uintptr_t b = 0; b < readsize; b += increment) {  // for each addr inside buffer
-                for(int k = 0; k < entries.size(); k++) {         // for each entry
-                    size_t matches = 0;
-                    while (buffer[b + matches] == entries[k].value.bytes[matches]) {  // находим адрес
-                        matches++;
-
-                        if (matches == SIZEOF_FLAG(entries[k].flags)) {
-                            found++;
-                            out->emplace_back(entries[k].flags, (uintptr_t)(readaddr + b), region, entries[k].value.bytes);
-                            //todo мне кажется, что нужно всё-таки добавить плавующую точку, посмотрим, как сделаю scan_reset
-                            goto sorry_for_goto;
-                        }
-                    }
-                }
-                sorry_for_goto: ;
-            }
-        }
-
-        totalsize -= readsize;
-        chunknum++;
-    }
-    return found; //size of pushed back values
-}*/
-
-
 NAMESPACE_END(RE)
-
-//[[deprecated("May be moved to scanner.hh")]]
-//bool find_pattern(uintptr_t *out, region *region, const char *pattern, const char *mask) {
-//    char buffer[0x1000];
-//
-//    uintptr_t len = strlen(mask);
-//    uintptr_t chunksize = sizeof(buffer);
-//    uintptr_t totalsize = region->size;
-//    uintptr_t chunknum = 0;
-//
-//    while (totalsize) {
-//        uintptr_t readsize = (totalsize < chunksize) ? totalsize : chunksize;
-//        uintptr_t readaddr = region->address + (chunksize * chunknum);
-//        bzero(buffer, chunksize);
-//
-//        if (this->read(readaddr, buffer, readsize)) {
-//            for (uintptr_t b = 0; b < readsize; b++) {
-//                uintptr_t matches = 0;
-//
-//                // если данные совпадают или пропустить
-//                while (buffer[b + matches] == pattern[matches] || mask[matches] != 'x') {
-//                    matches++;
-//
-//                    if (matches == len) {
-//                        *out = readaddr + b;
-//                        return true;
-//                    }
-//                }
-//            }
-//        }
-//
-//        totalsize -= readsize;
-//        chunknum++;
-//    }
-//    return false;
-//}

@@ -7,11 +7,11 @@
 #include <chrono>
 #include <reverseengine/core.hh>
 #include <reverseengine/scanner.hh>
-#include <reverseengine/pointer.hh>
+#include <reverseengine/pointerscan.hh>
 #include <reverseengine/value.hh>
 
 
-int main() {
+int main(int argc, const char *argv[]) {
     using std::cout, std::clog, std::cerr, std::endl;
     using namespace std::chrono;
     high_resolution_clock::time_point timestamp;
@@ -22,27 +22,26 @@ int main() {
             f<<"700";
     }
 
-    std::string target = "csgo_linux64";
+    // std::string target = "csgo_linux64";
     // std::string target = "PwnAdventure3-Linux-Shipping";
-    //std::string target = "FAKEMEM";
+    std::string target = "FAKEMEM";
 
-    RE::phandler_pid handler(target);
+    RE::Process handler(target);
     if (!handler)
         throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
 
     clog<<target<<", pid: "
             <<handler.get_pid()
             <<", title: "<< handler.get_cmdline()
-            <<", exe: "<<handler.get_exe()
             <<", executable: "<<handler.get_executable()
             <<endl;
     clog.flush();
 
     // ----------------------------------------------------------
-    std::string pointer_region = "libtier0_client.so";
-    std::vector<ptrdiff_t> pointer_offset {
-        0x6cbf, // 5f32 2e33 2e34 // "_2.3.4"
-    };
+    // std::string pointer_region = "libtier0_client.so";
+    // std::vector<uintptr_t> pointer_offset {
+    //     0x6cc0, // 5f32 2e33 2e34 // "_2.3.4"
+    // };
     // cout<<"pos_z: "<<*reinterpret_cast<float*>(&value)<<endl;
     // ----------------------------------------------------------
     // std::string pointer_region = "PwnAdventure3-Linux-Shipping";
@@ -62,30 +61,42 @@ int main() {
     // RE::pointer p(handler, pointer_region, pointer_offset);
 
     // std::vector<uintptr_t> ptr_resolved = p.resolve();
-    // cout<<p.str(ptr_resolved)<<endl;
-
-
-    uintptr_t pointer = handler.get_region_by_name(pointer_region)->address+0x6cc0;
-
-    uint64_t value = 0;
-    // if (!handler.read(ptr_resolved.back(), &value)) {
-    //     exit(1);
+    // if (pointer_offset.size() != ptr_resolved.size()) {
+    //     cout<<"Pointer is not fully resolved: "<<pointer_offset.size() <<" != "<< ptr_resolved.size()<<endl;
+    // } else {
+    //     uint64_t value = 0;
+    //     if (!handler.read(ptr_resolved.back(), &value)) {
+    //         exit(1);
+    //     }
+    //     cout<<"pos_z: "<<reinterpret_cast<char*>(&value)<<endl;
     // }
-    if (!handler.read(pointer, &value)) {
-        exit(1);
-    }
-    cout<<"pos_z: "<<reinterpret_cast<char*>(&value)<<endl;
+    //
+    // cout<<"ptr_resolved.back(): "<<RE::HEX(ptr_resolved.back())<<endl;
 
-    // RE::region *main_region = handler.get_region_by_name("PwnAdventure3-Linux-Shipping");
-    // cout<<"region_orig: "<<*main_region<<endl;
-    // RE::region *main_plus = handler.get_region_of_address(main_region->address+0x034158D8);
-    // cout<<"region_orig+0x034158D8: "<<*main_plus<<endl;
-
-    //cout<<"ptr_resolved.back(): "<<RE::HEX(ptr_resolved.back())<<endl;
-    // RE::phandler_file hndlr(handler, "asd");
     // RE::pointerscan ps(&handler);
-    // std::vector<RE::ptr> a = ps.scan_regions(0, 2048, 5);
-    //std::vector<RE::ptr> a = ps.scan_regions(ptr_resolved.back(), 2048, 5);
+    //or
+    RE::ProcessF processF(handler, "asd");
+    RE::pointerscan ps(&processF);
+    //or
+    // RE::ProcessH processH(handler);
+    // RE::pointerscan ps(&processH);
 
+    // std::vector<RE::pointer_swath> scan_result = ps.scan_regions(0x7f50dc812000);
+    std::vector<RE::pointer_swath> scan_result = ps.scan_regions(0x000562C6EDE0010); //fakemem`begin+0x10
+
+    // *(*("FAKEMEM"+302100)+4)+40
+    // "FAKEMEM"+302100->+4->+40
+    cout<<"pointer list:"<<endl;
+    for (const RE::pointer_swath& region : scan_result) {
+        for(const std::vector<uintptr_t>& offsets : region.offsets) {
+            cout<<region.file.filename()<<"+";
+            for(const uintptr_t& o : offsets) {
+                cout<<RE::HEX(o)<<"+";
+            }
+            cout<<"\b"<<endl;
+        }
+    }
+
+    cout<<"No error"<<endl;
     return 0;
 }

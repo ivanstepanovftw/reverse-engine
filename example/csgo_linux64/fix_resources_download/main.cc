@@ -87,7 +87,7 @@ main(int argc, char* argv[])
     }
     /// Trainer and scanner example
     RE::handler csgo;
-    RE::region *engine_client_so;
+    RE::Region *engine_client_so;
 
 stage_waiting:;
     cout<<"1. Waiting for process."<<endl;

@@ -1,3 +1,5 @@
+#include <utility>
+
 //
 // Created by root on 24.03.19.
 //
@@ -9,11 +11,21 @@
 #include <reverseengine/core.hh>
 #include <ostream>
 
+
 NAMESPACE_BEGIN(RE)
 
+namespace sfs = std::filesystem;
+namespace bio = boost::iostreams;
 
-class region_swath {
-    std::vector<region> regions;
+
+class pointer_swath {
+public:
+    pointer_swath() = default;
+    explicit pointer_swath(const sfs::path& file) : file(file) {};
+
+public:
+    sfs::path file;
+    std::vector<std::vector<uintptr_t>> offsets;
 };
 
 
@@ -37,25 +49,22 @@ public:
      * resolved[4] + offset[5] == resolved[5] == resolved.back()
      * read<float>(resolved.back(), &player[0].pos.z);
      */
-    std::string region_name;
-    std::vector<ptrdiff_t> offsets;
+    sfs::path file;
+    std::vector<uintptr_t> offsets;
 
 public:
-    pointer(phandler_i& handler, const std::string& region_name, const std::vector<ptrdiff_t>& offsets)
-    : handler(handler), region_name(region_name), offsets(offsets) { }
-
-
+    pointer(IProcess& handler, const sfs::path& file, const std::vector<uintptr_t>& offsets)
+    : handler(handler), file(file), offsets(offsets) { }
 
     std::vector<uintptr_t>
     resolve() {
         std::vector<uintptr_t> ptr_resolved;
         ptr_resolved.reserve(offsets.size());
 
-        uintptr_t last = handler.get_region_by_name(region_name)->address + offsets[0];
+        uintptr_t last = handler.get_region_by_name(file.string())->address + offsets[0];
         for (size_t i = 1; i < offsets.size(); i++) {
             if (!handler.read(last, &last)) {
-                //TODO[CRITICAL]: ambiguous what to return? throw something?
-                std::cerr<<"resolve: Cannot resolve pointer: offset "<<i<<std::endl;
+                ptr_resolved.resize(i);
                 return ptr_resolved;
             }
             ptr_resolved.emplace_back(last);
@@ -65,26 +74,9 @@ public:
         return ptr_resolved;
     }
 
-    std::string
-    str(const std::vector<uintptr_t>& resolved) const {
-        std::ostringstream oss;
-        oss<<"[\""<<region_name<<"\"+"<<HEX(offsets[0])<<"] -> "<<HEX(resolved[0])<<"\n";
-        for (size_t i = 0; i < offsets.size()-2; i++) {
-            oss<<"["<<HEX(resolved[i])<<"+"<<HEX(offsets[i+1])<<"] -> "<<HEX(resolved[i+1])<<"\n";
-        }
-        oss<<""<<HEX(resolved.back())<<"+"<<HEX(offsets.back())<<" = "<<HEX(resolved.back()+offsets.back())<<"\n";
-        return oss.str();
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const pointer& pointer) {
-        //TODO[CRITICAL]: ambiguous
-        std::vector<uintptr_t> resolved = {0,0,0,0,0,0,0,0,0,0,0};
-        os << pointer.str(resolved);
-        return os;
-    }
 
 private:
-    phandler_i &handler;
+    IProcess &handler;
 };
 
 

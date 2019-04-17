@@ -9,6 +9,7 @@ set(RE_LIBRARY_NAME "${PROJECT_NAME}" CACHE INTERNAL "")
 # └──────────────────────────────────────────────────────────────────┘
 file(GLOB SOURCES "src/*.cc")
 add_library(${RE_LIBRARY_NAME} SHARED ${SOURCES})
+#add_dependencies(${RE_LIBRARY_NAME} ex_all)
 
 # ┌──────────────────────────────────────────────────────────────────┐
 #   Setup public include directory
@@ -108,6 +109,7 @@ endif()
 # └──────────────────────────────────────────────────────────────────┘
 target_compile_options(${RE_LIBRARY_NAME} PUBLIC
         -O3
+#        -O0
         -g3
         -pipe
         -m64
@@ -115,6 +117,7 @@ target_compile_options(${RE_LIBRARY_NAME} PUBLIC
         -fstack-protector-strong
 #        -Wformat -Werror=format-security
 #        -Wall -Wno-unused -Wextra -Wpedantic
+        -fopenmp
         )
 
 set_target_properties(${RE_LIBRARY_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -138,14 +141,24 @@ target_compile_definitions(${RE_LIBRARY_NAME} PUBLIC
         RE_ADJUST_DATA_TO_VAL_LOOP=3  # 1: raw loop, 2: manual unroll, 3: manual uroll reversed, 4: manual unroll large
         #RE_ADJUST_DATA_TO_VAL_LOOP_1_UNROLL=-1  # undefined,-1,any
 
-        _FORTIFY_SOURCE=2  #TODO[low]: this option somehow speeds up std::vector...
-        NDEBUG
+        _FORTIFY_SOURCE=2
+#        NDEBUG
         )
 
 target_link_options(${RE_LIBRARY_NAME} PUBLIC
         "LINKER:-z,relro,-z,now"
         "LINKER:-z,defs"
         )
+
+message(STATUS "R2_FOUND=${R2_FOUND}")
+message(STATUS "R2_LIBRARIES=${R2_LIBRARIES}")
+message(STATUS "R2_LINK_LIBRARIES=${R2_LINK_LIBRARIES}")
+message(STATUS "R2_LIBRARY_DIRS=${R2_LIBRARY_DIRS}")
+message(STATUS "R2_LDFLAGS=${R2_LDFLAGS}")
+message(STATUS "R2_LDFLAGS_OTHER=${R2_LDFLAGS_OTHER}")
+message(STATUS "R2_INCLUDE_DIRS=${R2_INCLUDE_DIRS}")
+message(STATUS "R2_CFLAGS=${R2_CFLAGS}")
+message(STATUS "R2_CFLAGS_OTHER=${R2_CFLAGS_OTHER}")
 
 target_link_libraries(${RE_LIBRARY_NAME}
         pthread
@@ -155,6 +168,7 @@ target_link_libraries(${RE_LIBRARY_NAME}
         bitmask
         rt
         ${R2_LIBRARIES}
+        -fopenmp
         )
 
 # ┌──────────────────────────────────────────────────────────────────┐
