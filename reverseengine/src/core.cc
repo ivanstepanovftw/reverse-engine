@@ -200,15 +200,12 @@ RE::Process::update_regions() {
         regions.push_back(r);
     }
     std::vector<sfs::path> r_section_text;
-
-    #pragma omp parallel for
     for(size_t i = 0; i < regions.size(); i++) {
         Region& r = regions[i];
         if ((r.flags & region_mode_t::writable) != 0
             || r.offset != 0
             || std::find_if(r_section_text.begin(), r_section_text.end(), [&r](const sfs::path& f) { return f == r.file; } ) != r_section_text.end())
             continue;
-        #pragma omp critical
         r_section_text.push_back(r.file);
         if (sfs::exists(r.file)) {
             std::clog <<"R2: opening region: "<<r<<std::endl;

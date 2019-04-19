@@ -176,18 +176,12 @@ main(int argc, char *argv[])
     using std::clog, std::cout, std::cerr, std::flush, std::endl, std::cin;
     using _Type = unsigned int; // fixme[low]: (RAND LIMITATIONS) will use 'int' instead of 'uint64_t'
 
-    {
-        std::ofstream f("/proc/self/oom_score_adj", std::ios::out | std::ios::binary);
-        f<<"1000";
-    }
+    { std::ofstream f("/proc/self/oom_score_adj", std::ios::out | std::ios::binary); if (f.good()) f<<"1000"; }
     CSequentialGenerator<_Type> s;
     CRandomGenerator<_Type> r;
 
     Heap<_Type> h;
 
-    std::string command;
-    ssize_t allocate_please = 0;
-    size_t allocate_that = 0;
     enum { // fixme[low]: ugly code
         FLAT,
         SEQUENTIAL,
@@ -197,6 +191,7 @@ main(int argc, char *argv[])
     cout<<help()<<endl;
     while (true) {
         cout << "> " << flush;
+        std::string command;
         cin >> command;
         if        (command.substr(0, 1) == "d") { h.generate_data(0, []() { return 0; }); continue;
         } else if (command.substr(0, 1) == "i") { cout<<h.str()<<endl; continue;
@@ -205,14 +200,16 @@ main(int argc, char *argv[])
         } else if (command.substr(0, 1) == "r") { generator = RANDOM; continue;
         } else if (command.substr(0, 1) == "q") { return 0;
         } else {
+            ssize_t allocate_please = 0;
             std::istringstream iss(command);
             iss >> allocate_please;
             if (iss.fail()) {
                 cout << "Please enter an integer." << endl;
                 continue;
             }
+            size_t allocate_that = 0;
             if (allocate_please < 0)
-                allocate_that = static_cast<size_t>(-allocate_please * (1<<20));
+                allocate_that = static_cast<size_t>(-allocate_please * (1u<<20u));
             else
                 allocate_that = static_cast<size_t>(allocate_please);
             switch (generator) {

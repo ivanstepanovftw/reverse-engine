@@ -13,12 +13,7 @@ int main(int argc, const char *argv[]) {
     using std::cout, std::clog, std::cerr, std::endl;
     using namespace std::chrono;
     high_resolution_clock::time_point timestamp;
-
-    {
-        std::fstream f("/proc/self/oom_score_adj", std::ios::out | std::ios::binary);
-        if (f.is_open())
-            f<<"700";
-    }
+    { std::fstream f("/proc/self/oom_score_adj", std::ios::out | std::ios::binary); if (f.is_open()) f<<"700"; }
 
     //sleep(100000);
     //return 0;
@@ -84,7 +79,6 @@ int main(int argc, const char *argv[]) {
     handler_mmap.update_regions();
     RE::Scanner scanner_mmap(&handler_mmap);
 
-    return 0;
 
     RE::matches_t matches_curr = matches_prev;
     scanner_mmap.scan_update(matches_curr);
@@ -95,31 +89,6 @@ int main(int argc, const char *argv[]) {
     clog<<"mem_disk: "<<matches_curr.mem_disk()<<endl;
     clog<<"size: "<<matches_curr.size()<<endl;
     clog<<"count: "<<matches_curr.count()<<endl;
-
-
-    /*
-     * Какой адрес ищём? Пусть будет А.
-     * scan_regions(A)
-     * получили результаты, теперь ищем, какие результаты зелёные. Если нет ни одного, то:
-     * для каждого найденного результата ищем результат, и так рекурсивно.
-     */
-
-    /*
-     *  Сканируем из памяти в свою память           (scanmem)
-     *      -> Сканируем из памяти в свою память    (scanmem)
-     *  Сканируем из памяти в диск                  (Cheat Engine)
-     *      -> Сканируем из диска в диск            (Cheat Engine)
-     */
-
-
-
-    //int isd = 0;
-    //for(RE::value_t val : matches_first) {
-    //    if (isd>=10)
-    //        break;
-    //    clog<<"val: "<<isd<<": "<<val<<endl;
-    //    isd++;
-    //}
 
     return 0;
 }

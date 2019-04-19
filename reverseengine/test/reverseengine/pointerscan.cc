@@ -75,14 +75,14 @@ int main(int argc, const char *argv[]) {
 
     // RE::pointerscan ps(&handler);
     //or
-    RE::ProcessF processF(handler, "asd");
-    RE::pointerscan ps(&processF);
+    // RE::ProcessF processF(handler, "asd");
+    // RE::pointerscan ps(&processF);
     //or
-    // RE::ProcessH processH(handler);
-    // RE::pointerscan ps(&processH);
+    RE::ProcessH processH(handler);
+    RE::pointerscan ps(&processH);
 
     // std::vector<RE::pointer_swath> scan_result = ps.scan_regions(0x7f50dc812000);
-    std::vector<RE::pointer_swath> scan_result = ps.scan_regions(0x000562C6EDE0010); //fakemem`begin+0x10
+    std::vector<RE::pointer_swath> scan_result = ps.scan_regions(0x000562C6EDE0010); //fakemem`begin+0x10 //43 pointera
 
     // *(*("FAKEMEM"+302100)+4)+40
     // "FAKEMEM"+302100->+4->+40

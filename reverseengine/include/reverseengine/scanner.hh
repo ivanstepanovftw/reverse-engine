@@ -431,13 +431,14 @@ public:
             //     cout << HEX(i) << ",";
             // cout<<"\b}"<<endl; //fixme [debug] #1
 
-            if (!handler->read(last+o1, &last)) {
+            uintptr_t s_last;
+            if (!handler->read(last+o1, &s_last)) {
                 // cout<<"helper: cannot dereference"<<endl; //fixme [debug] #3
                 continue;
             }
 
             /// for each offset in level2
-            helper(off, last, address, ps);
+            helper(off, s_last, address, ps);
         }
     }
 
@@ -480,7 +481,7 @@ public:
                 static_offset_to = std::max(static_offset_to, se);
             }
 
-            // static_offset_to = 0x40; //fixme [debug] REMOVEME
+            // static_offset_to = 0x800f; //fixme [debug] REMOVEME
 
             uintptr_t static_begin = region.address;
             uintptr_t static_end = region.address + static_offset_to;
@@ -529,6 +530,8 @@ public:
                 // }
                 // if (stop_flag)
                 //     break;
+                // if UNLIKELY(stop_flag)
+                //     continue;
             }
 
             if (!ps.offsets.empty()) {
@@ -545,10 +548,10 @@ public:
     RE::IProcess *handler;
     volatile bool stop_flag = false;
     volatile double scan_progress = 0.0;
-    uintptr_t max_level = 5;
+    uintptr_t max_level = 3;
 
     uintptr_t min_offset = 0;
-    uintptr_t max_offset = 0x1000;
+    uintptr_t max_offset = 0x100;
     uintptr_t align = sizeof(uint32_t);
 
     omp_lock_t writelock;

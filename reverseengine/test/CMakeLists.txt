@@ -13,7 +13,7 @@ add_subdirectory(binding)
 set(TARGET FAKEGAME)
 
 # Another one requirement: it must be secure as hell, so we need to use all compiler/linker methods for hardening
-add_executable(${TARGET} util/fakegame.cc)
+add_executable(${TARGET} util/games/simple/fakegame.cc)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
 target_compile_options(${TARGET} PUBLIC
         -O3
@@ -43,7 +43,7 @@ target_link_libraries(${TARGET}
 # └──────────────────────────────────────────────────────────────────┘
 set(TARGET FAKEMEM)
 
-add_executable(${TARGET} util/fakemem.cc)
+add_executable(${TARGET} util/fakemem/fakemem.cc)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
 target_compile_options(${TARGET} PUBLIC
         -O2
@@ -58,7 +58,7 @@ target_compile_definitions(${TARGET} PUBLIC
 # └──────────────────────────────────────────────────────────────────┘
 set(TARGET SIGGEN)
 
-add_executable(${TARGET} util/siggen.cc)
+add_executable(${TARGET} util/siggen/siggen.cc)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
 target_compile_options(${TARGET} PUBLIC
         -O2
