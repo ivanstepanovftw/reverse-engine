@@ -1,0 +1,19 @@
+
+{
+   calloc
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:calloc
+   obj:/usr/lib/libr_bin.so.3.5.0-git
+   obj:/usr/lib/libr_bin.so.3.5.0-git
+   obj:/usr/lib/libr_bin.so.3.5.0-git
+   obj:/usr/lib/libr_bin.so.3.5.0-git
+   fun:r_bin_object_set_items
+   obj:/usr/lib/libr_bin.so.3.5.0-git
+   obj:/usr/lib/libr_bin.so.3.5.0-git
+   fun:r_bin_open_io
+   fun:open
+   fun:_ZN2RE7Process14update_regionsEv
+   fun:_ZN2RE7ProcessC1ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE
+   fun:main
+}

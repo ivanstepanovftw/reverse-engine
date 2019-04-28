@@ -34,6 +34,7 @@
 #include <filesystem>
 #include <regex>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <boost/iostreams/device/mapped_file.hpp>
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
@@ -51,8 +52,7 @@ namespace sfs = std::filesystem;
 namespace bio = boost::iostreams;
 
 
-enum class region_mode_t : uint8_t
-{
+enum class region_mode_t : uint8_t {
     none = 0u,
     executable = 1u<<0u,
     writable   = 1u<<1u,
@@ -65,25 +65,9 @@ BITMASK_DEFINE_VALUE_MASK(region_mode_t, 0xff)
 
 class Region {
 public:
-    uintptr_t address;
-    uintptr_t size;
-    bitmask::bitmask<region_mode_t> flags;
-
-    /// File data
-    uintptr_t offset;
-    union {
-        struct {
-            uint8_t st_device_minor;
-            uint8_t st_device_major;
-        };
-        __dev_t st_device;
-    };
-    uint64_t inode;
-    sfs::path file;
-    R2::Bin r2;
-
     Region()
-    : address(0), size(0), flags(region_mode_t::none), offset(0), st_device(0), inode(0) { }
+    : address(0), size(0), flags(region_mode_t::none), offset(0),
+    st_device_minor(0), st_device_major(0), inode(0) { }
 
     ~Region() = default;
 
@@ -94,7 +78,7 @@ public:
     std::string str() const {
         std::ostringstream ss;
         ss << HEX(address)<<"-"<<HEX(address+size)<<" ("<<HEX(size)<<") "
-           << (flags & region_mode_t::shared?"s":"-") << (flags & region_mode_t::readable?"r":"-") << (flags & region_mode_t::writable?"w":"-") << (flags & region_mode_t::executable?"x":"-") << " "
+           << (flags & region_mode_t::shared?"s":"p") << (flags & region_mode_t::readable?"r":"-") << (flags & region_mode_t::writable?"w":"-") << (flags & region_mode_t::executable?"x":"-") << " "
            << HEX(offset) << " "
            << HEX(st_device_major)<<":"<< HEX(st_device_minor) <<" "
            << inode<<" "
@@ -120,6 +104,18 @@ private:
         ar & inode;
         // ar & file;
     }
+
+public:
+    uintptr_t address;
+    uintptr_t size;
+    bitmask::bitmask<region_mode_t> flags;
+
+    /// File data
+    uintptr_t offset;
+    uint8_t st_device_minor;/* Ambiguous */
+    uint8_t st_device_major;/* Ambiguous */
+    uint64_t inode;
+    sfs::path file;
 };
 
 /********************
@@ -135,7 +131,7 @@ public:
     virtual size_t write(uintptr_t address, void *in, size_t size) const = 0;
     virtual bool is_valid() const = 0;
     virtual void update_regions() = 0;
-    virtual const bool operator!() = 0;
+    virtual bool operator!() = 0;
 
     Region *get_region_by_name(const std::string& region_name);
     Region *get_region_of_address(uintptr_t address) const;
@@ -229,7 +225,7 @@ public:
         return m_cmdline;
     }
 
-    const bool operator!() override { return !is_valid() || !is_running(); }
+    bool operator!() override { return !is_valid() || !is_running(); }
 
 private:
     pid_t m_pid;
@@ -245,7 +241,7 @@ public:
     size_t write(uintptr_t address, void *in, size_t size) const override;
     bool is_valid() const override;
     void update_regions() override;
-    const bool operator!() override;
+    bool operator!() override;
 
 public:
     std::vector<char *> regions_on_map;
@@ -292,75 +288,6 @@ class ProcessF : public IProcessM {
 public:
     using IProcessM::IProcessM;
 
-    /*!
-     * Now, we will able to send data to another PC and search pointers together.
-     */
-    void
-    save(const Process& handler, const std::string& path) {
-        regions = handler.regions;
-
-        std::ofstream stream(path, std::ios_base::out | std::ios_base::binary);
-        boost::archive::binary_oarchive archive(stream, boost::archive::no_header);
-        archive << *this;
-        stream.flush();
-
-        params.path = path;
-        params.flags = bio::mapped_file::mapmode::readwrite;
-        params.new_file_size = 0; //todo[critical]: to remove??
-        mf.open(params);
-        if (!mf.is_open())
-            throw std::invalid_argument("can not open '" + path + "'");
-
-        size_t bytes_to_save = 0;
-        for (const RE::Region& region : handler.regions)
-            bytes_to_save += sizeof(region.size) + region.size;
-        mf.resize(mf.size() + bytes_to_save);
-
-        char* snapshot = mf.data();
-        assert(stream.is_open());
-        assert(stream.tellp() != -1);
-        snapshot += stream.tellp();
-
-        regions_on_map.clear();
-        for(const RE::Region& region : handler.regions) {
-            regions_on_map.emplace_back(snapshot);
-            ssize_t copied = handler.read(region.address, snapshot, region.size);
-            //snapshot += region.size + sizeof(mem64_t::bytes) - 1;
-            snapshot += region.size;
-        }
-    }
-
-    void
-    load(const std::string& path) {
-        std::ifstream stream(path, std::ios_base::in | std::ios_base::binary);
-        std::string m(magic);
-        stream.read(&m[0], m.size());
-
-        if (!stream || m != magic) {
-            return;
-        }
-        boost::archive::binary_iarchive archive(stream, boost::archive::no_header);
-        archive >> *this;
-
-        params.path = path;
-        params.flags = bio::mapped_file::mapmode::readwrite;
-        mf.open(params);
-        if (!mf.is_open())
-            throw std::invalid_argument("can not open '" + path + "'");
-
-        char* snapshot = mf.data();
-        assert(stream.is_open());
-        assert(stream.tellg() != -1);
-        snapshot += stream.tellg();
-
-        regions_on_map.clear();
-        for (const RE::Region& region : regions) {
-            regions_on_map.emplace_back(snapshot);
-            //snapshot += region.size + sizeof(mem64_t::bytes) - 1;
-            snapshot += region.size;
-        }
-    }
-
     /// Open (open snapshot from file)
     explicit ProcessF(const std::string& path) {
         this->load(path);
@@ -373,6 +300,13 @@ public:
         this->save(handler, path);
     }
 
+    /*!
+     * Now, we will able to send data to another PC and search pointers together.
+     */
+    void save(const Process& handler, const std::string& path);
+
+    void load(const std::string& path);
+
     bool is_valid() const override {
         return false;
     }
@@ -381,7 +315,7 @@ public:
 
     }
 
-    const bool operator!() override {
+    bool operator!() override {
         return 0;
     }
 
@@ -404,16 +338,16 @@ private:
 
 /** The cached reader made for reading small values many times to reduce system calls */
 template<class __PHANDLER>
-class cached_reader {
+class CachedReader {
 public:
-    explicit cached_reader(__PHANDLER& parent)
-            : m_parent(parent) {
+    explicit CachedReader(__PHANDLER& parent)
+    : m_parent(parent) {
         m_base = 0;
         m_cache_size = 0;
         m_cache = new uint8_t[MAX_PEEKBUF_SIZE];
     }
 
-    ~cached_reader() {
+    ~CachedReader() {
         delete[] m_cache;
     }
 
@@ -468,6 +402,80 @@ private:
     uintptr_t m_base; // base address of cached region
     size_t m_cache_size;
     uint8_t *m_cache;
+};
+
+
+class RegionStatic {
+public:
+    RegionStatic(const Region& region)
+    : region(region), address(region.address), size(region.size) {
+        address = region.address;
+        bin = R2::Bin(region.file);
+        size = 0;
+        for(RBinSection *section : bin.get_sections()) {
+            uintptr_t __sz = section->vaddr + section->vsize;
+            size = std::max(size, __sz);
+        }
+    }
+
+public:
+    Region region;
+    uintptr_t address;
+    uintptr_t size;
+    R2::Bin bin;
+};
+
+
+class StaticRegions {
+public:
+    StaticRegions() = delete;
+    ~StaticRegions() = default;
+
+    explicit StaticRegions(IProcess& proc)
+    : proc(proc) {
+        update();
+    }
+
+    void update() {
+        std::vector<sfs::path> r_section_text;
+        for(size_t i = 0; i < proc.regions.size(); i++) {
+            Region& r = proc.regions[i];
+            if ((r.flags & region_mode_t::writable) != 0
+            || r.offset != 0
+            || std::find_if(r_section_text.begin(), r_section_text.end(), [&r](const sfs::path& f) { return f == r.file; }) != r_section_text.end())
+                continue;
+            r_section_text.push_back(r.file);
+            if (sfs::exists(r.file)) {
+                std::clog << "StaticRegions: parsing .text region: " << r << std::endl;
+                RegionStatic rs(r);
+                if (rs.size > 0)
+                    sregions.emplace_back(rs);
+            }
+        }
+        cout<<"StaticRegions: .sregions.size(): "<<sregions.size()<<endl;
+    }
+
+    RegionStatic *get_region_of_address(uintptr_t address) const {
+        size_t first, last, mid;
+        first = 0;
+        last = sregions.size();
+        while (first < last) {
+            mid = (first + last) / 2;
+            // cout<<"mid: "<<mid<<endl;
+            if (address < sregions[mid].address) {
+                last = mid;
+            } else if (address >= sregions[mid].address + sregions[mid].size) {
+                first = mid;
+            } else {
+                return (RegionStatic *)&sregions[mid];
+            }
+        }
+        return nullptr;
+    }
+
+public:
+    IProcess& proc;
+    std::vector<RegionStatic> sregions;
 };
 
 NAMESPACE_END(RE)

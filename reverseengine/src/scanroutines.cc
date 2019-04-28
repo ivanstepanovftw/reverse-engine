@@ -704,7 +704,7 @@ DEFINE_STRING_SMALLOOP_EQUALTO_ROUTINE(56)
     }
 
 
-RE::scan_routine_t RE::sm_get_scanroutine(RE::Edata_type dt, RE::Ematch_type mt, flag uflags, bool reverse_endianness)
+RE::scan_routine_t RE::sm_get_scanroutine(RE::Edata_type dt, RE::Ematch_type mt, const flag& uflags, bool reverse_endianness)
 {
     CHOOSE_ROUTINE_FOR_ALL_NUMBER_TYPES(MATCHANY, ANY)
     CHOOSE_ROUTINE_FOR_ALL_NUMBER_TYPES(MATCHUPDATE, UPDATE)

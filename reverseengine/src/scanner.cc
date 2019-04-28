@@ -165,13 +165,12 @@ valid_number:;
 //fixme[high]: Edata_type_to_match_flags must be a function
     uservalue[0].flags &= RE::flag(data_type);
     uservalue[1].flags &= RE::flag(data_type);
-    return;
 }
 
 
 
 bool
-RE::Scanner::scan_regions(matches_t& writing_matches,
+RE::Scanner::scan_regions(ByteMatches& writing_matches,
                           const Edata_type& data_type,
                           const Cuservalue *uservalue,
                           const Ematch_type& match_type)
@@ -194,8 +193,8 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
      * The actual allocation is that plus the rounded size of the maximum possible VLT.
      * This is needed because the last byte might be scanned as max size VLT,
      * thus need 2^16 - 2 extra bytes after it */
-    constexpr size_t MAX_BUFFER_SIZE = 128 * (1<<10);
-    constexpr size_t MAX_ALLOC_SIZE = MAX_BUFFER_SIZE + 64 * (1<<10);
+    constexpr size_t MAX_BUFFER_SIZE = 128u * (1u<<10u);
+    constexpr size_t MAX_ALLOC_SIZE = MAX_BUFFER_SIZE + 64u * (1u<<10u);
 
     /* allocate data array */
     uint8_t *buffer = new uint8_t[MAX_ALLOC_SIZE];
@@ -204,7 +203,7 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
     size_t required_extra_bytes_to_record = 0;
 
     /* check every memory region */
-    for(const RE::Region& region : handler->regions) {
+    for(const RE::Region& region : handler.regions) {
         /* For every offset, check if we have a match. */
         size_t memlength = region.size;
         size_t buffer_size = 0;
@@ -223,7 +222,7 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
 
                 /* load the next buffer block */
                 size_t alloc_size = MIN(memlength, MAX_ALLOC_SIZE);
-                size_t copied = handler->read(reg_pos, buffer, alloc_size);
+                size_t copied = handler.read(reg_pos, buffer, alloc_size);
                 if UNLIKELY(copied == IProcess::npos)
                     break;
                 else if UNLIKELY(copied < alloc_size) {
@@ -240,7 +239,7 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
             }
 
             mem64_t *memory_ptr = reinterpret_cast<mem64_t *>(buf_pos);
-            RE::flag checkflags = RE::flag_t::flags_empty;
+            RE::flag checkflags; // = flag_t::flags_empty;
 
             /* check if we have a match */
             size_t match_length = (*sm_scan_routine)(memory_ptr, memlength, nullptr, uservalue, checkflags);
@@ -262,15 +261,15 @@ RE::Scanner::scan_regions(matches_t& writing_matches,
 }
 
 
-bool RE::Scanner::scan_update(RE::matches_t& writing_matches) {
-    cached_reader reader(*handler);
+bool RE::Scanner::scan_update(RE::ByteMatches& writing_matches) {
+    CachedReader reader(handler);
 
     // Invalidate cache to get fresh values
-    for (swath_t& s : writing_matches.swaths) {
+    for (ByteSwath& s : writing_matches.swaths) {
         //const size_t copied = (*handler).read(s.base_address, &s.bytes[0], s.bytes.size());
         const size_t copied = reader.read(s.base_address, &s.bytes[0], s.bytes.size());
         /* check if the read succeeded */
-        if UNLIKELY(copied == handler->npos) {
+        if UNLIKELY(copied == handler.npos) {
             //cout<<"Resizing swath "<<HEX(s.base_address)<<" from "<<s.bytes.size()<<" to "<<0<<" elements"<<endl;
             //cout<<"Error: can not read "<<s.bytes.size()<<" bytes from "<<HEX(s.base_address)<<": "<<strerror(errno)<<endl;
             s.bytes.resize(0);
@@ -287,7 +286,7 @@ bool RE::Scanner::scan_update(RE::matches_t& writing_matches) {
 
 
 bool
-RE::Scanner::scan_recheck(matches_t& writing_matches,
+RE::Scanner::scan_recheck(ByteMatches& writing_matches,
                           const RE::Edata_type& data_type,
                           const RE::Cuservalue *uservalue,
                           RE::Ematch_type match_type)
@@ -302,19 +301,18 @@ RE::Scanner::scan_recheck(matches_t& writing_matches,
     scan_progress = 0.0;
     stop_flag = false;
 
-    for (swath_t& s : writing_matches.swaths) {
+    for (ByteSwath& s : writing_matches.swaths) {
         for (size_t it = 0; it < s.bytes.size(); it++) {
             mem64_t *mem = reinterpret_cast<mem64_t *>(&s.bytes[it]);
             RE::flag f = s.flags[it];
             size_t mem_size = f.memlength(data_type);
-
-            RE::flag checkflags = flag_t::flags_empty;
 
             if (f != flag_t::flags_empty) {
                 /* Test only valid old matches */
                 value_t val;
                 val = s.to_value(it);
 
+                RE::flag checkflags; // = flag_t::flags_empty;
                 unsigned int match_length = (*sm_scan_routine)(mem, mem_size, &val, uservalue, checkflags);
                 s.flags[it] = checkflags;
             }
@@ -327,9 +325,9 @@ RE::Scanner::scan_recheck(matches_t& writing_matches,
 
 
 
-bool RE::Scanner::scan_fit(RE::matches_t& writing_matches) {
+bool RE::Scanner::scan_fit(RE::ByteMatches& writing_matches) {
     // Invalidate cache to get fresh values
-    for (swath_t& s : writing_matches.swaths) {
+    for (ByteSwath& s : writing_matches.swaths) {
         s.bytes.shrink_to_fit();
         s.flags.shrink_to_fit();
         assert(s.bytes.capacity() == s.flags.capacity());

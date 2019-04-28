@@ -45,11 +45,11 @@ size_t RE::Cuservalue::parse_uservalue_int(const std::string& text)
         return strlen(text_c) - MAX(strlen(endptr), strlen(endptr2));
     
     /// determine correct flags
-    if (valid_sint && snum >= INT64_MIN && snum <=  INT64_MAX) { this->i64 = static_cast< int64_t>(snum); this->flags |= flag_t::flag_i64; }
+    if (valid_sint                                           ) { this->i64 = static_cast< int64_t>(snum); this->flags |= flag_t::flag_i64; }
     if (valid_sint && snum >= INT32_MIN && snum <=  INT32_MAX) { this->i32 = static_cast< int32_t>(snum); this->flags |= flag_t::flag_i32; }
     if (valid_sint && snum >= INT16_MIN && snum <=  INT16_MAX) { this->i16 = static_cast< int16_t>(snum); this->flags |= flag_t::flag_i16; }
     if (valid_sint && snum >=  INT8_MIN && snum <=   INT8_MAX) { this->i8  = static_cast< int8_t >(snum); this->flags |= flag_t::flag_i8 ; }
-    if (valid_uint &&                      unum <= UINT64_MAX) { this->u64 = static_cast<uint64_t>(unum); this->flags |= flag_t::flag_u64; }
+    if (valid_uint                                           ) { this->u64 = static_cast<uint64_t>(unum); this->flags |= flag_t::flag_u64; }
     if (valid_uint &&                      unum <= UINT32_MAX) { this->u32 = static_cast<uint32_t>(unum); this->flags |= flag_t::flag_u32; }
     if (valid_uint &&                      unum <= UINT16_MAX) { this->u16 = static_cast<uint16_t>(unum); this->flags |= flag_t::flag_u16; }
     if (valid_uint &&                      unum <=  UINT8_MAX) { this->u8  = static_cast<uint8_t >(unum); this->flags |= flag_t::flag_u8 ; }

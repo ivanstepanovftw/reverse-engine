@@ -278,7 +278,7 @@ ScanWindow::on_button_first_scan()
     }
     
     timestamp = high_resolution_clock::now();
-    RE::globals->scans.last = new RE::matches_t();
+    RE::globals->scans.last = new RE::ByteMatches();
     RE::globals->scans.first = RE::globals->scans.last;
     RE::globals->scanner->scan_regions(*RE::globals->scans.last, data_type, uservalue, match_type);
     clog<<"Scan result: "<<RE::globals->scans.last->count()
@@ -343,7 +343,7 @@ ScanWindow::on_button_next_scan()
     timestamp = high_resolution_clock::now();
     delete RE::globals->scans.prev;
     RE::globals->scans.prev = RE::globals->scans.last;
-    RE::globals->scans.last = new RE::matches_t(*RE::globals->scans.prev);
+    RE::globals->scans.last = new RE::ByteMatches(*RE::globals->scans.prev);
     RE::globals->scanner->scan_update(*RE::globals->scans.last);
     RE::globals->scanner->scan_recheck(*RE::globals->scans.last, data_type, uservalue, match_type);
     clog<<"Scan result: "<<RE::globals->scans.last->count()

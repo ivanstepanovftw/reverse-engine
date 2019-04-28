@@ -45,6 +45,8 @@ set(ENABLE_DEBUG TRUE)
 set(PROFILE_GENERATE)
 set(PROFILE_UPDATE)
 set(PROFILE_USE)
+set(USE_OPENMP 1)
+set(USE_OPENACC 1)
 
 set_property(TARGET ${RE_LIBRARY_NAME} PROPERTY CXX_STANDARD 20)
 
@@ -69,6 +71,22 @@ if (ENABLE_DEBUG)
     target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Clang>:-g3>")
 endif()
 
+if (USE_OPENMP)
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-qopenmp>")
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},GNU>:-fopenmp>")
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Clang>:-fopenmp>")
+    target_link_libraries(${RE_LIBRARY_NAME} PUBLIC
+            -fopenmp
+            )
+    target_compile_definitions(${RE_LIBRARY_NAME} PUBLIC
+            -DOMPTARGET_DEBUG
+            )
+endif()
+if (USE_OPENACC)
+#    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Intel>:-openacc>")
+    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},GNU>:-fopenacc>")
+#    target_compile_options(${RE_LIBRARY_NAME} PUBLIC "$<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Clang>:-openacc>")
+endif()
 # ┌──────────────────────────────────────────────────────────────────┐
 #   Compilation flags - profiling
 # └──────────────────────────────────────────────────────────────────┘
@@ -109,15 +127,16 @@ endif()
 # └──────────────────────────────────────────────────────────────────┘
 target_compile_options(${RE_LIBRARY_NAME} PUBLIC
         -O3
+        -fno-inline-small-functions
 #        -O0
         -g3
         -pipe
         -m64
-        -fPIC
-        -fstack-protector-strong
-#        -Wformat -Werror=format-security
-#        -Wall -Wno-unused -Wextra -Wpedantic
-        -fopenmp
+#        -fPIC
+#        -fstack-protector-strong
+        -Wformat -Werror=format-security
+        -Wall -Wno-unused -Wextra -Wpedantic
+        -Werror=return-type
         )
 
 set_target_properties(${RE_LIBRARY_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -141,26 +160,17 @@ target_compile_definitions(${RE_LIBRARY_NAME} PUBLIC
         RE_ADJUST_DATA_TO_VAL_LOOP=3  # 1: raw loop, 2: manual unroll, 3: manual uroll reversed, 4: manual unroll large
         #RE_ADJUST_DATA_TO_VAL_LOOP_1_UNROLL=-1  # undefined,-1,any
 
-        _FORTIFY_SOURCE=2
+#        _FORTIFY_SOURCE=2
 #        NDEBUG
         )
 
 target_link_options(${RE_LIBRARY_NAME} PUBLIC
-        "LINKER:-z,relro,-z,now"
-        "LINKER:-z,defs"
+#        "LINKER:-z,relro,-z,now"
+#        "LINKER:-z,defs"
         )
 
-message(STATUS "R2_FOUND=${R2_FOUND}")
-message(STATUS "R2_LIBRARIES=${R2_LIBRARIES}")
-message(STATUS "R2_LINK_LIBRARIES=${R2_LINK_LIBRARIES}")
-message(STATUS "R2_LIBRARY_DIRS=${R2_LIBRARY_DIRS}")
-message(STATUS "R2_LDFLAGS=${R2_LDFLAGS}")
-message(STATUS "R2_LDFLAGS_OTHER=${R2_LDFLAGS_OTHER}")
-message(STATUS "R2_INCLUDE_DIRS=${R2_INCLUDE_DIRS}")
-message(STATUS "R2_CFLAGS=${R2_CFLAGS}")
-message(STATUS "R2_CFLAGS_OTHER=${R2_CFLAGS_OTHER}")
 
-target_link_libraries(${RE_LIBRARY_NAME}
+target_link_libraries(${RE_LIBRARY_NAME} PUBLIC
         pthread
         boost_serialization
         boost_iostreams
@@ -168,7 +178,14 @@ target_link_libraries(${RE_LIBRARY_NAME}
         bitmask
         rt
         ${R2_LIBRARIES}
-        -fopenmp
+        )
+
+pvs_studio_add_target(TARGET ${RE_LIBRARY_NAME}.PVS ALL
+        OUTPUT FORMAT errorfile
+        ANALYZE ${RE_LIBRARY_NAME}
+        MODE GA:1,2 OP
+        LOG target.err
+        LICENSE /home/user/.config/PVS-Studio/PVS-Studio.lic  # username@gmail.com\n4G80-5UFZ-1H90-RPG9
         )
 
 # ┌──────────────────────────────────────────────────────────────────┐

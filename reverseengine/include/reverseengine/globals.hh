@@ -31,9 +31,9 @@ constexpr size_t REFRESH_RATE = 2000;
 
 class CScans {
 public:
-    RE::matches_t *first = nullptr;
-    RE::matches_t *prev  = nullptr;
-    RE::matches_t *last  = nullptr;
+    RE::ByteMatches *first = nullptr;
+    RE::ByteMatches *prev  = nullptr;
+    RE::ByteMatches *last  = nullptr;
 
     void scan_new() {
         delete first;
@@ -42,14 +42,14 @@ public:
     }
 
     void scan_first() {
-        last = new RE::matches_t();
+        last = new RE::ByteMatches();
         first = last;
     }
 
     void scan_next() {
         delete prev;
         prev = last;
-        last = new RE::matches_t();
+        last = new RE::ByteMatches();
     }
 
     void scan_undo() {

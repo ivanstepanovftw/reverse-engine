@@ -40,8 +40,6 @@
 #include <reverseengine/core.hh>
 #include <reverseengine/value.hh>
 #include <reverseengine/scanroutines.hh>
-#include <reverseengine/pointerscan.hh>
-#include <omp.h>
 
 //namespace bio = boost::iostreams;
 
@@ -56,14 +54,14 @@ NAMESPACE_BEGIN(RE)
  *         ^~ ^~~~    ^~                 ^~~~~~~~~~~~
  *  Using 'swath_t' we will use less memory space.
  */
-class swath_t
+class ByteSwath
 {
 public:
     uintptr_t base_address;
     std::vector<uint8_t> bytes;
     std::vector<flag> flags;
 
-    explicit swath_t(uintptr_t base_address) {
+    explicit ByteSwath(uintptr_t base_address) {
         this->base_address = base_address;
     }
 
@@ -72,6 +70,9 @@ public:
     append(uint8_t byte, const flag& flag) {
         bytes.emplace_back(byte);
         flags.emplace_back(flag);
+        // if UNLIKELY(flags.size() != bytes.size()) {
+        //     throw runtime_error("flags.size() != bytes.size(): "+to_string(flags.size())+" != "+to_string(bytes.size()));
+        // }
     }
 
     [[gnu::always_inline]]
@@ -89,16 +90,22 @@ public:
 /* only at most sizeof(int64_t) bytes will be read,
    if more bytes are needed (e.g. bytearray),
    read them separately (for performance) */
-    [[gnu::always_inline]]
+    // [[gnu::always_inline]]
     value_t
     to_value(size_t index)
     {
-        //todo[high]: do constructor like value_t(swath_t)
+        //todo[high]: do constructor like value_t(ByteSwath)
         value_t val;
 
         val.address = remote_get(index);
 
         /* Truncate to the old flags, which are stored with the first matched byte */
+        // if UNLIKELY(flags.size() != bytes.size()) {
+        //     throw runtime_error("flags.size() != bytes.size(): "+to_string(flags.size())+" != "+to_string(bytes.size()));
+        // }
+        // if UNLIKELY(index >= flags.size()) {
+        //     throw runtime_error("index >= flags.size(): "+to_string(index)+" >= "+to_string(flags.size()));
+        // }
         val.flags = flags[index];
 
         size_t max_bytes = bytes.size() - index;
@@ -119,16 +126,16 @@ public:
 /**
  *  Master array of matches array.
  */
-class matches_t {
+class ByteMatches {
 public:
     //left side
     //std::ostream file;
     //right side
-    std::vector<swath_t> swaths;
+    std::vector<ByteSwath> swaths;
 
-    matches_t() { }
+    ByteMatches() { }
 
-    ~matches_t() { }
+    ~ByteMatches() { }
 
     [[gnu::always_inline]]
     void
@@ -141,11 +148,11 @@ public:
         }
 
         constexpr size_t preallocated_bytes = 1;
-        constexpr size_t size_of_bytes_flags = preallocated_bytes*(sizeof(decltype(swath_t::bytes)::value_type) + sizeof(decltype(swath_t::flags)::value_type));
+        constexpr size_t size_of_bytes_flags = preallocated_bytes*(sizeof(decltype(ByteSwath::bytes)::value_type) + sizeof(decltype(ByteSwath::flags)::value_type));
         size_t remote_delta = remote_address - swaths.back().remote_back();
         size_t local_delta = remote_delta * size_of_bytes_flags;
 
-        if (local_delta >= sizeof(swath_t) + size_of_bytes_flags) {
+        if (local_delta >= sizeof(ByteSwath) + size_of_bytes_flags) {
             /* It is more memory-efficient to start a new swath */
             swaths.emplace_back(remote_address);
         } else {
@@ -162,7 +169,7 @@ public:
         for(auto& swath : swaths)
             size += swath.bytes.capacity() * sizeof(decltype(swath.bytes)::value_type)
                     + swath.flags.capacity() * sizeof(decltype(swath.flags)::value_type);
-        return size + swaths.capacity() * sizeof(swath_t);
+        return size + swaths.capacity() * sizeof(ByteSwath);
     }
 
     size_t mem_virt() {
@@ -170,7 +177,7 @@ public:
         for(auto& swath : swaths)
             size += swath.bytes.size() * sizeof(decltype(swath.bytes)::value_type)
                     + swath.flags.size() * sizeof(decltype(swath.flags)::value_type);
-        return size + swaths.size() * sizeof(swath_t);
+        return size + swaths.size() * sizeof(ByteSwath);
     }
 
     size_t mem_disk() {
@@ -178,7 +185,7 @@ public:
         for(auto& swath : swaths)
             size += swath.bytes.size() * sizeof(decltype(swath.bytes)::value_type)
                     + swath.flags.size() * sizeof(decltype(swath.flags)::value_type);
-        return size + swaths.size() * sizeof(swath_t);
+        return size + swaths.size() * sizeof(ByteSwath);
     }
 
     size_t size() {
@@ -212,12 +219,19 @@ public:
             for(; swath_index < parent->swaths.size(); swath_index++, value_index = 0) {
                 for(; value_index < parent->swaths[swath_index].flags.size(); value_index++) {
                     if (parent->swaths[swath_index].flags[value_index] != RE::flag_t::flags_empty) {
-                        //cout<<"swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<"), value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<"), ++ is found"<<endl;
+                        // clog<<"++: found: swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<")"<<endl;
+                        // if (swath_index < parent->swaths.size())
+                        //     clog<<"++: found:     value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<")"<<endl;
                         return *this;
                     }
-                    //cout<<"swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<"), value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<"), ++ is skipping"<<endl;
+                    // clog<<"++: next: swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<")"<<endl;
+                    // if (swath_index < parent->swaths.size())
+                    //     clog<<"++: next:     value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<")"<<endl;
                 }
             }
+            // clog<<"++: end: swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<")"<<endl;
+            // if (swath_index < parent->swaths.size())
+            //     clog<<"++: end:     value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<")"<<endl;
             swath_index = parent->swaths.size();
             value_index = 0;
             return *this;
@@ -230,9 +244,11 @@ public:
         }
 
         value_type operator*() const {
-            //cout<<"swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<"), value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<"), dereference"<<endl;
+            // clog<<"*:     (size "<<parent->swaths.size()<<")"<<endl;
+            // if (swath_index < parent->swaths.size())
+            //     clog<<"dereference:     value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<")"<<endl;
             if (swath_index >= parent->swaths.size() || value_index >= parent->swaths[swath_index].bytes.size()) {
-                throw std::range_error("matches_t: dereference outside of range");
+                throw std::range_error("ByteMatches: dereference outside of range");
             }
             return parent->swaths[swath_index].to_value(value_index);
         }
@@ -248,26 +264,31 @@ public:
         }
 
         friend bool operator!=(const iterator& lhs, const iterator& rhs) {
-            bool ret = lhs.parent!=rhs.parent || lhs.swath_index!=rhs.swath_index || lhs.value_index!=rhs.value_index;
-            return ret;
+            bool result = !operator==(lhs, rhs);
+            // clog<<"!=: will return "<<result<<endl;
+            return result;
         }
     private:
-        friend matches_t;
-        matches_t *parent;
+        friend ByteMatches;
+        ByteMatches *parent;
         size_t swath_index;
         size_t value_index;
 
-        explicit iterator(matches_t* container, size_t swath = 0, size_t value = 0) : parent(container), swath_index(swath), value_index(value) {
+        explicit iterator(ByteMatches* container, size_t swath = 0, size_t value = 0) : parent(container), swath_index(swath), value_index(value) {
             for (; swath_index < parent->swaths.size(); swath_index++) {
                 for (size_t d = 0; d < parent->swaths[swath_index].flags.size(); d++) {
                     if (parent->swaths[swath_index].flags[d] == RE::flag_t::flags_empty)
                         continue;
                     value_index = d;
-                    //cout<<"swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<"), value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<"), begin iterator"<<endl;
+                    // clog<<"begin iterator: swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<")"<<endl;
+                    // if (swath_index < parent->swaths.size())
+                    //     clog<<"begin iterator:    value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<")"<<endl;
                     return;
                 }
             }
-            //cout<<"swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<"), value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<"), end iterator"<<endl;
+            // clog<<"end iterator: swath_index: "<<swath_index<<" (size "<<parent->swaths.size()<<")"<<endl;
+            // if (swath_index < parent->swaths.size())
+            //     clog<<"end iterator:    value_index: "<<value_index<<" (size "<<parent->swaths[swath_index].bytes.size()<<")"<<endl;
         }
     };
 
@@ -302,13 +323,11 @@ class bad_uservalue_cast
     size_t _at;     // указывает, на каком символе ошибка
 
 public:
-    bad_uservalue_cast(const std::string &original, const size_t &at) noexcept {
-        _text = original;
-        _at = at;
-    }
+    bad_uservalue_cast(const std::string &original, const size_t &at) noexcept
+    : _text(original), _at(at) {}
     
     // This declaration is not useless: http://gcc.gnu.org/onlinedocs/gcc-3.0.2/gcc_6.html#SEC118
-    ~bad_uservalue_cast() noexcept { }
+    ~bad_uservalue_cast() noexcept {}
     
     const std::string what() const noexcept {
         return ("bad_uservalue_cast(): \n"
@@ -327,18 +346,10 @@ public:
 
 
 
-class Scanner
-{
+class Scanner {
 public:
-    /// Create file for storing matches
-    RE::IProcess *handler;
-    volatile bool stop_flag = false;
-    volatile double scan_progress = 0;
-    uintptr_t step = 1;
-    
-    explicit Scanner(IProcess *handler) {
-        this->handler = handler;
-    }
+    explicit Scanner(IProcess& handler)
+    : handler(handler) { }
     
     void string_to_uservalue(const RE::Edata_type &data_type,
                              const std::string &text,
@@ -355,15 +366,10 @@ public:
      *
      *  Will read process memory and update 'matches_t'
      */
-    bool scan_regions(RE::matches_t& writing_matches,
+    bool scan_regions(RE::ByteMatches& writing_matches,
                       const RE::Edata_type& data_type,
                       const RE::Cuservalue *uservalue,
                       const RE::Ematch_type& match_type);
-
-    //bool scan_snapshot(RE::matches_t& writing_matches,
-    //                   const RE::Edata_type& data_type,
-    //                   const RE::Cuservalue *uservalue,
-    //                   const RE::Ematch_type& match_type);
 
     /**
      *  Update bytes of matches (it does not scan, it just updates value).
@@ -371,7 +377,7 @@ public:
      *
      *  Will read process memory and update 'matches_t'
      */
-    bool scan_update(RE::matches_t& writing_matches);
+    bool scan_update(RE::ByteMatches& writing_matches);
 
     /**
      *  Remove flag for each byte if value mismatched.
@@ -379,7 +385,7 @@ public:
      *
      *  Will update 'matches_t'
      */
-    bool scan_recheck(RE::matches_t& writing_matches,
+    bool scan_recheck(RE::ByteMatches& writing_matches,
                       const RE::Edata_type& data_type,
                       const RE::Cuservalue *uservalue,
                       RE::Ematch_type match_type);
@@ -388,174 +394,17 @@ private:
     /**
      *  Usually used after scan_* methods
      */
-    bool scan_fit(RE::matches_t& writing_matches);
-};
-
-
-
-class pointerscan
-{
-public:
-    explicit pointerscan(IProcess *handler) {
-        this->handler = handler;
-        omp_init_lock(&writelock);
-    }
-
-    ~pointerscan() {
-        omp_destroy_lock(&writelock);
-    }
-
-    void helper(vector<uintptr_t> off, uintptr_t last, uintptr_t address, pointer_swath& ps) {
-        if (off.size() == max_level) {
-            // cout<<"helper: reached maxlevel"<<endl; //fixme [debug] #4
-            return;
-        }
-
-        if (address >= last-min_offset && address < last+max_offset) {
-            vector<uintptr_t> offs = off;
-            offs.push_back(address-(last-min_offset));
-            // cout<<"helper: level"<<offs.size()<<": off: {"<<ps.file.filename()<<"+";
-            // for (const auto& i: offs)
-            //     cout << HEX(i) << ",";
-            // cout<<"\b} FOUND"<<endl; //fixme [debug] #1
-            omp_set_lock(&writelock);
-            ps.offsets.push_back(offs); /// success
-            omp_unset_lock(&writelock);
-        }
-
-        off.push_back(0);
-        for (size_t o1 = min_offset; o1 < max_offset; o1 += align) {
-            off.back() = o1;
-            // cout<<"helper: level"<<off.size()<<": off: {"<<ps.file.filename()<<"+";
-            // for (const auto& i: off)
-            //     cout << HEX(i) << ",";
-            // cout<<"\b}"<<endl; //fixme [debug] #1
-
-            uintptr_t s_last;
-            if (!handler->read(last+o1, &s_last)) {
-                // cout<<"helper: cannot dereference"<<endl; //fixme [debug] #3
-                continue;
-            }
-
-            /// for each offset in level2
-            helper(off, s_last, address, ps);
-        }
-    }
-
-    std::vector<pointer_swath>
-    scan_regions(uintptr_t address)
-    {
-        using std::cout, std::endl;
-
-        scan_progress = 0.0;
-
-        std::vector<pointer_swath> ret;
-        size_t static_regions_count = 0;
-        size_t static_regions_bytes = 0;
-        for (RE::Region& region : handler->regions) {
-            if (region.r2) {
-                static_regions_count++;
-                static_regions_bytes += region.size;
-            }
-        }
-        double scan_step = 1.0/static_regions_bytes;
-        double scan_last_printed = 0.0;
-
-        /// for each region
-        size_t static_region_counter = 0;
-        for (RE::Region& region : handler->regions) {
-            /// if region is static
-            if (!region.r2) {
-                continue;
-            }
-            cout<<"scan_regions: region["<<static_region_counter++<<"/"<<static_regions_count<<"]: "<<region<<endl; //fixme [debug] #0
-
-            pointer_swath ps;
-            ps.file = region.file;
-            // cout<<"region.file: "<<region.file<<endl; //fixme [debug] #0
-
-            std::vector<RBinSection *> sections = region.r2.get_sections();
-            uintptr_t static_offset_to = 0;
-            for(RBinSection *s : sections) {
-                uintptr_t se = s->vaddr + s->vsize;
-                static_offset_to = std::max(static_offset_to, se);
-            }
-
-            // static_offset_to = 0x800f; //fixme [debug] REMOVEME
-
-            uintptr_t static_begin = region.address;
-            uintptr_t static_end = region.address + static_offset_to;
-
-            // cout<<"static_begin: "<<region.file.filename()<<endl; //fixme [debug] #0
-            // cout<<"static_end: "<<region.file.filename()<<"+"<<HEX(static_offset_to)<<endl; //fixme [debug] #0
-
-
-            if (address >= static_begin && address < static_end) {
-                std::vector<uintptr_t> off {address-static_begin};
-                // cout<<"static: level"<<off.size()<<": off: {"<<ps.file.filename()<<"+";
-                // for (const auto i: off)
-                //     cout << HEX(i) << ",";
-                // cout<<"\b} FOUND"<<endl; //fixme [debug] #1
-                ps.offsets.push_back(off); /// success
-            }
-
-            /// for each level0 pointer
-#pragma omp parallel for
-            for (uintptr_t o = 0; o < static_offset_to; o += align) {
-                std::vector<uintptr_t> off {o};
-                off.reserve(max_level);
-                // cout<<"static: level"<<off.size()<<": off: {"<<ps.file.filename()<<"+";
-                // for (const auto& i: off)
-                //     cout << HEX(i) << ",";
-                // cout<<"\b}"<<endl; //fixme [debug] #1
-                uintptr_t last = static_begin + o;
-                if (!handler->read(last, &last)) {
-                    // cout<<"static: cannot dereference"<<endl; //fixme [debug] #3
-                    continue;
-                }
-
-                /// for each offset in level1
-                helper(off, last, address, ps);
-
-                // scan_progress+=scan_step;
-                // if (scan_progress-scan_last_printed > 0.01) {
-                //     scan_last_printed = scan_progress;
-                //     cout<<scan_progress<<": [";
-                //     for(size_t i = 0; i < 70*scan_progress-1; i++)
-                //         cout<<"=";
-                //     cout<<">";
-                //     for(size_t i = 70.0*scan_progress-1; i < 70; i++)
-                //         cout<<" ";
-                //     cout<<"]"<<endl;
-                // }
-                // if (stop_flag)
-                //     break;
-                // if UNLIKELY(stop_flag)
-                //     continue;
-            }
-
-            if (!ps.offsets.empty()) {
-                ret.push_back(ps);
-            }
-            // break; //fixme [debug] REMOVEME
-        }
-        scan_progress = 1.0;
-        return ret;
-    }
+    bool scan_fit(RE::ByteMatches& writing_matches);
 
 public:
     /// Create file for storing matches
-    RE::IProcess *handler;
+    RE::IProcess& handler;
     volatile bool stop_flag = false;
-    volatile double scan_progress = 0.0;
-    uintptr_t max_level = 3;
-
-    uintptr_t min_offset = 0;
-    uintptr_t max_offset = 0x100;
-    uintptr_t align = sizeof(uint32_t);
-
-    omp_lock_t writelock;
+    volatile double scan_progress = 0;
+    uintptr_t step = 1;
 };
+
+
 
 
 

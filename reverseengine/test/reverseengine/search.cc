@@ -22,15 +22,15 @@ int main(int argc, const char *argv[]) {
     // std::string target = "csgo_linux64";
     std::string search_for = "100";
     // RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
-    RE::Edata_type data_type = RE::Edata_type::FLOAT64;
+    RE::Edata_type data_type = RE::Edata_type::INTEGER64;
 
     RE::Process handler(target);
     if (!handler)
         throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
 
-    RE::Scanner scanner(&handler);
+    RE::Scanner scanner(handler);
 
-    clog<<"FAKEMEM, pid: "
+    clog<<target<<", pid: "
         <<handler.get_pid()
         <<", title: "<< handler.get_cmdline()
         <<", exe: "<<handler.get_exe()
@@ -47,7 +47,7 @@ int main(int argc, const char *argv[]) {
         return 0;
     }
 
-    RE::matches_t matches_first;
+    RE::ByteMatches matches_first;
     timestamp = high_resolution_clock::now();
     scanner.scan_regions(matches_first, data_type, uservalue, match_type);
     clog<<"Scan 1/3 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;
@@ -56,7 +56,7 @@ int main(int argc, const char *argv[]) {
     clog<<"size: "<<matches_first.size()<<endl;
     clog<<"count: "<<matches_first.count()<<endl;
 
-    RE::matches_t matches_prev = matches_first;
+    RE::ByteMatches matches_prev = matches_first;
     timestamp = high_resolution_clock::now();
     scanner.scan_update(matches_prev);
     scanner.scan_recheck(matches_prev, data_type, uservalue, match_type);
@@ -72,15 +72,14 @@ int main(int argc, const char *argv[]) {
 
 
     timestamp = high_resolution_clock::now();
-    // RE::phandler_file handler_mmap(handler, "vadimislove");
     RE::ProcessH handler_mmap(handler);
     if (!handler_mmap)
         throw std::invalid_argument("Cannot find "+target+" process. Nothing to do.");
     handler_mmap.update_regions();
-    RE::Scanner scanner_mmap(&handler_mmap);
+    RE::Scanner scanner_mmap(handler_mmap);
 
 
-    RE::matches_t matches_curr = matches_prev;
+    RE::ByteMatches matches_curr = matches_prev;
     scanner_mmap.scan_update(matches_curr);
     scanner_mmap.scan_recheck(matches_curr, data_type, uservalue, match_type);
     clog<<"Scan 3/3 done in: "<<duration_cast<duration<double>>(high_resolution_clock::now() - timestamp).count()<<" seconds"<<endl;

@@ -46,7 +46,7 @@ bool sm_choose_scanroutine(RE::Edata_type dt,
 
 scan_routine_t sm_get_scanroutine(RE::Edata_type dt,
                                   RE::Ematch_type mt,
-                                  flag uflags,
+                                  const flag& uflags,
                                   bool reverse_endianness);
 
 NAMESPACE_END(RE)

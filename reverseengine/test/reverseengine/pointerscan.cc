@@ -58,7 +58,7 @@ int main(int argc, const char *argv[]) {
     //std::string pointer_region = "FAKEMEM";
     // ----------------------------------------------------------
 
-    // RE::pointer p(handler, pointer_region, pointer_offset);
+    // RE::Pointer p(handler, pointer_region, pointer_offset);
 
     // std::vector<uintptr_t> ptr_resolved = p.resolve();
     // if (pointer_offset.size() != ptr_resolved.size()) {
@@ -73,22 +73,25 @@ int main(int argc, const char *argv[]) {
     //
     // cout<<"ptr_resolved.back(): "<<RE::HEX(ptr_resolved.back())<<endl;
 
-    // RE::pointerscan ps(&handler);
+    // RE::PointerScanner ps(&handler);
     //or
     // RE::ProcessF processF(handler, "asd");
-    // RE::pointerscan ps(&processF);
+    // RE::PointerScanner ps(&processF);
     //or
     RE::ProcessH processH(handler);
-    RE::pointerscan ps(&processH);
+    RE::PointerScanner ps(processH);
 
-    // std::vector<RE::pointer_swath> scan_result = ps.scan_regions(0x7f50dc812000);
-    std::vector<RE::pointer_swath> scan_result = ps.scan_regions(0x000562C6EDE0010); //fakemem`begin+0x10 //43 pointera
+    uintptr_t seek = handler.get_region_by_name(target)->address+0x10;
+    cout<<"seek: "<<RE::HEX(seek)<<endl;
+    // std::vector<RE::RegionPaths> scan_result = ps.scan_regions(0x7f50dc812000);
+    std::vector<RE::RegionPaths> scan_result = ps.scan_regions(seek); //fakemem`begin+0x10 //43 pointera
+    // std::vector<RE::RegionPaths> scan_result = ps.scan_regions(0x7FFCA82F56C0); //fakemem's bytes allocated
 
     // *(*("FAKEMEM"+302100)+4)+40
     // "FAKEMEM"+302100->+4->+40
     cout<<"pointer list:"<<endl;
-    for (const RE::pointer_swath& region : scan_result) {
-        for(const std::vector<uintptr_t>& offsets : region.offsets) {
+    for (const RE::RegionPaths& region : scan_result) {
+        for(const std::vector<uintptr_t>& offsets : region.paths) {
             cout<<region.file.filename()<<"+";
             for(const uintptr_t& o : offsets) {
                 cout<<RE::HEX(o)<<"+";

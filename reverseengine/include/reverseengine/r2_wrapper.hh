@@ -45,6 +45,10 @@ public:
     }
 
     bool open(const sfs::path& file) {
+        /// open(file) will be faster later:
+        // pancake 🎗, [20.04.19 18:40]: Rbin loads the file in memory
+        // pancake 🎗, [20.04.19 18:40]: Its totally unrelated to the io
+        // pancake 🎗, [24.04.19 14:20]: the rbin apis will be rewritten completely
         if (!sfs::exists(file)) {
             std::clog<<"Bin::open(): !exists: file: "<<file<<std::endl;
             return false;

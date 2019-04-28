@@ -146,7 +146,7 @@ public:
     using bitmask::bitmask;
 
     // oliora/bitmask#4, message#4, issue n.1
-    constexpr flag(const bitmask<value_type> flag) noexcept
+    constexpr flag(const bitmask<value_type>& flag) noexcept
     : bitmask::bitmask<value_type>(flag) {}
 
     constexpr flag(const Edata_type& dt) noexcept
