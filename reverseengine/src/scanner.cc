@@ -178,8 +178,7 @@ RE::Scanner::scan_regions(ByteMatches& writing_matches,
     using namespace std;
     using namespace std::chrono;
 
-//    high_resolution_clock::time_point timestamp;
-//    double i_total = 0;
+    cout<<"scan_regions: "<<endl;
 
     if (!RE::sm_choose_scanroutine(data_type, match_type, uservalue, false)) {
         printf("unsupported scan for current data type.\n");
@@ -189,72 +188,42 @@ RE::Scanner::scan_regions(ByteMatches& writing_matches,
     scan_progress = 0.0;
     stop_flag = false;
 
-    /* The maximum logical size is a comfortable 1MiB (increasing it does not help).
-     * The actual allocation is that plus the rounded size of the maximum possible VLT.
-     * This is needed because the last byte might be scanned as max size VLT,
-     * thus need 2^16 - 2 extra bytes after it */
-    constexpr size_t MAX_BUFFER_SIZE = 128u * (1u<<10u);
-    constexpr size_t MAX_ALLOC_SIZE = MAX_BUFFER_SIZE + 64u * (1u<<10u);
 
-    /* allocate data array */
-    uint8_t *buffer = new uint8_t[MAX_ALLOC_SIZE];
-    uint8_t *buf_pos = buffer;
-
-    size_t required_extra_bytes_to_record = 0;
-
-    /* check every memory region */
     for(const RE::Region& region : handler.regions) {
+        size_t region_beg = region.address;
+        size_t region_end = region.address + region.size;
+
         /* For every offset, check if we have a match. */
-        size_t memlength = region.size;
-        size_t buffer_size = 0;
-        uintptr_t reg_pos = region.address;
+        // #pragma omp parallel firstprivate(data_type, uservalue, match_type, region_beg, region_end), shared(writing_matches)
+        {
+            // У каждого потока есть свой кеш и одна своя переменная
+            CachedReader cachedReader(handler);
+            size_t required_extra_bytes_to_record = 0;
 
-        // TODO[low]: remove memlength and other useless variables that pointed to speedup scanning but they doesnt
-        for ( ; ; memlength-=step, buffer_size-=step, reg_pos+=step, buf_pos+=step) {
-        //for ( ; ; memlength--, buffer_size--, reg_pos++, buf_pos++) {
-            /* check if the buffer is finished (or we just started) */
-            if UNLIKELY(buffer_size == 0) {
-                /* the whole region is finished */
-                if (memlength == 0) break;
-
-                /* stop scanning if asked to */
-                if (stop_flag) break;
-
-                /* load the next buffer block */
-                size_t alloc_size = MIN(memlength, MAX_ALLOC_SIZE);
-                size_t copied = handler.read(reg_pos, buffer, alloc_size);
+            // #pragma omp for ordered
+            for(uintptr_t reg_pos = region_beg; reg_pos < region_end; reg_pos += step) {
+                mem64_t memory_ptr{};
+                uint64_t copied = cachedReader.read(reg_pos, &memory_ptr, sizeof(mem64_t));
                 if UNLIKELY(copied == IProcess::npos)
-                    break;
-                else if UNLIKELY(copied < alloc_size) {
-                    /* the region ends here, update `memlength` */
-                    memlength = copied;
-                    memset(buffer + copied, 0, MAX_ALLOC_SIZE - copied);
+                    continue; // В однопотоке тут будет break;
+                RE::flag checkflags;
+
+                /* check if we have a match */
+                size_t match_length = (*sm_scan_routine)(&memory_ptr, copied, nullptr, uservalue, checkflags);
+                // #pragma omp ordered
+                {
+                    if UNLIKELY(match_length > 0) {
+                        writing_matches.add_element(reg_pos, &memory_ptr, checkflags);
+                        required_extra_bytes_to_record = match_length - 1;
+                    } else if UNLIKELY(required_extra_bytes_to_record > 0) {
+                        writing_matches.add_element(reg_pos, &memory_ptr, RE::flag_t::flags_empty);
+                        required_extra_bytes_to_record--;
+                    }
                 }
-                /* If less than `MAX_ALLOC_SIZE` bytes remain, we have all of them
-                 * in the buffer, so go all the way.
-                 * Otherwise we need to stop at `MAX_BUFFER_SIZE`, so that
-                 * the last byte we look at has a full VLT after it */
-                buffer_size = memlength <= MAX_ALLOC_SIZE ? memlength : MAX_BUFFER_SIZE;
-                buf_pos = buffer;
-            }
-
-            mem64_t *memory_ptr = reinterpret_cast<mem64_t *>(buf_pos);
-            RE::flag checkflags; // = flag_t::flags_empty;
-
-            /* check if we have a match */
-            size_t match_length = (*sm_scan_routine)(memory_ptr, memlength, nullptr, uservalue, checkflags);
-            if UNLIKELY(match_length > 0) {
-                writing_matches.add_element(reg_pos, memory_ptr, checkflags);
-                required_extra_bytes_to_record = match_length - 1;
-            }
-            else if UNLIKELY(required_extra_bytes_to_record > 0) {
-                writing_matches.add_element(reg_pos, memory_ptr, RE::flag_t::flags_empty);
-                required_extra_bytes_to_record--;
             }
         }
     }
 
-    delete[] buffer;
     scan_fit(writing_matches);
     scan_progress = 1.0;
     return true;

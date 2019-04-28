@@ -20,7 +20,7 @@ int main(int argc, const char *argv[]) {
 
     std::string target = "FAKEMEM";
     // std::string target = "csgo_linux64";
-    std::string search_for = "100";
+    std::string search_for = "60";
     // RE::Edata_type data_type = RE::Edata_type::ANYNUMBER;
     RE::Edata_type data_type = RE::Edata_type::INTEGER64;
 
@@ -56,6 +56,8 @@ int main(int argc, const char *argv[]) {
     clog<<"size: "<<matches_first.size()<<endl;
     clog<<"count: "<<matches_first.count()<<endl;
 
+    return 0;
+
     RE::ByteMatches matches_prev = matches_first;
     timestamp = high_resolution_clock::now();
     scanner.scan_update(matches_prev);
@@ -70,6 +72,17 @@ int main(int argc, const char *argv[]) {
 
     clog<<"============================================="<<endl;
 
+    // Scan 1/3 done in: 4.12675 seconds
+    // mem_virt: 1796987
+    // mem_disk: 1796987
+    // size: 552441
+    // count: 415338
+    // Scan 2/3 done in: 0.00326956 seconds
+    // mem_virt: 1796987
+    // mem_allo: 1796987
+    // mem_disk: 1796987
+    // size: 552441
+    // count: 415338
 
     timestamp = high_resolution_clock::now();
     RE::ProcessH handler_mmap(handler);

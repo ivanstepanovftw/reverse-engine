@@ -344,29 +344,27 @@ public:
     : m_parent(parent) {
         m_base = 0;
         m_cache_size = 0;
-        m_cache = new uint8_t[MAX_PEEKBUF_SIZE];
+        m_cache.resize(MAX_PEEKBUF_SIZE);
     }
 
-    ~CachedReader() {
-        delete[] m_cache;
-    }
+    virtual ~CachedReader() = default;
 
     [[gnu::always_inline]]
-    void reset() {
+    inline void reset() {
         m_base = 0;
         m_cache_size = 0;
     }
 
-    template<class PH = __PHANDLER, typename std::enable_if<std::is_base_of<PH, ProcessF>::value>::type* = nullptr>
-    [[gnu::always_inline]]
+    // template<class PH = __PHANDLER, typename std::enable_if<std::is_base_of<PH, ProcessF>::value>::type* = nullptr>
+    // [[gnu::always_inline]] inline
     size_t read(uintptr_t address, void *out, size_t size) {
         if UNLIKELY(size > MAX_PEEKBUF_SIZE) {
             return m_parent.read(address, out, size);
         }
 
-        if (m_base
-            && address >= m_base
-            && address - m_base + size <= m_cache_size) {
+        if LIKELY(m_base
+        && address >= m_base
+        && address - m_base + size <= m_cache_size) {
             /* full cache hit */
             memcpy(out, &m_cache[address - m_base], size);
             return size;
@@ -374,7 +372,7 @@ public:
 
         /* we need to retrieve memory to complete the request */
         size_t len = m_parent.read(address, &m_cache[0], MAX_PEEKBUF_SIZE);
-        if (len == m_parent.npos) {
+        if UNLIKELY(len == m_parent.npos) {
             /* hard failure to retrieve memory */
             reset();
             return m_parent.npos;
@@ -388,11 +386,11 @@ public:
         return MIN(size, m_cache_size);
     }
 
-    template<class PH = __PHANDLER, typename std::enable_if<!std::is_base_of<PH, ProcessF>::value>::type* = nullptr>
-    [[gnu::always_inline]]
-    size_t read(uintptr_t address, void *out, size_t size) {
-        return m_parent.read(address, out, size);
-    }
+    // template<class PH = __PHANDLER, typename std::enable_if<!std::is_base_of<PH, ProcessF>::value>::type* = nullptr>
+    // [[gnu::always_inline]]
+    // size_t read(uintptr_t address, void *out, size_t size) {
+    //     return m_parent.read(address, out, size);
+    // }
 
 public:
     static constexpr size_t MAX_PEEKBUF_SIZE = 4u * (1u << 10u);
@@ -401,7 +399,7 @@ private:
     __PHANDLER& m_parent;
     uintptr_t m_base; // base address of cached region
     size_t m_cache_size;
-    uint8_t *m_cache;
+    std::vector<uint8_t> m_cache;
 };
 
 
